@@ -414,13 +414,14 @@ textarea.field { height: 100px; padding: 13px 16px; resize: none; line-height: 1
 .map { position: relative; overflow: hidden; border-radius: var(--r-tile); background: var(--map-bg); aspect-ratio: 1.4; }
 .map-street { position: absolute; background: var(--map-street); }
 .map-block { position: absolute; border-radius: 6px; background: var(--map-block); }
-.mark { position: absolute; width: 36px; height: 36px; font-size: 13px; transform: translate(-50%, -50%); }
+.mark { position: absolute; width: 36px; height: 36px; font-size: 13px; transform: translate(-50%, -50%); transition: left 300ms var(--ease), top 300ms var(--ease); }
+.map-block, .map-street, .map-entrance { transition: left 300ms var(--ease), top 300ms var(--ease), width 300ms var(--ease), height 300ms var(--ease); }
 .mark.fill { background: var(--bg-elevated); }
 .mark.stale { background: transparent; border: 1.5px dashed var(--text-tertiary); color: var(--text-secondary); }
 .map-chip { position: absolute; left: 12px; top: 12px; min-height: 32px; padding: 0 12px; font-size: 13px; }
 .map-google { background: var(--map-bg); }
 /* Google advanced-marker content: an avatar ringed so it reads on satellite imagery. */
-.pin { width: 36px; height: 36px; font-size: 13px; border: 2px solid var(--surface); }
+.pin { width: 36px; height: 36px; font-size: 13px; border: 2px solid var(--surface); transition: transform 200ms var(--ease); }
 .pin.fill { background: var(--bg-elevated); }
 .pin.stale { background: var(--bg-elevated); border: 2px dashed var(--text-tertiary); color: var(--text-secondary); }
 /* Simulated positions are outlined with dots, so they never pass for a real fix. */
@@ -538,7 +539,7 @@ textarea.field { height: 100px; padding: 13px 16px; resize: none; line-height: 1
 @keyframes ytc-fade { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .rise, .sheet, .sheet-backdrop, .demo { animation: none; }
-  .btn, .toggle, .toggle .knob { transition: none; }
+  .btn, .toggle, .toggle .knob, .mark, .pin, .map-block, .map-street, .map-entrance { transition: none; }
 }
 
 /* ---------- Operator console (simulated call, #operator) ---------- */
