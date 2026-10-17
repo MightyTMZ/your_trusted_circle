@@ -6,8 +6,10 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "test": "vitest run && npm run test:node",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "test:node": "tsc -p tsconfig.node.json && node --test --test-reporter=dot \"dist/test/**/*.test.js\"",
+    "examples": "tsc -p tsconfig.node.json && node dist/src/timeline/fixtures/no-response.js docs/examples data/examples"
   },
   "repository": {
     "type": "git",
