@@ -5,14 +5,14 @@ import { Avatar } from '../components/Controls';
 import { Icon } from '../components/Icon';
 
 export function StartScreen() {
-  const { go, state, account } = useApp();
+  const { go, account } = useApp();
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const ready = code.trim().length === 6;
   const join = () => {
     const c = code.trim().toUpperCase();
-    if (!state.session || state.session.code !== c || state.session.status === 'ended') {
-      setError('No active session found for that code.');
+    if (c.length < 6) {
+      setError('Enter a 6-character join code.');
       return;
     }
     go({ name: 'join', code: c });

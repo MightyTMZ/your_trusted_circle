@@ -3,6 +3,7 @@ import { DEFAULT_CONFIG, UNVALIDATED_LABEL } from '../../domain/config';
 import { createSession, type ParticipantInput } from '../../domain/session';
 import { COPY } from '../copy';
 import { useApp } from '../context';
+import { createSessionOnServer } from '../api';
 import { ChipChoice, ScreenHeader, StepBar, Stepper, ToggleRow } from '../components/Controls';
 import { Icon } from '../components/Icon';
 import { ParticipantConsentFields, defaultParticipantInput } from '../components/ParticipantConsentFields';
@@ -24,18 +25,44 @@ export function HostSetupScreen() {
   });
   const [showTiming, setShowTiming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
-  const create = () => {
+  const create = async () => {
+    setCreating(true);
+    setError(null);
+
+    // Create on server to get an authoritative join code for cross-device QR.
+    const serverResult = await createSessionOnServer({
+      name: sessionName.trim() || `${host.displayName.trim()}'s group`,
+      durationMin,
+      consent: {
+        monitoring: host.motionMonitoring,
+        locationSharing: host.locationSharing,
+        shareLocationWithResponders: host.shareLocationWithResponders,
+      },
+      backupContacts: host.backupContacts.filter((c) => c.name.trim()).map((c) => ({ name: c.name.trim(), relation: c.relation.trim() })),
+      rules: cfg,
+    });
+
+    if (typeof serverResult === 'string') {
+      setCreating(false);
+      return setError(serverResult);
+    }
+
+    // Create in client state for the local experience (motion, check-ins, etc.).
     let hostId = '';
     const err = store.dispatch((d, now) => {
       hostId = createSession(d, { sessionName, durationMin, hostCommitment: commitment, host, config: cfg }, now).host.id;
+      // Overwrite the client code with the server's so the QR works cross-device.
+      d.session!.code = serverResult.session.code!;
     });
+    setCreating(false);
     if (err) return setError(err);
     setViewer({ kind: 'participant', id: hostId });
     go({ name: 'invite' });
   };
 
-  const blocked = (step === 2 && !commitment) || (step === 3 && !host.displayName.trim());
+  const blocked = creating || (step === 2 && !commitment) || (step === 3 && !host.displayName.trim());
   const next = () => (step < STEPS ? setStep(step + 1) : create());
 
   return (
