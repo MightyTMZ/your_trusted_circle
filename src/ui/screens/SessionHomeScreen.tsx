@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { UNVALIDATED_LABEL } from '../../domain/config';
-import { nextDeadline } from '../../domain/incident';
+import { alertedNames, nextDeadline } from '../../domain/incident';
 import { canViewLocation, latestReading, participantFreshness } from '../../domain/location';
 import { endSession, resumeSession, suspendSession } from '../../domain/session';
 import type { Incident, Participant } from '../../domain/types';
@@ -34,7 +34,9 @@ function AlertCard({ incident, now }: { incident: Incident; now: number }) {
       : 'Unacknowledged · all steps alerted'
     : incident.status === 'acknowledged'
       ? `Acknowledged by ${incident.acknowledged?.name} · not yet resolved`
-      : `Resolved ${fmtTime(incident.resolution!.at)}`;
+      : incident.resolution?.by === 'participant'
+        ? `${COPY.cancelledBySelf(p.displayName)} · ${fmtTime(incident.resolution.at)}`
+        : `Resolved ${fmtTime(incident.resolution!.at)}`;
   const title = incident.trigger === 'help_requested' ? `${p.displayName} asked for help` : `${COPY.movementChanged} · ${p.displayName}`;
   return (
     <section className={`surface card rise${open ? ' alert-open' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -165,6 +167,10 @@ export function SessionHomeScreen() {
     .sort((a, b) => Number(a.status === 'resolved') - Number(b.status === 'resolved') || b.openedAt - a.openedAt);
   const alerting = new Set(state.incidents.filter((i) => i.status === 'open').map((i) => i.participantId));
   const hostName = state.participants[session.hostId]?.displayName;
+  // The alert this person most recently cancelled themselves, shown for ten minutes as a receipt.
+  const myCancelled = state.incidents
+    .filter((i) => i.participantId === viewer.id && i.resolution?.by === 'participant' && now - i.resolution.at < 10 * 60_000)
+    .sort((a, b) => b.resolution!.at - a.resolution!.at)[0];
   const live = useLive();
   const { points, anchor } = useGroupPoints(viewer, now);
   const run = (fn: Parameters<typeof store.dispatch>[0]) => {
@@ -224,6 +230,16 @@ export function SessionHomeScreen() {
         )}
         <SettingsButton />
       </header>
+
+      {myCancelled && (
+        <section className="surface card stack rise" style={{ gap: 8 }} role="status">
+          <h2 className="t-card num">You cancelled the alert at {fmtTime(myCancelled.resolution!.at)}</h2>
+          <p className="t-sub">
+            Escalation stopped. {alertedNames(state, myCancelled)} can see you cancelled it as a false alarm. If you need help, use the
+            help button: that starts a new alert.
+          </p>
+        </section>
+      )}
 
       {trackingActive && motionPerm === 'prompt' && (
         <section className="surface card stack rise" style={{ gap: 8 }}>

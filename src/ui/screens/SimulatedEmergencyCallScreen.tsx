@@ -123,7 +123,7 @@ export function SimulatedEmergencyCallScreen({ incidentId }: { incidentId: strin
               <Icon name="alert" />
               Agent failure
             </button>
-            <button type="button" className="btn qtile fill" disabled={live} onClick={() => store.dispatch((d, t) => reconnectCall(d, incidentId, t))}>
+            <button type="button" className="btn qtile fill" disabled={live || incident.status === 'resolved'} onClick={() => store.dispatch((d, t) => reconnectCall(d, incidentId, t))}>
               <Icon name="rotate" />
               Reconnect
             </button>

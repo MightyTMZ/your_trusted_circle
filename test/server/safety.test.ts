@@ -202,3 +202,39 @@ test("session expiry ends the session and cancels pending check-ins; open alerts
   assert.equal(store.sessions.get(session.id)!.endedReason, "expired");
   assert.equal((await store.getCheckIn(body.checkIn.id))!.status, "cancelled");
 });
+
+test("the wearer cancels their own false alarm: escalation stops, it is saved, and only they can do it", async () => {
+  const { app, store, advance, tick, maya, sam, session, code } = await group();
+  const jo = await signIn(app, "jo");
+  await jo.call("POST", "/api/sessions/join", { code, consent: CONSENT, backupContacts: [{ name: "Priya", relation: "Sister" }] });
+  await jo.call("POST", `/api/sessions/${session.id}/help`);
+  await tick();
+  const incidentId = (await alertsFor(maya))[0].incidentId as string;
+
+  // Nobody else can cancel it: not the host, not another participant.
+  assert.equal((await maya.call("POST", `/api/sessions/${session.id}/cancel-alert`)).status, 404);
+  assert.equal((await sam.call("POST", `/api/sessions/${session.id}/cancel-alert`)).status, 404);
+  assert.equal((await store.getIncident(incidentId))!.status, "open");
+
+  advance(30 * SEC);
+  const res = await jo.call("POST", `/api/sessions/${session.id}/cancel-alert`);
+  assert.equal(res.status, 200);
+  const incident = (await store.getIncident(incidentId))!;
+  assert.equal(incident.status, "resolved");
+  assert.equal(incident.resolved?.bySubject, true);
+  assert.equal(incident.resolved?.outcome, "false_alarm");
+  assert.equal(incident.activeKey, null);
+  assert.ok(incident.steps.slice(1).every((s) => s.dueAt === null && s.notifiedAt === null));
+  assert.ok(incident.log.some((e) => e.kind === "resolution" && /their own report/.test(e.text)));
+
+  // The backup step never fires.
+  advance(60 * 60 * SEC);
+  await tick();
+  assert.deepEqual((await store.listJobsForIncident(incidentId)).map((j) => j.level), ["host"]);
+
+  // A second cancel finds nothing; asking for help again opens a new alert.
+  assert.equal((await jo.call("POST", `/api/sessions/${session.id}/cancel-alert`)).status, 404);
+  const again = await jo.call("POST", `/api/sessions/${session.id}/help`);
+  assert.equal(again.status, 201);
+  assert.notEqual(again.body.incidentId, incidentId);
+});

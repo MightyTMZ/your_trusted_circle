@@ -202,7 +202,18 @@ export interface Incident {
   lastUnackedNotificationAt?: Millis;
   escalationStoppedAt?: Millis;
   acknowledged?: { recipientId: string; name: string; at: Millis };
-  resolution?: { recipientId: string; name: string; at: Millis; outcome: ResolutionOutcome; note: string };
+  /**
+   * `by: 'participant'` means the person the alert is about cancelled it from
+   * their own device. That is their own report, not a check by anyone else.
+   */
+  resolution?: {
+    by: 'recipient' | 'participant';
+    recipientId?: string;
+    name: string;
+    at: Millis;
+    outcome: ResolutionOutcome;
+    note: string;
+  };
   timeline: TimelineEntry[];
   /**
    * Set when the incident is a copy of the server's (server-backed sessions).
@@ -224,6 +235,8 @@ export interface Recipient {
 
 /** Exactly what a recipient was told. Recipients may use only this. */
 export interface NotificationPayload {
+  /** 'cancelled': the person cancelled the alert themselves; escalation has stopped. */
+  kind?: 'alert' | 'cancelled';
   participantName: string;
   hostName: string;
   trigger: IncidentTrigger;

@@ -35,7 +35,9 @@ export function incidentView(incident: IncidentDoc, session: SessionDoc | null, 
     acknowledged: incident.acknowledged
       ? { by: incident.acknowledged.name, at: incident.acknowledged.at, note: ACK_CAVEAT }
       : null,
-    resolved: incident.resolved ? { by: incident.resolved.name, at: incident.resolved.at, outcome: incident.resolved.outcome } : null,
+    resolved: incident.resolved
+      ? { by: incident.resolved.name, at: incident.resolved.at, outcome: incident.resolved.outcome, bySubject: incident.resolved.bySubject === true }
+      : null,
     steps: incident.steps.map((s) => ({
       level: s.level,
       recipients: s.recipients.map((r) => r.name),

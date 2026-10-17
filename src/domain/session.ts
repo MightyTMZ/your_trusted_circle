@@ -6,12 +6,14 @@ import {
   EMERGENCY_SIM_RECIPIENT_ID,
   HOST_RECIPIENT_PREFIX,
   activeIncidentFor,
+  cancelBySubject,
   log,
   openIncident,
 } from './incident';
 import type {
   AppState,
   BackupContact,
+  Incident,
   LocationSharing,
   Millis,
   MotionSample,
@@ -494,4 +496,17 @@ export function participantUpdate(state: AppState, actorId: string, now: Millis)
     source: 'participant',
     text: `${state.participants[actorId].displayName} responded "I'm OK" from their device. The alert stays open until a recipient acknowledges and resolves it.`,
   });
+}
+
+/**
+ * The wearer cancels an alert about themselves: a false alarm. Only the
+ * person the alert is about can do this, from their own device, whether or
+ * not anyone has acknowledged yet. They can ask for help again at any time;
+ * that opens a new alert.
+ */
+export function cancelOwnAlert(state: AppState, actorId: string, now: Millis): Incident {
+  const inc = activeIncidentFor(state, actorId);
+  if (!inc) throw new SessionError('There is no open alert about you to cancel.');
+  cancelBySubject(state, inc, now);
+  return inc;
 }

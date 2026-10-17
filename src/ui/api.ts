@@ -326,7 +326,7 @@ export interface ServerIncidentView {
   status: 'open' | 'acknowledged' | 'resolved';
   nextEscalationAt: string | null;
   acknowledged: { by: string; at: string; note: string } | null;
-  resolved: { by: string; at: string; outcome: 'false_alarm' | 'assistance_reached' | 'other' } | null;
+  resolved: { by: string; at: string; outcome: 'false_alarm' | 'assistance_reached' | 'other'; bySubject?: boolean } | null;
   steps: { level: 'host' | 'backup' | 'emergency_simulated'; recipients: string[]; notifiedAt: string | null; dueAt: string | null }[];
   log: { at: string; kind: string; text: string; simulated?: boolean }[];
 }
@@ -406,6 +406,11 @@ export function acknowledgeOnServer(alertId: string): Promise<Result<{ incident:
 
 export function resolveOnServer(incidentId: string, outcome: 'false_alarm' | 'assistance_reached' | 'other'): Promise<Result<{ incident: ServerIncidentView }>> {
   return postResult(`/incidents/${encodeURIComponent(incidentId)}/resolve`, { outcome });
+}
+
+/** Cancel my own open alert as a false alarm. Only works for an alert about me. */
+export function cancelOwnAlertOnServer(sessionId: string): Promise<Result<{ incident: ServerIncidentView }>> {
+  return postResult(`/sessions/${encodeURIComponent(sessionId)}/cancel-alert`, {});
 }
 
 // ---------------------------------------------------------------------------
