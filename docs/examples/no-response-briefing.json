@@ -1,0 +1,382 @@
+{
+  "schema": "ypc.operator_briefing",
+  "schema_version": "2.0",
+  "generated_at": "2026-10-18T00:04:10.000Z",
+  "session_id": "ses_0001",
+  "incident_id": "inc_0001",
+  "participant_id": "par_0002",
+  "timeline_head_hash": "sha256:23e5ffb7fb01199249e0bae334d29ac610c8ee1db0ca39c7bd2fad830272576e",
+  "incident": {
+    "state": "open",
+    "trigger": "checkin_missed",
+    "opened_at": "2026-10-17T23:54:02.000Z",
+    "source_event_id": "evt_0257",
+    "acknowledged": null,
+    "resolved": null
+  },
+  "person": {
+    "status": "shared",
+    "details": {
+      "display_name": "Sam (synthetic)",
+      "preferred_language": "English",
+      "emergency_notes": "Synthetic demo note: carries an inhaler in left jacket pocket.",
+      "source_event_id": "evt_0006"
+    }
+  },
+  "location": {
+    "status": "last_known",
+    "is_current": false,
+    "last_known": {
+      "latitude": 43.6629,
+      "longitude": -79.3957,
+      "accuracy_m": 12,
+      "fix_at": "2026-10-17T23:50:30.000Z",
+      "source": "synthetic",
+      "speed_m_s": 0.9,
+      "heading_deg": 100,
+      "place_label": "Synthetic Venue A, rear patio",
+      "age_ms": 820000,
+      "source_event_id": "evt_0246"
+    }
+  },
+  "motion": {
+    "config_source_event_id": "evt_0009",
+    "baseline": {
+      "features": [
+        {
+          "name": "dynamic_mean_m_s2",
+          "unit": "m/s^2",
+          "mean": 1.2798,
+          "std_dev": 0.05,
+          "window_count": 10
+        },
+        {
+          "name": "dynamic_peak_m_s2",
+          "unit": "m/s^2",
+          "mean": 2.4467,
+          "std_dev": 0.2,
+          "window_count": 10
+        },
+        {
+          "name": "stillness_ratio",
+          "unit": "ratio",
+          "mean": 0.0467,
+          "std_dev": 0.02,
+          "window_count": 10
+        },
+        {
+          "name": "cadence_hz",
+          "unit": "Hz",
+          "mean": 1.8182,
+          "std_dev": 0.05,
+          "window_count": 10
+        }
+      ],
+      "source_event_id": "evt_0021"
+    },
+    "observation": {
+      "feature": "dynamic_mean_m_s2",
+      "unit": "m/s^2",
+      "observed_value": 0.0049,
+      "baseline_mean": 1.2798,
+      "baseline_std_dev": 0.05,
+      "z_score": -25.498,
+      "window_start": "2026-10-17T23:51:00.000Z",
+      "window_end": "2026-10-17T23:52:00.000Z",
+      "rule_id": "stillness-onset-z",
+      "source_event_id": "evt_0249"
+    },
+    "patterns": [
+      {
+        "pattern": "orientation_change_with_stillness",
+        "observed_from": "2026-10-17T21:00:00.000Z",
+        "observed_to": "2026-10-17T21:01:00.000Z",
+        "tilt_change_deg": 73.9005,
+        "rule_id": "orientation-change-with-stillness",
+        "source_event_id": "evt_0075"
+      },
+      {
+        "pattern": "impact_then_stillness",
+        "observed_from": "2026-10-17T23:50:57.966Z",
+        "observed_to": "2026-10-17T23:52:00.000Z",
+        "impact_at": "2026-10-17T23:50:57.966Z",
+        "impact_peak_m_s2": 153.6101,
+        "impact_peak_clipped": true,
+        "still_duration_ms": 60000,
+        "rule_id": "impact-then-stillness",
+        "source_event_id": "evt_0250"
+      },
+      {
+        "pattern": "abrupt_stop",
+        "observed_from": "2026-10-17T23:51:00.000Z",
+        "observed_to": "2026-10-17T23:52:00.000Z",
+        "preceding_activity": "moderate",
+        "preceding_cadence_hz": 1.8182,
+        "rule_id": "abrupt-stop",
+        "source_event_id": "evt_0251"
+      },
+      {
+        "pattern": "orientation_change_with_stillness",
+        "observed_from": "2026-10-17T23:51:00.000Z",
+        "observed_to": "2026-10-17T23:52:00.000Z",
+        "tilt_change_deg": 72.2513,
+        "rule_id": "orientation-change-with-stillness",
+        "source_event_id": "evt_0252"
+      }
+    ],
+    "latest_window": {
+      "window_end": "2026-10-17T23:53:00.000Z",
+      "age_ms": 670000,
+      "activity_level": "still",
+      "dynamic_mean_m_s2": 0.0049,
+      "dynamic_peak_m_s2": 0.0104,
+      "stillness_ratio": 1,
+      "longest_still_ms": 39959,
+      "cadence_hz": null,
+      "impact_count": 0,
+      "tilt_change_deg": 0.0006,
+      "coverage_ratio": 0.6674,
+      "source_event_id": "evt_0255"
+    },
+    "history": {
+      "from": "2026-10-17T20:04:10.000Z",
+      "to": "2026-10-18T00:04:10.000Z",
+      "segments": [
+        {
+          "from": "2026-10-17T20:04:10.000Z",
+          "to": "2026-10-17T20:10:00.000Z",
+          "duration_ms": 350000,
+          "activity": "moderate",
+          "window_count": 6,
+          "mean_dynamic_m_s2": 1.2805,
+          "median_cadence_hz": 1.8182,
+          "impact_count": 0,
+          "max_impact_m_s2": null,
+          "first_event_id": "evt_0015",
+          "last_event_id": "evt_0020"
+        },
+        {
+          "from": "2026-10-17T20:10:00.000Z",
+          "to": "2026-10-17T21:00:00.000Z",
+          "duration_ms": 3000000,
+          "activity": "light",
+          "window_count": 50,
+          "mean_dynamic_m_s2": 0.2346,
+          "median_cadence_hz": null,
+          "impact_count": 0,
+          "max_impact_m_s2": null,
+          "first_event_id": "evt_0022",
+          "last_event_id": "evt_0072"
+        },
+        {
+          "from": "2026-10-17T21:00:00.000Z",
+          "to": "2026-10-17T21:15:00.000Z",
+          "duration_ms": 900000,
+          "activity": "still",
+          "window_count": 15,
+          "mean_dynamic_m_s2": 0.005,
+          "median_cadence_hz": null,
+          "impact_count": 0,
+          "max_impact_m_s2": null,
+          "first_event_id": "evt_0073",
+          "last_event_id": "evt_0091"
+        },
+        {
+          "from": "2026-10-17T21:15:00.000Z",
+          "to": "2026-10-17T21:22:00.000Z",
+          "duration_ms": 420000,
+          "activity": "no_data",
+          "window_count": 0,
+          "mean_dynamic_m_s2": null,
+          "median_cadence_hz": null,
+          "impact_count": 0,
+          "max_impact_m_s2": null,
+          "first_event_id": null,
+          "last_event_id": null
+        },
+        {
+          "from": "2026-10-17T21:22:00.000Z",
+          "to": "2026-10-17T22:40:00.000Z",
+          "duration_ms": 4680000,
+          "activity": "vigorous",
+          "window_count": 78,
+          "mean_dynamic_m_s2": 2.5574,
+          "median_cadence_hz": 2.2222,
+          "impact_count": 0,
+          "max_impact_m_s2": null,
+          "first_event_id": "evt_0094",
+          "last_event_id": "evt_0172"
+        },
+        {
+          "from": "2026-10-17T22:40:00.000Z",
+          "to": "2026-10-17T23:30:00.000Z",
+          "duration_ms": 3000000,
+          "activity": "light",
+          "window_count": 50,
+          "mean_dynamic_m_s2": 0.355,
+          "median_cadence_hz": null,
+          "impact_count": 0,
+          "max_impact_m_s2": null,
+          "first_event_id": "evt_0173",
+          "last_event_id": "evt_0223"
+        },
+        {
+          "from": "2026-10-17T23:30:00.000Z",
+          "to": "2026-10-17T23:51:00.000Z",
+          "duration_ms": 1260000,
+          "activity": "moderate",
+          "window_count": 21,
+          "mean_dynamic_m_s2": 1.2883,
+          "median_cadence_hz": 1.8182,
+          "impact_count": 1,
+          "max_impact_m_s2": 153.6101,
+          "first_event_id": "evt_0224",
+          "last_event_id": "evt_0247"
+        },
+        {
+          "from": "2026-10-17T23:51:00.000Z",
+          "to": "2026-10-17T23:53:00.000Z",
+          "duration_ms": 120000,
+          "activity": "still",
+          "window_count": 2,
+          "mean_dynamic_m_s2": 0.0049,
+          "median_cadence_hz": null,
+          "impact_count": 0,
+          "max_impact_m_s2": null,
+          "first_event_id": "evt_0248",
+          "last_event_id": "evt_0255"
+        },
+        {
+          "from": "2026-10-17T23:53:00.000Z",
+          "to": "2026-10-18T00:04:10.000Z",
+          "duration_ms": 670000,
+          "activity": "no_data",
+          "window_count": 0,
+          "mean_dynamic_m_s2": null,
+          "median_cadence_hz": null,
+          "impact_count": 0,
+          "max_impact_m_s2": null,
+          "first_event_id": null,
+          "last_event_id": null
+        }
+      ],
+      "truncated_segments": 0,
+      "totals_ms": {
+        "still": 1020000,
+        "light": 6000000,
+        "moderate": 1610000,
+        "vigorous": 4680000,
+        "no_data": 1090000
+      },
+      "impact_count": 1,
+      "longest_still_ms": 900000,
+      "last_active_at": "2026-10-17T23:51:00.000Z"
+    }
+  },
+  "device": {
+    "status": "offline",
+    "since": "2026-10-17T23:52:55.000Z",
+    "source_event_id": "evt_0254"
+  },
+  "escalation": {
+    "pending": [],
+    "fired": [
+      {
+        "step": 2,
+        "target_role": "backup_contact",
+        "at": "2026-10-17T23:59:02.000Z",
+        "source_event_id": "evt_0264"
+      },
+      {
+        "step": 3,
+        "target_role": "emergency_service_sim",
+        "at": "2026-10-18T00:04:02.000Z",
+        "source_event_id": "evt_0268"
+      }
+    ],
+    "simulated_emergency_requested": true
+  },
+  "alerts": [
+    {
+      "notification_id": "ntf_0001",
+      "recipient_id": "par_0001",
+      "recipient_role": "host",
+      "escalation_step": 1,
+      "first_sent_at": "2026-10-17T23:54:02.000Z",
+      "attempts": 2,
+      "delivered": true,
+      "viewed": true,
+      "delivery_failed": false,
+      "acknowledged": false
+    },
+    {
+      "notification_id": "ntf_0002",
+      "recipient_id": "con_0001",
+      "recipient_role": "backup_contact",
+      "escalation_step": 2,
+      "first_sent_at": "2026-10-17T23:59:02.000Z",
+      "attempts": 1,
+      "delivered": false,
+      "viewed": false,
+      "delivery_failed": true,
+      "acknowledged": false
+    }
+  ],
+  "unknowns": [
+    "The participant's condition and the cause of the observations are unknown; the system does not diagnose.",
+    "Current location is unknown; the last fix is from 2026-10-17T23:50:30.000Z.",
+    "No motion data has arrived since 2026-10-17T23:53:00.000Z.",
+    "The impact at 2026-10-17T23:50:57.966Z saturated the sensor; its true strength is unknown (at least 153.6101 m/s^2).",
+    "The device has been offline since 2026-10-17T23:52:55.000Z.",
+    "The participant has not answered the check-in sent at 2026-10-17T23:52:02.000Z.",
+    "No responder has acknowledged the alert."
+  ],
+  "evidence": {
+    "event_ids": [
+      "evt_0001",
+      "evt_0004",
+      "evt_0005",
+      "evt_0006",
+      "evt_0009",
+      "evt_0010",
+      "evt_0021",
+      "evt_0041",
+      "evt_0074",
+      "evt_0075",
+      "evt_0076",
+      "evt_0077",
+      "evt_0092",
+      "evt_0093",
+      "evt_0101",
+      "evt_0192",
+      "evt_0228",
+      "evt_0239",
+      "evt_0246",
+      "evt_0249",
+      "evt_0250",
+      "evt_0251",
+      "evt_0252",
+      "evt_0253",
+      "evt_0254",
+      "evt_0255",
+      "evt_0256",
+      "evt_0257",
+      "evt_0258",
+      "evt_0259",
+      "evt_0260",
+      "evt_0261",
+      "evt_0262",
+      "evt_0263",
+      "evt_0264",
+      "evt_0265",
+      "evt_0266",
+      "evt_0267",
+      "evt_0268",
+      "evt_0269",
+      "evt_0270",
+      "evt_0271",
+      "evt_0272"
+    ],
+    "redacted": []
+  }
+}
