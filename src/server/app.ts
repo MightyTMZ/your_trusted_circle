@@ -20,6 +20,7 @@ import { fail, type AppEnv, type Deps } from "./context.js";
 import { accountRoutes } from "./data/account.js";
 import { dataRoutes } from "./data/timeline.js";
 import { ingestRoutes } from "./lifecycle/events.js";
+import { relayRoutes } from "./lifecycle/relay.js";
 import { sessionRoutes } from "./lifecycle/sessions.js";
 import { safetyRoutes } from "./safety/routes.js";
 
@@ -49,6 +50,7 @@ export function createApp(deps: Deps) {
   // 2. Session lifecycle and event validation
   app.route("/api/sessions", sessionRoutes(deps));
   app.route("/api/ingest", ingestRoutes(deps));
+  app.route("/api", relayRoutes(deps));
   // 3. Safety state and deadlines
   app.route("/api", safetyRoutes(deps));
   // 4. Alert orchestration

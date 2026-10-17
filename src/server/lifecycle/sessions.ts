@@ -252,6 +252,7 @@ export function sessionRoutes(deps: Deps) {
     // Turning location sharing off for the session switches it off for everyone at once.
     if (!rules.allowLocationSharing) {
       for (const p of s.participants) await deps.store.setParticipantConsent(s._id, p.participantId, capConsent(p.consent, rules));
+      deps.relay.clearSession(s._id);
     }
     return c.json({ session: sessionView((await deps.store.getSession(s._id))!, c.var.user, deps.now()) });
   });
@@ -264,7 +265,10 @@ export function sessionRoutes(deps: Deps) {
     const body = await c.req.json().catch(() => undefined);
     const issues = validate(consentSchema, body);
     if (issues.length > 0) return fail(c, 400, "invalid_request", "Check your sharing choices.", issues);
-    await deps.store.setParticipantConsent(s._id, me.participantId, capConsent(body as ParticipantConsent, s.rules));
+    const consent = capConsent(body as ParticipantConsent, s.rules);
+    await deps.store.setParticipantConsent(s._id, me.participantId, consent);
+    // Stopping sharing takes effect now, not when the last fix expires.
+    if (consent.locationSharing === "off") deps.relay.clearParticipant(s._id, me.participantId);
     return c.json({ session: sessionView((await deps.store.getSession(s._id))!, c.var.user, deps.now()) });
   });
 
@@ -274,6 +278,7 @@ export function sessionRoutes(deps: Deps) {
     if (!s || !me) return fail(c, 404, "no_session", "You are not in this session.");
     if (me.role === "host") return fail(c, 409, "host_must_end", "As host, end the session instead of leaving it.");
     await deps.store.updateParticipant(s._id, me.participantId, { leftAt: deps.now() });
+    deps.relay.clearParticipant(s._id, me.participantId);
     // Leaving stops new check-ins. An alert already open about you stays open for your host.
     await cancelPendingCheckIns(s._id, me.participantId, "participant_left");
     return c.body(null, 204);
@@ -286,6 +291,7 @@ export function sessionRoutes(deps: Deps) {
     const open = (await deps.store.listIncidentsForSession(s._id)).some((i) => i.activeKey !== null);
     if (open) return fail(c, 409, "open_incidents", "Resolve open alerts before ending the session.");
     await deps.store.endSession(s._id, "host_ended", deps.now());
+    deps.relay.clearSession(s._id);
     await cancelPendingCheckIns(s._id, null, "session_ended");
     return c.body(null, 204);
   });
