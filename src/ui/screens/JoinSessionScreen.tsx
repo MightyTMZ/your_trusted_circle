@@ -78,7 +78,7 @@ export function JoinSessionScreen({ code }: { code: string }) {
         locationSharing: input.locationSharing,
         shareLocationWithResponders: input.shareLocationWithResponders,
       },
-      backupContacts: input.backupContacts.filter((c) => c.name.trim()).map((c) => ({ name: c.name.trim(), relation: c.relation.trim() })),
+      backupContacts: input.backupContacts.filter((c) => c.name.trim() && c.relation.trim()).map((c) => ({ name: c.name.trim(), relation: c.relation.trim() })),
     });
 
     if (typeof result === 'string') {

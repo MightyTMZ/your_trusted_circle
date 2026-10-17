@@ -134,7 +134,12 @@ async function postJson<T>(path: string, body: unknown): Promise<{ ok: true; dat
     });
     const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
     if (res.ok && json) return { ok: true, data: json as T };
-    return { ok: false, message: (json?.error as Record<string, string> | undefined)?.message ?? 'Request failed.' };
+    const err = json?.error as Record<string, unknown> | undefined;
+    let message = (err?.message as string) ?? 'Request failed.';
+    // Surface validation issues so the user sees what's actually wrong.
+    const issues = err?.issues as { path: string; message: string }[] | undefined;
+    if (issues?.length) message += ' ' + issues.map((i) => `${i.path || 'body'}: ${i.message}`).join('; ');
+    return { ok: false, message };
   } catch {
     return { ok: false, message: "Couldn't reach the server." };
   }

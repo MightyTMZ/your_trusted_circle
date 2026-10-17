@@ -40,7 +40,7 @@ export function HostSetupScreen() {
         locationSharing: host.locationSharing,
         shareLocationWithResponders: host.shareLocationWithResponders,
       },
-      backupContacts: host.backupContacts.filter((c) => c.name.trim()).map((c) => ({ name: c.name.trim(), relation: c.relation.trim() })),
+      backupContacts: host.backupContacts.filter((c) => c.name.trim() && c.relation.trim()).map((c) => ({ name: c.name.trim(), relation: c.relation.trim() })),
       rules: cfg,
     });
 
