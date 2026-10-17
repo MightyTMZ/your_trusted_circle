@@ -127,6 +127,11 @@ export function accountRoutes(deps: Deps) {
       const open = (await deps.store.listIncidentsForSession(s._id)).some((i) => i.activeKey !== null);
       if (open) return fail(c, 409, "open_incidents", "You are hosting a session with an open alert. Resolve it before deleting your account.");
     }
+    // Live positions are memory-only; drop them too, including sessions I host.
+    for (const s of await deps.store.listSessionsForUser(user._id)) {
+      if (s.hostUserId === user._id) deps.relay.clearSession(s._id);
+      for (const p of s.participants) if (p.userId === user._id) deps.relay.clearParticipant(s._id, p.participantId);
+    }
     const deleted = await deps.store.deleteUserCascade(user._id);
     await endAuthSession(c, deps);
     return c.json({ deleted });
