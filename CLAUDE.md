@@ -143,3 +143,4 @@ data schema, and evaluation protocol linked here.
 If these conflict, explain the conflict before changing behavior.
 
 - KAZE brief: [`HTV 11_ Project KAZE.pdf`](./HTV%2011_%20Project%20KAZE.pdf)
+- Timeline schema (data schema for events): [`docs/timeline.md`](./docs/timeline.md)
