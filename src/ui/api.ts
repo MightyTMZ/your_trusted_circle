@@ -4,14 +4,13 @@
  * account features are unavailable instead of pretending they worked.
  */
 
-export const PROVIDERS = ['google', 'apple', 'microsoft', 'github'] as const;
+export const PROVIDERS = ['google', 'apple', 'microsoft'] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
 export const PROVIDER_LABEL: Record<Provider, string> = {
   google: 'Google',
   apple: 'Apple',
   microsoft: 'Microsoft',
-  github: 'GitHub',
 };
 
 export interface Account {
