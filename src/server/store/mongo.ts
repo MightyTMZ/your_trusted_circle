@@ -3,7 +3,7 @@
  * docs/YTC Grand Architecture.png. Compare-and-set methods put the expected
  * state in the update filter, so concurrent workers cannot both win.
  */
-import { MongoClient, MongoServerError, type Collection } from "mongodb";
+import { MongoClient, MongoServerError, type Collection, type Db } from "mongodb";
 import type { DeletionCounts, ParticipantPatch, Store } from "./store.js";
 import type {
   AuthSessionDoc,
@@ -23,6 +23,7 @@ const isDuplicateKey = (err: unknown) => err instanceof MongoServerError && err.
 export class MongoStore implements Store {
   private constructor(
     private readonly client: MongoClient,
+    private readonly db: Db,
     private readonly users: Collection<UserDoc>,
     private readonly authSessions: Collection<AuthSessionDoc>,
     private readonly sessions: Collection<SessionDoc>,
@@ -38,6 +39,7 @@ export class MongoStore implements Store {
     const db = client.db(dbName);
     const store = new MongoStore(
       client,
+      db,
       db.collection("users"),
       db.collection("auth_sessions"),
       db.collection("sessions"),
@@ -56,7 +58,6 @@ export class MongoStore implements Store {
    * because ensureIndexes runs immediately after and is idempotent.
    */
   private async dropStaleIndexes(): Promise<void> {
-    const db = this.client.db();
     const collections = [this.users, this.authSessions, this.sessions, this.checkIns, this.incidents, this.jobs, this.traces];
     for (const col of collections) {
       try {
@@ -66,7 +67,7 @@ export class MongoStore implements Store {
       }
       // Remove any collection-level JSON Schema validators from earlier migrations.
       try {
-        await db.command({ collMod: col.collectionName, validator: {}, validationLevel: "off" });
+        await this.db.command({ collMod: col.collectionName, validator: {}, validationLevel: "off" });
       } catch {
         // Collection may not exist yet.
       }
