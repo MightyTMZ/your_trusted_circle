@@ -173,3 +173,15 @@ test("committed examples match the fixture (run `npm run examples` to regenerate
   });
   assert.equal(restored.headHash, timeline.headHash);
 });
+
+test("the briefing carries the night's activity history, recent patterns and precise unknowns", () => {
+  const { briefing, ids } = brief();
+  const { history, patterns, config_source_event_id } = briefing.motion;
+  assert.ok(config_source_event_id);
+  assert.equal(history.segments.at(-1)!.activity, "no_data", "the phone has been offline since 23:53");
+  assert.ok(history.segments.some((s) => s.activity === "vigorous" && s.duration_ms === 78 * 60_000));
+  assert.ok(patterns.some((p) => p.pattern === "impact_then_stillness" && p.impact_peak_clipped && p.source_event_id === ids.impactPattern.event_id));
+  assert.ok(briefing.unknowns.some((u) => u.includes("saturated the sensor")));
+  // The 21:01 false alarm was answered; the 23:52 check-in was not, and that is what is reported.
+  assert.ok(briefing.unknowns.includes("The participant has not answered the check-in sent at 2026-10-17T23:52:02.000Z."));
+});
