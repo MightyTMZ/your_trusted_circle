@@ -45,7 +45,9 @@ export function SignInScreen() {
           {unavailable && (
             <p className="error" role="status">
               <Icon name="alert" />
-              Sign-in needs the YTC server, which isn't running in this build.
+              {providers === null
+                ? "Sign-in needs the YTC server, which isn't reachable right now."
+                : 'No sign-in providers are set up on this server yet.'}
             </p>
           )}
           {shown.map((p) => (
