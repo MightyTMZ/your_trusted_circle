@@ -50,11 +50,27 @@ export class MongoStore implements Store {
     return store;
   }
 
+  /**
+   * Drop every non-_id index on every collection so ensureIndexes can
+   * recreate exactly the set the current schema needs. This is fine
+   * because ensureIndexes runs immediately after and is idempotent.
+   */
+  private async dropStaleIndexes(): Promise<void> {
+    const collections = [this.users, this.authSessions, this.sessions, this.checkIns, this.incidents, this.jobs, this.traces];
+    for (const col of collections) {
+      try {
+        await col.dropIndexes();
+      } catch {
+        // Collection may not exist yet on first run.
+      }
+    }
+  }
+
   private async ensureIndexes(): Promise<void> {
-    // Drop stale index from an earlier schema that used top-level oauth_provider / oauth_sub.
-    // It conflicts with the current identities-based index because every new document has null
-    // for those removed fields, and the old unique index only allows one null/null pair.
-    await this.users.dropIndex("uq_oauth").catch(() => {});
+    // Drop stale indexes left over from earlier schema versions. They conflict
+    // with the current schema because documents lack the old fields, causing
+    // unique-index violations on null values.
+    await this.dropStaleIndexes();
 
     await Promise.all([
       this.users.createIndex({ "identities.provider": 1, "identities.subject": 1 }, { unique: true }),

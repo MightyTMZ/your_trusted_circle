@@ -76,8 +76,7 @@ export function createApp(deps: Deps) {
 
   app.notFound((c) => fail(c, 404, "not_found", "No such endpoint."));
   app.onError((err, c) => {
-    // Log the error type only; messages can contain request data.
-    console.error(`[api] ${c.req.method} ${c.req.path} failed: ${err.name}`);
+    console.error(`[api] ${c.req.method} ${c.req.path} failed: ${err.name}: ${err.message}`);
     return fail(c, 500, "server_error", "Something went wrong on our side. Try again.");
   });
   return app;
