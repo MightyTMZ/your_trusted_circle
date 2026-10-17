@@ -3,3 +3,9 @@ dist/
 *.log
 .env
 .env.*
+# Runtime timeline output; committed examples live under docs/examples/.
+/data/
+.vscode
+.idea
+__pycache__
+*.pyc
