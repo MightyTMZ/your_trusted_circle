@@ -83,7 +83,7 @@ function MonitoringPanel({ me }: { me: Participant }) {
     <section className="stack">
       <div className="spread">
         <h2 className="h2">Your check-ins</h2>
-        <button className="link small" onClick={() => go({ name: 'sharing' })}>
+        <button className="link link-tap small" onClick={() => go({ name: 'sharing' })}>
           Sharing settings
         </button>
       </div>
@@ -127,6 +127,16 @@ export function SessionHomeScreen() {
     .filter((i) => i.participantId !== viewer.id)
     .sort((a, b) => Number(a.status === 'resolved') - Number(b.status === 'resolved') || b.openedAt - a.openedAt);
   const myIncident = activeIncidentFor(state, viewer.id);
+  const hostName = state.participants[session.hostId]?.displayName;
+  const backups = viewer.backupContacts.map((c) => c.name).join(', ');
+  // Who a help request goes to first, by name where we have one.
+  const firstContact = isHost
+    ? backups
+      ? `your backup contacts (${backups})`
+      : 'your backup contacts'
+    : hostName
+      ? `${hostName} (your host)`
+      : 'your host';
 
   const run = (fn: Parameters<typeof store.dispatch>[0]) => {
     const err = store.dispatch(fn);
@@ -164,7 +174,7 @@ export function SessionHomeScreen() {
           <p className="small">
             {myIncident.acknowledged
               ? `${myIncident.acknowledged.name} acknowledged at ${fmtTime(myIncident.acknowledged.at)} and is responding.`
-              : `Your host was alerted at ${fmtTime(myIncident.openedAt)}.`}{' '}
+              : `${firstContact[0].toUpperCase()}${firstContact.slice(1)} ${isHost ? 'were' : 'was'} alerted at ${fmtTime(myIncident.openedAt)}.`}{' '}
             Only a recipient can resolve it.
           </p>
           <button className="btn btn-secondary btn-block" onClick={() => run((d, t) => participantUpdate(d, viewer.id, t))}>
@@ -235,20 +245,22 @@ export function SessionHomeScreen() {
 
       <MonitoringPanel me={viewer} />
 
-      <div className="screen-footer">
+      {/* Pinned to the bottom of the scroll area so help is never more than a thumb away. */}
+      <div className="screen-footer help-dock">
         {error && <p className="error">{error}</p>}
         {!myIncident && (
-          <button className="btn btn-critical btn-block" onClick={() => setSheet('help')}>
+          <button className="btn btn-critical btn-block btn-large btn-stacked" onClick={() => setSheet('help')}>
             {COPY.checkInHelp}
+            <span className="btn-sub">Alerts {firstContact}. You confirm first.</span>
           </button>
         )}
       </div>
 
       {sheet === 'help' && (
         <Sheet onClose={() => setSheet(null)}>
-          <h2 className="h2">Alert {isHost ? 'your backup contacts' : 'your host'} now?</h2>
+          <h2 className="h2">Alert {firstContact} now?</h2>
           <p className="lead">
-            {isHost ? 'Your backup contacts' : 'Your host'} will be alerted right away. If nobody acknowledges, it escalates.
+            They will be alerted right away. If nobody acknowledges, it escalates.
           </p>
           <button
             className="btn btn-attention btn-block"

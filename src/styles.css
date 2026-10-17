@@ -10,7 +10,7 @@
   --line: #262a2f;
   --text: #ececed;
   --muted: #a0a6ad;
-  --faint: #6c727a;
+  --faint: #8b9198; /* ≥4.5:1 on --bg and --surface; small safety copy uses it */
   --primary: #ececed;
   --on-primary: #0d0e10;
   --attention: #f2a83b;
@@ -36,7 +36,21 @@ h1, h2, h3, p { margin: 0; }
   background: var(--bg); border: 1px solid var(--line); border-radius: 28px;
   overflow: hidden; display: flex; flex-direction: column; position: relative;
 }
-.device-scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.device-scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; scroll-padding-bottom: 120px; }
+/* Help stays pinned to the bottom of the scroll area. Keyboard focus scrolls clear of it. */
+.help-dock {
+  position: sticky; bottom: 0; z-index: 4; background: var(--bg);
+  margin: 0 -20px -28px; padding: 12px 20px calc(16px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+}
+.help-dock:empty { display: none; }
+/* Short or zoomed-in screens: keep help pinned but compact, and let the session bar scroll away. */
+@media (max-height: 480px) {
+  .session-bar { position: static; }
+  .help-dock { padding-top: 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .help-dock .btn-large { min-height: var(--tap); font-size: 16px; padding: 6px 12px; }
+  .help-dock .btn-sub { display: none; }
+}
 .screen { padding: 20px 20px 28px; display: flex; flex-direction: column; gap: 24px; flex: 1; }
 .screen-footer { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
 
@@ -44,6 +58,7 @@ h1, h2, h3, p { margin: 0; }
   .stage { flex-direction: column; align-items: stretch; padding: 0; gap: 0; }
   .device { max-width: none; height: auto; min-height: 100dvh; border: 0; border-radius: 0; overflow: visible; }
   .device-scroll { overflow: visible; }
+  html { scroll-padding-bottom: 120px; }
 }
 
 /* ---------- Type ---------- */
@@ -65,9 +80,10 @@ h1, h2, h3, p { margin: 0; }
   position: sticky; top: 0; z-index: 5; background: var(--surface);
   border-bottom: 1px solid var(--line); padding: 10px 16px; display: flex; align-items: center; gap: 10px;
 }
-.session-bar .meta { flex: 1; min-width: 0; }
+.session-bar { flex-wrap: wrap; }
+.session-bar .meta { flex: 1 1 11rem; min-width: 0; }
 .session-bar .line1 { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.session-bar .line2 { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session-bar .line2 { font-size: 12px; color: var(--muted); } /* wraps: host, sharing and time left must stay readable */
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--faint); }
 .dot.live { background: var(--live); }
 .dot.attention { background: var(--attention); }
@@ -86,13 +102,15 @@ h1, h2, h3, p { margin: 0; }
 .btn-attention { background: var(--attention); color: var(--on-attention); }
 .btn-secondary { background: var(--surface-2); border-color: var(--line); }
 .btn-secondary:hover:not(:disabled) { background: #23272c; }
-.btn-ghost { background: transparent; color: var(--muted); min-height: 36px; padding: 0 8px; }
+.btn-ghost { background: transparent; color: var(--muted); min-height: var(--tap); padding: 0 10px; flex: none; }
 .btn-ghost:hover { color: var(--text); }
-.btn-critical { background: transparent; border-color: var(--critical); color: var(--critical); }
+/* Square, hairline outline: 1px of --critical is about 6:1 against --bg, so it stays visible in the dark. */
+.btn-critical { background: transparent; border: 1px solid var(--critical); border-radius: 0; color: var(--critical); }
 .btn-large { min-height: 64px; font-size: 18px; }
 .btn-sub { display: block; font-size: 12px; font-weight: 500; opacity: 0.75; }
 .btn-stacked { flex-direction: column; gap: 0; padding: 10px 18px; }
 .link { background: none; border: 0; padding: 0; color: var(--text); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.link-tap { min-height: var(--tap); padding: 0 4px; margin-right: -4px; }
 
 /* ---------- Forms ---------- */
 .field { display: flex; flex-direction: column; gap: 6px; }
@@ -116,7 +134,7 @@ textarea.input { min-height: 72px; resize: vertical; }
 .toggle input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--text); flex: none; }
 
 .segmented { display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
-.segmented button { flex: 1; min-height: 38px; border: 0; background: transparent; border-radius: 8px; cursor: pointer; color: var(--muted); font-weight: 600; }
+.segmented button { flex: 1; min-height: var(--tap); border: 0; background: transparent; border-radius: 8px; cursor: pointer; color: var(--muted); font-weight: 600; }
 .segmented button[aria-pressed='true'] { background: var(--surface-2); color: var(--text); }
 
 /* ---------- Panels & lists ---------- */

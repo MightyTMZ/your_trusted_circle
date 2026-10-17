@@ -47,7 +47,7 @@ export function ActiveSessionBar() {
   const line2 = ended
     ? 'Nothing is being shared.'
     : [
-        isHost ? 'You are the host' : null,
+        isHost ? 'You are the host' : `Host: ${state.participants[session.hostId]?.displayName ?? 'unknown'}`,
         `Location: ${SHARING_LABEL[me.consent.locationSharing]}`,
         `Check-ins: ${me.consent.motionMonitoring ? (suspended ? 'Paused' : 'On') : 'Off'}`,
         fmtRemaining(session.expiresAt - now),
