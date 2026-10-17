@@ -1,15 +1,141 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { suddenChange, typicalMovement } from '../domain/scenarios';
 import { emptyState, ingestMotion, setDeviceOnline } from '../domain/session';
 import { useApp, useNow } from './context';
 import { fmtTime } from './format';
+import { Icon } from './components/Icon';
 import { joinUrl } from './screens/SessionInviteScreen';
+
+const POS_KEY = 'ytc.demoFab';
+const GAP = 16;
+const DRAG_SLOP = 4;
+
+type Pos = { x: number; y: number };
+
+function readPos(): Pos | null {
+  try {
+    const p = JSON.parse(localStorage.getItem(POS_KEY) ?? 'null');
+    return p && typeof p.x === 'number' && typeof p.y === 'number' ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePos(p: Pos) {
+  try {
+    localStorage.setItem(POS_KEY, JSON.stringify(p));
+  } catch {
+    // Position is a convenience; losing it is fine.
+  }
+}
+
+function clamp(p: Pos, w: number, h: number): Pos {
+  return {
+    x: Math.min(Math.max(GAP, p.x), Math.max(GAP, window.innerWidth - w - GAP)),
+    y: Math.min(Math.max(GAP, p.y), Math.max(GAP, window.innerHeight - h - GAP)),
+  };
+}
+
+/**
+ * Presenter tools behind a small draggable button. Drag to move it out of the
+ * way; tap to open the panel, which opens toward the middle of the screen.
+ */
+export function DemoControls() {
+  const fab = useRef<HTMLButtonElement>(null);
+  const drag = useRef<{ dx: number; dy: number; sx: number; sy: number; moved: boolean } | null>(null);
+  const [pos, setPos] = useState<Pos | null>(readPos);
+  const [open, setOpen] = useState(false);
+
+  const size = () => {
+    const r = fab.current?.getBoundingClientRect();
+    return { w: r?.width ?? 0, h: r?.height ?? 0 };
+  };
+
+  // Default spot: bottom right, above the phone nav pill. Re-clamp on resize.
+  useLayoutEffect(() => {
+    const fit = () => {
+      const { w, h } = size();
+      setPos((p) => clamp(p ?? { x: window.innerWidth, y: window.innerHeight - h - 96 }, w, h));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  const onPointerDown = (e: PointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0 || !pos) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y, sx: e.clientX, sy: e.clientY, moved: false };
+  };
+  const onPointerMove = (e: PointerEvent<HTMLButtonElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < DRAG_SLOP) return;
+    d.moved = true;
+    const { w, h } = size();
+    setPos(clamp({ x: e.clientX - d.dx, y: e.clientY - d.dy }, w, h));
+  };
+  const onPointerUp = () => {
+    if (drag.current?.moved && pos) savePos(pos);
+  };
+  // A drag ends with a click event; only a tap toggles.
+  const onClick = useCallback(() => {
+    const moved = drag.current?.moved;
+    drag.current = null;
+    if (!moved) setOpen((o) => !o);
+  }, []);
+
+  return (
+    <div className="demo-dock" style={pos ? { left: pos.x, top: pos.y } : { visibility: 'hidden' }}>
+      <button
+        ref={fab}
+        type="button"
+        className={`btn glass demo-fab ${open ? 'is-open' : ''}`}
+        aria-expanded={open}
+        aria-controls="demo-panel"
+        aria-label={open ? 'Close demo controls' : 'Open demo controls (drag to move)'}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={() => (drag.current = null)}
+        onClick={onClick}
+      >
+        <Icon name={open ? 'x' : 'play'} size={16} />
+        Demo
+      </button>
+      {open && pos && <DemoPanel style={panelPlacement(pos, size())} />}
+    </div>
+  );
+}
+
+/** Opens toward the larger free space, so it never runs off screen. */
+function panelPlacement(pos: Pos, fab: { w: number; h: number }): CSSProperties {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const width = Math.min(340, vw - 2 * GAP);
+  const left = Math.min(Math.max(GAP, pos.x + fab.w / 2 < vw / 2 ? pos.x : pos.x + fab.w - width), vw - width - GAP) - pos.x;
+  const below = pos.y + fab.h / 2 < vh / 2;
+  const room = below ? vh - (pos.y + fab.h) - 8 - GAP : pos.y - 8 - GAP;
+  return {
+    width,
+    left,
+    maxHeight: Math.max(160, room),
+    ...(below ? { top: fab.h + 8 } : { bottom: fab.h + 8 }),
+  };
+}
 
 /**
  * Presenter controls. Not part of the product UI. Scenario buttons feed
  * synthetic sensor input; they never set detector or escalation outcomes.
  */
-export function DemoControls() {
+function DemoPanel({ style }: { style: CSSProperties }) {
   const { state, store, viewer, setViewer, go } = useApp();
   const now = useNow();
   const participants = Object.values(state.participants).filter((p) => p.status === 'active');
@@ -22,7 +148,7 @@ export function DemoControls() {
   const advance = (ms: number) => store.dispatch((d) => void (d.clockOffsetMs += ms));
 
   return (
-    <aside className="glass demo" aria-label="Demo controls">
+    <aside id="demo-panel" className="glass demo" aria-label="Demo controls" style={style}>
       <div>
         <h3>Demo controls · simulation only</h3>
         <p className="t-cap">Presenter tools outside the app. Synthetic people, places, and sensor data.</p>

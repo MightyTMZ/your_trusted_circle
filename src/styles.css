@@ -185,10 +185,6 @@ ul { padding: 0; list-style: none; }
   .app .phone-only { display: none; }
 }
 
-@media (min-width: 1180px) {
-  .stage { flex-direction: row; }
-}
-
 /* ---------- Surfaces ---------- */
 .glass {
   background: var(--surface-glass);
@@ -444,8 +440,8 @@ textarea.field { height: 96px; padding: 14px 20px; border-radius: var(--r-tile);
 
 /* ---------- Sheet ---------- */
 .sheet-backdrop {
-  position: fixed; inset: 0; z-index: 30; display: flex; align-items: flex-end; justify-content: center; padding: 12px;
-  background: var(--scrim); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); animation: ytc-fade 200ms var(--ease) both;
+  position: fixed; inset: 0; z-index: 100; display: flex; align-items: flex-end; justify-content: center; padding: 12px;
+  background: var(--scrim); -webkit-backdrop-filter: blur(12px) saturate(120%); backdrop-filter: blur(12px) saturate(120%); animation: ytc-fade 200ms var(--ease) both;
 }
 .sheet { width: 100%; max-width: 440px; border-radius: var(--r-card); padding: 24px; display: flex; flex-direction: column; gap: 16px; animation: ytc-rise 260ms var(--ease) both; }
 @media (min-width: 768px) { .sheet-backdrop { align-items: center; } }
@@ -467,13 +463,23 @@ textarea.field { height: 96px; padding: 14px 20px; border-radius: var(--r-tile);
 .tp-line { flex: 1; height: 4px; border-radius: 2px; background: var(--track-inactive); }
 
 /* ---------- Demo controls (presenter tool, outside the product) ---------- */
-.demo { margin: 16px; border-radius: var(--r-card); padding: 20px; display: flex; flex-direction: column; gap: 20px; font-size: 13px; }
+/* Floating, draggable button; the panel opens from it. Below sheets (z 100), above the app. */
+.demo-dock { position: fixed; z-index: 40; }
+.demo-fab {
+  display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 16px 0 12px; border-radius: var(--r-pill);
+  font-size: 13px; font-weight: 600; color: var(--text-primary); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.demo-fab:active { cursor: grabbing; }
+.demo-fab.is-open { border-color: var(--accent-ring); }
+.demo {
+  position: absolute; overflow-y: auto; overscroll-behavior: contain; border-radius: var(--r-card); padding: 20px;
+  display: flex; flex-direction: column; gap: 20px; font-size: 13px; animation: ytc-rise 200ms var(--ease) both;
+  /* Solid under the glass: it floats over busy screens. */
+  background: var(--surface-glass), var(--bg-elevated);
+}
 .demo h3 { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }
 .demo .btns { display: flex; flex-wrap: wrap; gap: 8px; }
 .demo select.field { height: 44px; padding: 0 16px; }
-@media (min-width: 1180px) {
-  .demo { width: 340px; flex: none; margin: 24px 24px 24px 0; position: sticky; top: 24px; max-height: calc(100dvh - 48px); overflow: auto; align-self: flex-start; }
-}
 
 /* ---------- Motion ---------- */
 .rise { animation: ytc-rise 260ms var(--ease) both; }
@@ -483,7 +489,7 @@ textarea.field { height: 96px; padding: 14px 20px; border-radius: var(--r-tile);
 @keyframes ytc-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes ytc-fade { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
-  .rise, .sheet, .sheet-backdrop { animation: none; }
+  .rise, .sheet, .sheet-backdrop, .demo { animation: none; }
   .btn, .toggle .knob { transition: none; }
   .btn:active { transform: none; }
 }
