@@ -4,13 +4,12 @@ The visual language for every YTC screen: dark frosted glass, one accent
 colour, Manrope, round controls. Follow this for any UI change so new screens
 match the rest of the app on iPhone, iPad and desktop.
 
-Reference design: the "YTC Front-End Design" canvas (claude.ai artifact
-`Niz3emTe6iPUGuoahEMbXF`). Its shared component, `App.dc.html`, holds the
-token set and every primitive below. When this file and the canvas
-disagree, update one so they match before shipping.
-
-> `src/styles.css` still uses the earlier prototype look. New UI uses this
-> system; migrate existing screens to it when you touch them.
+The code is the source of truth: tokens and component classes live in
+`src/styles.css`, React primitives in `src/ui/components/` (`Controls.tsx`,
+`Gauges.tsx`, `Icon.tsx`, `AppNav.tsx`, `Sheet.tsx`), themes in
+`src/ui/theme.ts`. The "YTC Front-End Design" canvas (claude.ai artifact
+`Niz3emTe6iPUGuoahEMbXF`) is a mockup of the same system for exploring
+ideas; when it and the code disagree, the code wins.
 
 ## 1. Rules that decide most questions
 
@@ -36,19 +35,22 @@ disagree, update one so they match before shipping.
 
 ## 2. Themes
 
-Four themes share one structure. Only the token values change. A theme is a
-class on the app root (`.ytc.theme-<name>`) that overrides tokens.
+Four themes share one structure. Only the token values change. A theme is
+`data-theme="<id>"` on `<html>` (set by `applyTheme` in `src/ui/theme.ts`,
+saved in local storage) that overrides tokens.
 
 | Theme | Base | Accent | Use |
 | --- | --- | --- | --- |
-| Ember (default) | `#0B0B0C` charcoal | `#FF6A1F` orange | The reference look |
-| Mono | `#0C0C0D` charcoal | `#F2F2F2` white | Dark, no colour; white marks what's active |
-| Porcelain | `#ECEAE5` warm light | `#E2601F` orange | Daylight / light mode |
+| Mono (default) | `#0C0C0D` charcoal | `#F2F2F2` white | Dark, no colour; white marks what's active |
 | Onyx | `#F5F5F4` white | `#111111` black | Light, no colour; black marks what's active |
+| Ember | `#0B0B0C` charcoal | `#FF6A1F` orange | Dark, orange accent |
+| Porcelain | `#ECEAE5` warm light | `#E2601F` orange | Light, orange accent |
 
-Themes change surfaces and lighting, not the brand. Ember and Porcelain
-are the orange pair (dark and light); Mono and Onyx are the colourless
-pair (dark and light). Don't add themes that
+Settings → Theme shows them as a 2×2 grid in that order: the colourless
+pair (Mono, Onyx) on top, the orange pair (Ember, Porcelain) below, dark
+on the left and light on the right.
+
+Themes change surfaces and lighting, not the layout. Don't add themes that
 re-tint the whole UI with a new hue (gold, ice blue, purple). They read as
 generic and dilute the brand.
 
@@ -60,9 +62,10 @@ layout, radius or type.
 
 ## 3. Tokens
 
-Declared on `:root, .ytc, .tp` so theme classes can override them on the
-app root (custom properties that reference other tokens must be re-declared
-where a theme can change them).
+Declared on `:root, .tp` (`.tp` is the theme preview tile). Theme blocks
+(`[data-theme='…']`) come after the base block and override tokens on the
+same element. A token that references another token (like `--shadow-card`)
+must be re-declared in a theme that changes what it references.
 
 | Group | Tokens |
 | --- | --- |
@@ -142,8 +145,13 @@ Minimum hit area 44×44.
 | Avatar | `.av` | 40px circle with initials. `.on-accent` only for the person with an open alert. |
 | Avatar stack | `.av-stack` > `.av` | 32px solid (not glass) avatars overlapping 10px, ringed in `--bg-base`. Leftmost on top: set `z-index` descending left to right. |
 | Step progress | `.seg` > `span` | Multi-step flows; done/current segments `.is-on`. |
-| Sheet | `.sheet-wrap` > `.glass.sheet[role=dialog]` | Confirmations. Bottom sheet on phone, centered dialog on larger screens. Destructive confirms use a glass primary, not the accent. |
+| Sheet | `<Sheet title onClose>` | Confirmations. Bottom sheet on phone, centered dialog on larger screens, Escape closes. Destructive confirms use a glass primary, not the accent; irreversible ones (delete account) also need typed confirmation. |
 | Nav slot | `button.btn.slot` | 52px circle. Active: `.is-on` (accent). Badge `.badge` for an unacknowledged alert. |
+| Error | `p.error[role=alert]` + `alert` icon | Glass box, primary text. No red. |
+
+React wrappers in `src/ui/components/Controls.tsx`: `Toggle`, `ToggleRow`,
+`OptionList`, `ChipChoice`, `Stepper`, `StepBar`, `ScreenHeader`, plus
+`initials()` for avatars. Use them instead of re-writing the markup.
 
 ### Data components
 
@@ -167,20 +175,38 @@ fonts.
 
 ## 8. Layout across devices
 
-Build one component that takes the device size as a layout input; the same
-markup serves all three sizes.
+One set of markup serves every size; CSS does the rest. The rail and
+bottom nav switch at 768px viewport width. Two-column content uses
+`.cols` > `.col`, which splits when `.app-main` is at least 760px wide
+(a container query).
 
-| | Phone (390×844, holds 360–430) | Tablet (1180×820) | Desktop (1440×900) |
-| --- | --- | --- | --- |
-| Navigation | Floating glass pill at the bottom, centered, 28px up | Floating vertical rail on the left | Same rail |
-| Content | Single column | Two columns (`1.1fr 1fr`) for Group / Alert / Incident | Two columns (`1.15fr 1fr`) plus an Activity panel on Group and Alert |
-| Forms and focused flows | Full width | Centered column, max 520px | Centered column, max 540px |
-| Sheets | Bottom sheet | Centered dialog | Centered dialog |
+| | Phone (< 768px) | Tablet and desktop (≥ 768px) |
+| --- | --- | --- |
+| Navigation | Floating glass pill at the bottom | Floating vertical rail on the left |
+| Session home, Alert, Incident card | One column | Two columns (`.cols`) |
+| Forms and focused flows | Full width | `.narrow`, centered, max 540px |
+| Help button | Pinned above the nav | Pinned at the bottom, max 440px, centered |
+| Sheets | Bottom sheet | Centered dialog |
 
-Nav slots: Group, Alert (also active on Incident card and Call), Your
-sharing, Settings. Pre-session screens (Welcome, Host setup, Invite, Join),
-the private check-in and the recipient inbox have no nav. Keep primary
-actions in the lower part of phone screens.
+Nav slots (`AppNav.tsx`): Group, Alert (host only, while an alert is
+unresolved; also active on Incident card and Call), Your sharing,
+Settings. Welcome, Host setup, Join, Sign in, the private check-in and
+the recipient inbox have no nav. Keep primary actions in the lower part
+of phone screens.
+
+The active-session bar (`ActiveSessionBar`) stays on every in-session
+screen. It is the visible session indicator CLAUDE.md requires; don't
+remove it to save space.
+
+## 8a. Backend features
+
+Screens must not pretend the server exists. Sign-in, account export,
+sign out and delete account call the API in `src/ui/api.ts` (see
+`docs/backend.md`). Every call tolerates the server being absent: the
+screen says the feature needs the server, or falls back to the on-device
+equivalent (Download data on this device, Delete data on this device).
+Only show sign-in providers the server reports from
+`GET /api/auth/providers`. Sign in and sign up are one flow.
 
 ## 9. Accessibility
 
@@ -204,6 +230,6 @@ decoration. `prefers-reduced-motion: reduce` turns all of it off.
    in progress or the primary action?
 4. One focal point, one primary action, no repeated facts.
 5. Check it at 360, 390 and 430px wide, on tablet and desktop, and in
-   all four themes, including Porcelain (light).
+   all four themes, including the light ones (Onyx, Porcelain).
 6. Keyboard: tab order, focus ring visible, every control reachable.
 7. Copy matches `src/ui/copy.ts`; simulated things say "Simulated".

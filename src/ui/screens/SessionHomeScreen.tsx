@@ -7,107 +7,112 @@ import type { Incident, Participant } from '../../domain/types';
 import { COPY } from '../copy';
 import { useApp, useNow } from '../context';
 import { fmtAgo, fmtCountdown, fmtTime } from '../format';
+import { initials } from '../components/Controls';
+import { Scrubber } from '../components/Gauges';
 import { GroupMap } from '../components/GroupMap';
+import { Icon } from '../components/Icon';
 import { LocationStamp } from '../components/LocationStamp';
 import { Sheet } from '../components/Sheet';
 
-function AlertRow({ incident, now }: { incident: Incident; now: number }) {
+function fmtHM(ms: number): string {
+  const m = Math.max(0, Math.round(ms / 60_000));
+  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+}
+
+function AlertCard({ incident, now }: { incident: Incident; now: number }) {
   const { state, go } = useApp();
   const p = state.participants[incident.participantId];
   const deadline = nextDeadline(incident);
-  const status =
-    incident.status === 'open'
-      ? deadline !== undefined
-        ? `Unacknowledged · escalates in ${fmtCountdown(deadline - now)}`
-        : 'Unacknowledged · all steps alerted'
-      : incident.status === 'acknowledged'
-        ? `Acknowledged by ${incident.acknowledged?.name} · not yet resolved`
-        : `Resolved ${fmtTime(incident.resolution!.at)}`;
+  const open = incident.status === 'open';
+  const status = open
+    ? deadline !== undefined
+      ? `Unacknowledged · escalates in ${fmtCountdown(deadline - now)}`
+      : 'Unacknowledged · all steps alerted'
+    : incident.status === 'acknowledged'
+      ? `Acknowledged by ${incident.acknowledged?.name} · not yet resolved`
+      : `Resolved ${fmtTime(incident.resolution!.at)}`;
+  const title = incident.trigger === 'help_requested' ? `${p.displayName} asked for help` : `${COPY.movementChanged} · ${p.displayName}`;
   return (
-    <div className="list-row clickable" onClick={() => go({ name: 'alert', id: incident.id })}>
-      <span className={`dot ${incident.status === 'open' ? 'attention' : 'hollow'}`} style={{ marginTop: 7 }} />
-      <div className="grow stack" style={{ gap: 2 }}>
-        <span style={{ fontWeight: 600 }}>
-          {incident.trigger === 'help_requested' ? `${p.displayName} asked for help` : `${COPY.movementChanged} · ${p.displayName}`}
-        </span>
-        <span className="small">{status}</span>
-      </div>
-      <span className="chev">›</span>
-    </div>
+    <section className="glass card rise" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <span className={`av num ${open ? 'on-accent' : 'glass-2'}`}>{initials(p.displayName)}</span>
+      <span className="stack grow">
+        <h2 className="t-card">{title}</h2>
+        <span className="t-sub num">{status}</span>
+      </span>
+      <button type="button" className="btn ibtn glass-2" aria-label={`Open alert: ${title}`} onClick={() => go({ name: 'alert', id: incident.id })}>
+        <Icon name="arrowUpRight" />
+      </button>
+    </section>
   );
 }
 
-function RosterRow({ subject, viewer, now }: { subject: Participant; viewer: Participant; now: number }) {
+function PersonRow({ subject, viewer, now, alerting }: { subject: Participant; viewer: Participant; now: number; alerting: boolean }) {
   const { state } = useApp();
   const session = state.session!;
   const isHostView = viewer.id === session.hostId;
   const reading = latestReading(subject);
   const visible = canViewLocation(session, viewer, subject);
-
   let location;
-  if (subject.consent.locationSharing === 'off') location = <span className="small">{COPY.locationOff}</span>;
-  else if (!visible) location = <span className="small">{COPY.locationNotShared}</span>;
-  else if (!reading) location = <span className="small">{COPY.locationNone}</span>;
+  if (subject.consent.locationSharing === 'off') location = <span className="t-sub">{COPY.locationOff}</span>;
+  else if (!visible) location = <span className="t-sub">{COPY.locationNotShared}</span>;
+  else if (!reading) location = <span className="t-sub">{COPY.locationNone}</span>;
   else
     location = (
       <LocationStamp
         reading={reading}
         fresh={participantFreshness(subject, reading, now, session.config.locationStaleAfterSec)}
         now={now}
+        showPlace={false}
       />
     );
-
   return (
-    <div className="list-row">
-      <div className="grow stack" style={{ gap: 4 }}>
-        <div className="row" style={{ gap: 8 }}>
-          <span style={{ fontWeight: 600 }}>{subject.id === viewer.id ? `${subject.displayName} (you)` : subject.displayName}</span>
+    <li className="row" style={{ alignItems: 'flex-start' }}>
+      <span className={`av num ${alerting ? 'on-accent' : 'glass-2'}`}>{initials(subject.displayName)}</span>
+      <span className="stack grow" style={{ gap: 4 }}>
+        <span className="inline">
+          <span className="t-name">{subject.id === viewer.id ? `${subject.displayName} (you)` : subject.displayName}</span>
           {subject.role === 'host' && <span className="tag">Host</span>}
-          {!subject.device.online && <span className="tag">Offline {fmtAgo(now - subject.device.changedAt)}</span>}
-        </div>
+          {!subject.device.online && <span className="tag num">Offline {fmtAgo(now - subject.device.changedAt)}</span>}
+        </span>
         {location}
         {isHostView && subject.id !== viewer.id && (
-          <span className="tiny">Check-ins {subject.consent.motionMonitoring ? 'on' : 'off'} (their choice)</span>
+          <span className="t-cap">Check-ins {subject.consent.motionMonitoring ? 'on' : 'off'} (their choice)</span>
         )}
-      </div>
-    </div>
+      </span>
+    </li>
   );
 }
 
-function MonitoringPanel({ me }: { me: Participant }) {
+function CheckInStatus({ me }: { me: Participant }) {
   const { state, go } = useApp();
   const session = state.session!;
   const b = me.baseline;
   const d = session.config.detector;
+  const text = !me.consent.motionMonitoring
+    ? 'Off. You can turn them on in your sharing.'
+    : session.status === 'suspended'
+      ? 'Paused while the host has the session suspended.'
+      : b.status === 'calibrating'
+        ? `Learning your usual movement · ${b.n}/${d.calibrationSamples} samples`
+        : b.status === 'calibrated'
+          ? `Baseline set at ${fmtTime(b.calibratedAt!)} · typical ${b.mean!.toFixed(2)} ± ${b.std!.toFixed(2)} m/s²`
+          : 'No baseline yet.';
   return (
-    <section className="stack">
-      <div className="spread">
-        <h2 className="h2">Your check-ins</h2>
-        <button className="link link-tap small" onClick={() => go({ name: 'sharing' })}>
-          Sharing settings
-        </button>
-      </div>
-      {!me.consent.motionMonitoring ? (
-        <p className="small">Movement check-ins are off. You can turn them on in sharing settings.</p>
-      ) : session.status === 'suspended' ? (
-        <p className="small">Paused while the host has the session suspended.</p>
-      ) : b.status === 'calibrating' ? (
-        <p className="small">
-          Learning your usual movement · <span className="mono">{b.n}/{d.calibrationSamples}</span> samples. Keep your phone on you.
-        </p>
-      ) : b.status === 'calibrated' ? (
-        <div className="stack" style={{ gap: 2 }}>
-          <p className="small">
-            Baseline set at <span className="mono">{fmtTime(b.calibratedAt!)}</span> · typical{' '}
-            <span className="mono">{b.mean!.toFixed(2)} ± {b.std!.toFixed(2)} m/s²</span>
-          </p>
-          <p className="tiny">
-            Rule: |z| ≥ {d.zThreshold} for {d.consecutiveSamples} samples in a row. {UNVALIDATED_LABEL}.
-          </p>
-        </div>
-      ) : (
-        <p className="small">No baseline yet.</p>
-      )}
+    <section className="glass card card-list rise rise-4">
+      <button type="button" className="btn lrow" onClick={() => go({ name: 'sharing' })}>
+        <span className="stack grow">
+          <span className="t-name">Your check-ins</span>
+          <span className="t-sub num">{text}</span>
+          {b.status === 'calibrated' && me.consent.motionMonitoring && (
+            <span className="t-cap num">
+              Rule: |z| ≥ {d.zThreshold} for {d.consecutiveSamples} samples in a row. {UNVALIDATED_LABEL}.
+            </span>
+          )}
+        </span>
+        <span className="chev">
+          <Icon name="chevronRight" />
+        </span>
+      </button>
     </section>
   );
 }
@@ -121,11 +126,11 @@ export function SessionHomeScreen() {
   const viewer = me!;
   const isHost = viewer.id === session.hostId;
   const ended = session.status === 'ended' || viewer.status === 'left';
-
-  const others = Object.values(state.participants).filter((p) => p.status === 'active');
+  const people = Object.values(state.participants).filter((p) => p.status === 'active');
   const alerts = state.incidents
     .filter((i) => i.participantId !== viewer.id)
     .sort((a, b) => Number(a.status === 'resolved') - Number(b.status === 'resolved') || b.openedAt - a.openedAt);
+  const alerting = new Set(state.incidents.filter((i) => i.status === 'open').map((i) => i.participantId));
   const myIncident = activeIncidentFor(state, viewer.id);
   const hostName = state.participants[session.hostId]?.displayName;
   const backups = viewer.backupContacts.map((c) => c.name).join(', ');
@@ -137,159 +142,182 @@ export function SessionHomeScreen() {
     : hostName
       ? `${hostName} (your host)`
       : 'your host';
-
   const run = (fn: Parameters<typeof store.dispatch>[0]) => {
     const err = store.dispatch(fn);
     setError(err);
     return !err;
   };
+  const errorBox = error && (
+    <p className="error" role="alert">
+      <Icon name="alert" />
+      {error}
+    </p>
+  );
 
   if (ended) {
     return (
       <div className="screen">
-        <div className="stack">
-          <span className="eyebrow">{session.name}</span>
-          <h1 className="title">{viewer.status === 'left' ? 'You left the session' : 'This session has ended'}</h1>
-          <p className="lead">Location sharing and check-ins have stopped.</p>
-        </div>
-        {isHost && alerts.length > 0 && (
-          <section className="stack">
-            <h2 className="h2">Alerts from this session</h2>
-            <div className="list">
+        <div className="narrow">
+          <header className="stack">
+            <span className="t-sub">{session.name}</span>
+            <h1 className="t-title">{viewer.status === 'left' ? 'You left the session' : 'This session has ended'}</h1>
+          </header>
+          <p className="t-lead">Location sharing and check-ins have stopped.</p>
+          {isHost && alerts.length > 0 && (
+            <section className="col">
+              <h2 className="lbl">Alerts from this session</h2>
               {alerts.map((i) => (
-                <AlertRow key={i.id} incident={i} now={now} />
+                <AlertCard key={i.id} incident={i} now={now} />
               ))}
-            </div>
-          </section>
-        )}
+            </section>
+          )}
+        </div>
       </div>
     );
   }
 
+  const elapsed = now - session.createdAt;
+  const total = session.expiresAt - session.createdAt;
+  const sharingCount = people.filter((p) => p.consent.locationSharing !== 'off').length;
+
   return (
     <div className="screen">
+      <header className="header">
+        <span className="logo glass phone-only" role="img" aria-label="YTC">
+          YTC
+        </span>
+        <h1 className="t-title grow">{session.name}</h1>
+        {isHost && (
+          <button type="button" className="btn ibtn glass" aria-label="Show QR code" onClick={() => go({ name: 'invite' })}>
+            <Icon name="qr" />
+          </button>
+        )}
+      </header>
+
       {myIncident && (
-        <section className="panel panel-attention">
-          <h2 className="h2">An alert about you is open</h2>
-          <p className="small">
+        <section className="glass card stack rise" style={{ gap: 12 }}>
+          <h2 className="t-card">An alert about you is open</h2>
+          <p className="t-sub num">
             {myIncident.acknowledged
               ? `${myIncident.acknowledged.name} acknowledged at ${fmtTime(myIncident.acknowledged.at)} and is responding.`
               : `${firstContact[0].toUpperCase()}${firstContact.slice(1)} ${isHost ? 'were' : 'was'} alerted at ${fmtTime(myIncident.openedAt)}.`}{' '}
             Only a recipient can resolve it.
           </p>
-          <button className="btn btn-secondary btn-block" onClick={() => run((d, t) => participantUpdate(d, viewer.id, t))}>
+          <button type="button" className="btn pbtn glass" onClick={() => run((d, t) => participantUpdate(d, viewer.id, t))}>
             Tell responders I'm OK
           </button>
-          <span className="tiny">This is added to the alert's record. It does not close the alert.</span>
+          <span className="t-cap">Adds to the alert's record. It does not close the alert.</span>
         </section>
       )}
 
-      {isHost && (
-        <section className="stack">
-          <div className="spread">
-            <h2 className="h2">Alerts</h2>
-            {session.status === 'suspended' && <span className="tag tag-attention">Suspended</span>}
-          </div>
-          {alerts.length === 0 ? (
-            <p className="small">No alerts. You'll be notified here first if someone misses a check-in or asks for help.</p>
-          ) : (
-            <div className="list">
-              {alerts.map((i) => (
-                <AlertRow key={i.id} incident={i} now={now} />
-              ))}
+      <div className="cols">
+        <div className="col">
+          {isHost && alerts.map((i) => <AlertCard key={i.id} incident={i} now={now} />)}
+          <section className="glass card rise rise-2" style={{ padding: 8 }} aria-label="Group map">
+            <div style={{ position: 'relative' }}>
+              <GroupMap viewer={viewer} now={now} alerting={alerting} />
+              <span className="glass chip map-chip num">
+                {sharingCount} of {people.length} sharing
+              </span>
             </div>
-          )}
-        </section>
-      )}
-
-      {isHost && (
-        <section className="stack">
-          <h2 className="h2">Host controls</h2>
-          <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-            <button className="btn btn-secondary" onClick={() => go({ name: 'invite' })}>
-              Show QR code
-            </button>
-            {session.status === 'active' ? (
-              <button className="btn btn-secondary" onClick={() => run((d, t) => suspendSession(d, viewer.id, t))}>
-                Suspend session
-              </button>
-            ) : (
-              <button className="btn btn-secondary" onClick={() => run((d) => resumeSession(d, viewer.id))}>
-                Resume session
-              </button>
-            )}
-            <button className="btn btn-secondary" onClick={() => setSheet('end')}>
-              End session
-            </button>
-          </div>
-          {session.status === 'suspended' && (
-            <p className="tiny">
-              Suspended: location updates and new check-ins are paused for everyone. Open alerts keep escalating.
-            </p>
-          )}
-        </section>
-      )}
-
-      <section className="stack">
-        <h2 className="h2">Group</h2>
-        <GroupMap viewer={viewer} now={now} />
-        <div className="list">
-          {others.map((p) => (
-            <RosterRow key={p.id} subject={p} viewer={viewer} now={now} />
-          ))}
+            <div className="stack" style={{ gap: 12, padding: '16px 12px 8px' }}>
+              <div className="spread">
+                <span className="stack">
+                  <span className="t-card">Session</span>
+                  <span className="t-sub">{isHost ? "You're the host" : `Host: ${hostName ?? 'unknown'}`}</span>
+                </span>
+                {isHost && (
+                  <span className="inline">
+                    {session.status === 'active' ? (
+                      <button type="button" className="btn chip glass-2" onClick={() => run((d, t) => suspendSession(d, viewer.id, t))}>
+                        <Icon name="pause" />
+                        Suspend
+                      </button>
+                    ) : (
+                      <button type="button" className="btn chip glass-2" onClick={() => run((d) => resumeSession(d, viewer.id))}>
+                        <Icon name="play" />
+                        Resume
+                      </button>
+                    )}
+                    <button type="button" className="btn chip glass-2" onClick={() => setSheet('end')}>
+                      End
+                    </button>
+                  </span>
+                )}
+              </div>
+              <Scrubber
+                progress={elapsed / total}
+                left={fmtHM(elapsed)}
+                right={`−${fmtHM(session.expiresAt - now)}`}
+                ariaLabel={`Session progress: ${fmtHM(elapsed)} elapsed, ${fmtHM(session.expiresAt - now)} remaining`}
+              />
+              {session.status === 'suspended' && (
+                <p className="t-sub">Location updates and new check-ins are paused for everyone. Open alerts keep escalating.</p>
+              )}
+            </div>
+          </section>
+          {errorBox}
         </div>
-        <p className="tiny">
-          Locations older than {session.config.locationStaleAfterSec}s, or from an offline phone, are marked stale.
-        </p>
-      </section>
 
-      <MonitoringPanel me={viewer} />
-
-      {/* Pinned to the bottom of the scroll area so help is never more than a thumb away. */}
-      <div className="screen-footer help-dock">
-        {error && <p className="error">{error}</p>}
-        {!myIncident && (
-          <button className="btn btn-critical btn-block btn-large btn-stacked" onClick={() => setSheet('help')}>
-            {COPY.checkInHelp}
-            <span className="btn-sub">Alerts {firstContact}. You confirm first.</span>
-          </button>
-        )}
+        <div className="col">
+          <section className="glass card card-list rise rise-3" aria-labelledby="people-h">
+            <div className="card-head">
+              <h2 className="t-card" id="people-h">
+                People
+              </h2>
+              <span className="t-sub num">{people.length}</span>
+            </div>
+            <ul>
+              {people.map((p) => (
+                <PersonRow key={p.id} subject={p} viewer={viewer} now={now} alerting={alerting.has(p.id)} />
+              ))}
+            </ul>
+          </section>
+          <CheckInStatus me={viewer} />
+        </div>
       </div>
 
+      {!myIncident && (
+        <div className="help-dock">
+          <button type="button" className="btn pbtn outline-accent" onClick={() => setSheet('help')}>
+            <Icon name="lifeBuoy" />
+            {COPY.checkInHelp}
+          </button>
+        </div>
+      )}
+
       {sheet === 'help' && (
-        <Sheet onClose={() => setSheet(null)}>
-          <h2 className="h2">Alert {firstContact} now?</h2>
-          <p className="lead">
-            They will be alerted right away. If nobody acknowledges, it escalates.
-          </p>
+        <Sheet title={`Alert ${firstContact} now?`} onClose={() => setSheet(null)}>
+          <p className="t-lead">They will be alerted right away. If nobody acknowledges, it escalates.</p>
+          {errorBox}
           <button
-            className="btn btn-attention btn-block"
+            type="button"
+            className="btn pbtn on-accent"
             onClick={() => {
               if (run((d, t) => requestHelp(d, viewer.id, t))) setSheet(null);
             }}
           >
             Send alert
           </button>
-          <button className="btn btn-secondary btn-block" onClick={() => setSheet(null)}>
+          <button type="button" className="btn pbtn glass" onClick={() => setSheet(null)}>
             Cancel
           </button>
         </Sheet>
       )}
-
       {sheet === 'end' && (
-        <Sheet onClose={() => setSheet(null)}>
-          <h2 className="h2">End the session for everyone?</h2>
-          <p className="lead">Location sharing and check-ins stop for the whole group. Open alerts must be acknowledged first.</p>
-          {error && <p className="error">{error}</p>}
+        <Sheet title="End the session for everyone?" onClose={() => setSheet(null)}>
+          <p className="t-lead">Location sharing and check-ins stop for the whole group. Open alerts must be acknowledged first.</p>
+          {errorBox}
           <button
-            className="btn btn-primary btn-block"
+            type="button"
+            className="btn pbtn on-accent"
             onClick={() => {
               if (run((d, t) => endSession(d, viewer.id, t))) setSheet(null);
             }}
           >
             End session
           </button>
-          <button className="btn btn-secondary btn-block" onClick={() => setSheet(null)}>
+          <button type="button" className="btn pbtn glass" onClick={() => setSheet(null)}>
             Cancel
           </button>
         </Sheet>

@@ -1,85 +1,85 @@
+import { useState } from 'react';
 import { recalibrate, updateConsent } from '../../domain/session';
 import type { LocationSharing, ParticipantConsent } from '../../domain/types';
 import { SHARING_LABEL } from '../copy';
 import { useApp } from '../context';
+import { OptionList, ToggleRow, initials } from '../components/Controls';
+import { Icon } from '../components/Icon';
 
 /** A participant's own sharing settings. No one else can open or change these. */
 export function MySharingScreen() {
-  const { me, store, go, state } = useApp();
+  const { me, store, state } = useApp();
+  const [relearned, setRelearned] = useState(false);
   const p = me!;
   const isHost = p.id === state.session?.hostId;
   const set = (patch: Partial<Omit<ParticipantConsent, 'joinedAt'>>) => store.dispatch((d) => updateConsent(d, p.id, p.id, patch));
   const options: LocationSharing[] = isHost ? ['group', 'off'] : ['group', 'host', 'off'];
-
   return (
     <div className="screen">
-      <button className="btn btn-ghost back" onClick={() => go({ name: 'home' })}>
-        Back
-      </button>
-      <div className="stack">
-        <span className="eyebrow">Only you can change these</span>
-        <h1 className="title">Your sharing</h1>
-      </div>
-
-      <section className="stack">
-        <span className="label">Who can see your location</span>
-        <div className="choice-list" role="radiogroup">
-          {options.map((o) => (
-            <label key={o} className="choice" data-checked={p.consent.locationSharing === o}>
-              <input type="radio" checked={p.consent.locationSharing === o} onChange={() => set({ locationSharing: o })} />
-              <span className="t">{SHARING_LABEL[o]}</span>
-            </label>
-          ))}
+      <div className="narrow">
+        <h1 className="t-title">Your sharing</h1>
+        <div className="rise">
+          <OptionList
+            label="Who can see your location"
+            options={options.map((o) => ({ value: o, label: SHARING_LABEL[o] }))}
+            value={p.consent.locationSharing}
+            onChange={(o) => set({ locationSharing: o })}
+          />
         </div>
-      </section>
-
-      <label className="toggle">
-        <input type="checkbox" checked={p.consent.motionMonitoring} onChange={(e) => set({ motionMonitoring: e.target.checked })} />
-        <span className="stack" style={{ gap: 2 }}>
-          <span style={{ fontWeight: 600 }}>Movement check-ins</span>
-          <span className="small">Turning this off stops new check-ins. Open alerts are not affected.</span>
-        </span>
-      </label>
-      {p.consent.motionMonitoring && (
-        <button
-          className="btn btn-secondary"
-          style={{ alignSelf: 'flex-start' }}
-          onClick={() => store.dispatch((d) => recalibrate(d, p.id, p.id))}
-        >
-          Relearn my usual movement
-        </button>
-      )}
-
-      <label className="toggle">
-        <input
-          type="checkbox"
-          checked={p.consent.shareLocationWithResponders}
-          onChange={(e) => set({ shareLocationWithResponders: e.target.checked })}
-        />
-        <span className="small">During an alert, share my last-known location with backup contacts and simulated emergency services.</span>
-      </label>
-      <label className="toggle">
-        <input
-          type="checkbox"
-          checked={p.consent.shareNoteWithResponders}
-          onChange={(e) => set({ shareNoteWithResponders: e.target.checked })}
-        />
-        <span className="small">Share my note for responders during an alert.</span>
-      </label>
-
-      <section className="stack">
-        <span className="label">Backup contacts</span>
-        {p.backupContacts.length === 0 ? (
-          <p className="small">None. Unacknowledged alerts go straight to simulated emergency services.</p>
-        ) : (
-          p.backupContacts.map((c) => (
-            <p key={c.id} className="small">
-              {c.name}
-              {c.relation && ` · ${c.relation}`}
-            </p>
-          ))
-        )}
-      </section>
+        <section className="glass card card-list rise rise-2" aria-label="Check-ins and responders">
+          <ToggleRow
+            label="Movement check-ins"
+            sub={p.consent.motionMonitoring ? undefined : 'Off. Open alerts are not affected.'}
+            checked={p.consent.motionMonitoring}
+            onChange={(v) => set({ motionMonitoring: v })}
+          >
+            {p.consent.motionMonitoring && (
+              <button
+                type="button"
+                className="btn chip glass-2"
+                style={{ alignSelf: 'flex-start', marginTop: 8 }}
+                onClick={() => {
+                  store.dispatch((d) => recalibrate(d, p.id, p.id));
+                  setRelearned(true);
+                }}
+              >
+                <Icon name="rotate" />
+                {relearned ? 'Relearning your usual movement' : 'Relearn my usual movement'}
+              </button>
+            )}
+          </ToggleRow>
+          <ToggleRow
+            label="Share my last-known location with backup contacts and simulated emergency services during an alert"
+            checked={p.consent.shareLocationWithResponders}
+            onChange={(v) => set({ shareLocationWithResponders: v })}
+          />
+          <ToggleRow
+            label="Share my note with responders during an alert"
+            checked={p.consent.shareNoteWithResponders}
+            onChange={(v) => set({ shareNoteWithResponders: v })}
+          />
+        </section>
+        <section className="glass card card-list rise rise-3" aria-labelledby="backups-h">
+          <div className="card-head">
+            <h2 className="t-card" id="backups-h">
+              Backup contacts
+            </h2>
+          </div>
+          {p.backupContacts.length === 0 ? (
+            <p className="t-sub row">None. Unacknowledged alerts go straight to simulated emergency services.</p>
+          ) : (
+            <ul>
+              {p.backupContacts.map((c) => (
+                <li key={c.id} className="row">
+                  <span className="av glass-2">{initials(c.name)}</span>
+                  <span className="t-name grow">{c.name}</span>
+                  {c.relation && <span className="t-sub">{c.relation}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

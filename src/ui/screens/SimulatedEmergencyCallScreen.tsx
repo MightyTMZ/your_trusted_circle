@@ -1,15 +1,11 @@
 import { useState } from 'react';
-import {
-  MOCK_OPERATOR_LINES,
-  disconnectCall,
-  operatorSays,
-  operatorSilent,
-  reconnectCall,
-} from '../../domain/voiceAgent';
 import type { Incident, VoiceUtterance } from '../../domain/types';
+import { MOCK_OPERATOR_LINES, disconnectCall, operatorSays, operatorSilent, reconnectCall } from '../../domain/voiceAgent';
 import { COPY } from '../copy';
 import { useApp } from '../context';
 import { fmtTime } from '../format';
+import { ScreenHeader } from '../components/Controls';
+import { Icon } from '../components/Icon';
 import { SimulatedTag } from '../components/SimulatedTag';
 
 function groundLabel(g: string, incident: Incident): string {
@@ -19,18 +15,19 @@ function groundLabel(g: string, incident: Incident): string {
 }
 
 function Utterance({ u, incident }: { u: VoiceUtterance; incident: Incident }) {
+  const agent = u.speaker === 'agent';
   return (
-    <div className={`utt ${u.speaker}`}>
-      <div className="who">
-        {u.speaker === 'agent' ? 'Automated assistant' : 'Mock operator'} · {fmtTime(u.at)}
-      </div>
-      <div>{u.text}</div>
-      {u.speaker === 'agent' && (
-        <div className="src">
+    <li className={`bubble ${agent ? 'glass-2 agent' : 'glass operator'}`}>
+      <span className="t-cap num">
+        {agent ? 'Automated assistant' : 'Mock operator'} · {fmtTime(u.at)}
+      </span>
+      <span className="t-body">{u.text}</span>
+      {agent && (
+        <span className="t-cap">
           {u.grounds.length ? `Source: ${u.grounds.map((g) => groundLabel(g, incident)).join(', ')}` : 'Source: none (states what is unknown)'}
-        </div>
+        </span>
       )}
-    </div>
+    </li>
   );
 }
 
@@ -43,10 +40,10 @@ export function SimulatedEmergencyCallScreen({ incidentId }: { incidentId: strin
   if (!call || !incident) {
     return (
       <div className="screen">
-        <button className="btn btn-ghost back" onClick={() => go({ name: 'home' })}>
-          Back
-        </button>
-        <p className="lead">No simulated call has started for this alert.</p>
+        <div className="narrow">
+          <ScreenHeader title={COPY.emergencySimulated} onBack={() => go({ name: 'home' })} />
+          <p className="t-lead">No simulated call has started for this alert.</p>
+        </div>
       </div>
     );
   }
@@ -56,76 +53,83 @@ export function SimulatedEmergencyCallScreen({ incidentId }: { incidentId: strin
     store.dispatch((d, t) => operatorSays(d, incidentId, line, t));
     setText('');
   };
+  const status = call.status === 'connected' ? 'Connected' : call.status === 'ended' ? 'Ended' : call.status === 'failed' ? 'Agent failed' : 'Disconnected';
 
   return (
     <div className="screen">
-      <button className="btn btn-ghost back" onClick={() => go({ name: 'alert', id: incidentId })}>
-        Back
-      </button>
-      <div className="stack">
-        <div className="row" style={{ gap: 8 }}>
-          <span className="eyebrow">Voice agent</span>
-          <SimulatedTag />
-        </div>
-        <h1 className="title">{COPY.emergencySimulated}</h1>
-      </div>
+      <div className="narrow">
+        <ScreenHeader title={COPY.emergencySimulated} onBack={() => go({ name: 'alert', id: incidentId })} backLabel="Back to alert" />
+        <section className="glass card stack rise" role="status" style={{ gap: 8 }}>
+          <span className="header" style={{ gap: 10 }}>
+            <span className={`dot ${live ? 'live' : 'hollow'}`} aria-hidden="true" />
+            <span className="t-name grow num">
+              {status}
+              {call.endedAt ? ` at ${fmtTime(call.endedAt)}` : ''}
+            </span>
+            <SimulatedTag />
+          </span>
+          <p className="t-sub">{COPY.simulatedCallBanner}</p>
+          <span className="t-cap num">Endpoint: {call.endpoint}</span>
+        </section>
 
-      <div className="banner-sim">
-        <strong>Simulated.</strong> {COPY.simulatedCallBanner} Endpoint: <span className="mono">{call.endpoint}</span>
-        <div className="small" style={{ marginTop: 4 }}>
-          Status: {call.status === 'connected' ? 'Connected' : call.status === 'ended' ? 'Ended' : call.status === 'failed' ? 'Agent failed' : 'Disconnected'}
-          {call.endedAt ? ` at ${fmtTime(call.endedAt)}` : ''}
-        </div>
-      </div>
-
-      <div className="transcript">
-        {call.utterances.map((u) => (
-          <Utterance key={u.id} u={u} incident={incident} />
-        ))}
-      </div>
-
-      <section className="stack">
-        <span className="label">Play the mock operator</span>
-        <div className="chips">
-          {MOCK_OPERATOR_LINES.map((l) => (
-            <button key={l} className="chip" disabled={!live} onClick={() => say(l)}>
-              {l}
-            </button>
+        <ol className="transcript rise rise-2" aria-label="Transcript" style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+          {call.utterances.map((u) => (
+            <Utterance key={u.id} u={u} incident={incident} />
           ))}
+        </ol>
+
+        <div className="screen-footer">
+          <span className="lbl">Play the mock operator</span>
+          <div className="hscroll">
+            {MOCK_OPERATOR_LINES.map((l) => (
+              <button key={l} type="button" className="btn chip glass" disabled={!live} onClick={() => say(l)}>
+                {l}
+              </button>
+            ))}
+          </div>
+          <div className="glass inputbar">
+            <label htmlFor="op" className="sr-only">
+              Operator question
+            </label>
+            <input
+              id="op"
+              className="field field-bare"
+              placeholder="Type an operator question"
+              autoComplete="off"
+              value={text}
+              disabled={!live}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && text.trim() && say(text)}
+            />
+            <button type="button" className="btn ibtn on-accent" aria-label="Say" disabled={!live || !text.trim()} onClick={() => say(text)}>
+              <Icon name="send" />
+            </button>
+          </div>
+          <div className="tiles">
+            <button type="button" className="btn qtile glass" disabled={!live} onClick={() => store.dispatch((d, t) => operatorSilent(d, incidentId, t))}>
+              <Icon name="micOff" />
+              Operator silent
+            </button>
+            <button
+              type="button"
+              className="btn qtile glass"
+              disabled={!live}
+              onClick={() => store.dispatch((d, t) => disconnectCall(d, incidentId, 'disconnected', t))}
+            >
+              <Icon name="x" />
+              Disconnect
+            </button>
+            <button type="button" className="btn qtile glass" disabled={!live} onClick={() => store.dispatch((d, t) => disconnectCall(d, incidentId, 'failed', t))}>
+              <Icon name="alert" />
+              Agent failure
+            </button>
+            <button type="button" className="btn qtile glass" disabled={live} onClick={() => store.dispatch((d, t) => reconnectCall(d, incidentId, t))}>
+              <Icon name="rotate" />
+              Reconnect
+            </button>
+          </div>
         </div>
-        <div className="row">
-          <input
-            className="input"
-            placeholder="Type an operator question"
-            value={text}
-            disabled={!live}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && text.trim() && say(text)}
-          />
-          <button className="btn btn-secondary" disabled={!live || !text.trim()} onClick={() => say(text)}>
-            Say
-          </button>
-        </div>
-        <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
-          <button className="chip" disabled={!live} onClick={() => store.dispatch((d, t) => operatorSilent(d, incidentId, t))}>
-            Operator silent
-          </button>
-          <button
-            className="chip"
-            disabled={!live}
-            onClick={() => store.dispatch((d, t) => disconnectCall(d, incidentId, 'disconnected', t))}
-          >
-            Disconnect
-          </button>
-          <button className="chip" disabled={!live} onClick={() => store.dispatch((d, t) => disconnectCall(d, incidentId, 'failed', t))}>
-            Agent failure
-          </button>
-          <button className="chip" disabled={live} onClick={() => store.dispatch((d, t) => reconnectCall(d, incidentId, t))}>
-            Reconnect
-          </button>
-        </div>
-        <p className="tiny">Every line is logged to the incident timeline. Ending the call never cancels the alert.</p>
-      </section>
+      </div>
     </div>
   );
 }

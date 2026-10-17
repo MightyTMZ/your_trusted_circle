@@ -10,7 +10,9 @@ export type Route =
   | { name: 'card'; id: string }
   | { name: 'call'; id: string }
   | { name: 'host-setup' }
-  | { name: 'join'; code: string };
+  | { name: 'join'; code: string }
+  | { name: 'settings' }
+  | { name: 'signin' };
 
 interface Ctx {
   store: Store;
