@@ -266,6 +266,18 @@ export async function sendParticipantUpdate(sessionId: string): Promise<boolean>
   return result.ok;
 }
 
+/** A participant leaves the session. The server cancels their pending check-ins. */
+export async function leaveSessionOnServer(sessionId: string): Promise<boolean> {
+  const result = await postJson<void>(`/sessions/${sessionId}/leave`, {});
+  return result.ok;
+}
+
+/** Host ends the session. The server cancels all pending check-ins. */
+export async function endSessionOnServer(sessionId: string): Promise<boolean> {
+  const result = await postJson<void>(`/sessions/${sessionId}/end`, {});
+  return result.ok;
+}
+
 // ---------------------------------------------------------------------------
 
 const LOGIN_ERRORS: Record<string, string> = {

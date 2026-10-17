@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { UNVALIDATED_LABEL } from '../../domain/config';
-import { sendParticipantUpdate } from '../api';
+import { endSessionOnServer, sendParticipantUpdate } from '../api';
 import { activeIncidentFor, nextDeadline } from '../../domain/incident';
 import { canViewLocation, latestReading, participantFreshness } from '../../domain/location';
 import { endSession, participantUpdate, resumeSession, suspendSession } from '../../domain/session';
@@ -310,8 +310,11 @@ export function SessionHomeScreen() {
           <button
             type="button"
             className="btn pbtn on-accent"
-            onClick={() => {
-              if (run((d, t) => endSession(d, viewer.id, t))) setSheet(null);
+            onClick={async () => {
+              if (run((d, t) => endSession(d, viewer.id, t))) {
+                if (session) await endSessionOnServer(session.id).catch(() => {});
+                setSheet(null);
+              }
             }}
           >
             End session

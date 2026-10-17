@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { leaveSession } from '../../domain/session';
 import { COPY, SHARING_LABEL } from '../copy';
 import { useApp, useNow } from '../context';
+import { leaveSessionOnServer, endSessionOnServer } from '../api';
 import { fmtRemaining } from '../format';
 import { Icon } from './Icon';
 import { Sheet } from './Sheet';
@@ -51,9 +52,16 @@ function SessionSheet({ onClose }: { onClose(): void }) {
   const isHost = me!.id === session.hostId;
   const suspended = session.status === 'suspended';
 
-  const onLeave = () => {
+  const onLeave = async () => {
+    const sessionId = session.id;
     const err = store.dispatch((d, t) => leaveSession(d, me!.id, t));
     if (err) return setError(err);
+    // Persist to MongoDB: server cancels pending check-ins for this participant.
+    if (isHost) {
+      await endSessionOnServer(sessionId).catch(() => {});
+    } else {
+      await leaveSessionOnServer(sessionId).catch(() => {});
+    }
     onClose();
     setViewer(null);
   };
