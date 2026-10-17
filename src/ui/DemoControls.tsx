@@ -120,6 +120,16 @@ export function DemoControls() {
       )}
 
       <div>
+        <h3>Voice agent</h3>
+        <a className="btn btn-secondary" href="#operator">
+          Play the operator (live voice)
+        </a>
+        <p className="tiny" style={{ marginTop: 6 }}>
+          Needs the YTC backend: npm run server. Synthetic incident; simulated call only.
+        </p>
+      </div>
+
+      <div>
         <h3>Reset</h3>
         <button
           className="btn btn-secondary"

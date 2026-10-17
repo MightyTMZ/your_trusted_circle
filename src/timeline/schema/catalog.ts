@@ -782,6 +782,22 @@ export const EVENT_CATALOG = {
     summarize: (d) => `Silence on call ${d.call_id} for ${duration(d.duration_ms)}.`,
   }),
 
+  "voice.agent_interrupted": defineEvent({
+    description: "The operator spoke over the agent, so playback of an agent turn stopped early.",
+    sensitivity: "none",
+    incident: "required",
+    participant: "optional",
+    mustBeSimulated: true,
+    payload: v.object({
+      call_id: v.id("call"),
+      /** The agent turn that was cut off. */
+      turn_index: v.number({ min: 0, integer: true }),
+      /** How much of it played before the operator spoke. */
+      heard_ms: ms(),
+    }),
+    summarize: (d) => `[call ${d.call_id} turn ${d.turn_index}] Operator interrupted the agent after ${duration(d.heard_ms)} of playback.`,
+  }),
+
   "voice.draft_rejected": defineEvent({
     description: "A model-written reply that failed a grounding check and was not spoken.",
     sensitivity: "none",

@@ -9,6 +9,8 @@
     "test": "vitest run && npm run test:node",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit",
     "agent:demo": "vite-node src/agent/demo.ts",
+    "server": "vite-node src/server/main.ts",
+    "dev:full": "node scripts/dev.mjs",
     "test:node": "tsc -p tsconfig.node.json && node --test --test-reporter=dot \"dist/test/**/*.test.js\"",
     "examples": "tsc -p tsconfig.node.json && node dist/src/timeline/fixtures/no-response.js docs/examples data/examples"
   },

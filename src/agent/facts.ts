@@ -44,6 +44,8 @@ export interface Fact {
   source_event_ids: string[];
   /** Extra retrieval terms (operator vocabulary). Never spoken. */
   keywords: string[];
+  /** Leads its topic in the call's opening breakdown (e.g. the impact among motion facts). */
+  headline?: boolean;
 }
 
 export interface FactSheet {
@@ -133,6 +135,7 @@ export function buildFactSheet(
     const source_event_ids = [...new Set(sources.filter((s): s is string => !!s))];
     if (source_event_ids.length === 0) throw new Error(`fact without a source: ${text}`);
     facts.push({ topic, kind, text, source_event_ids, keywords: KEYWORDS[topic] });
+    return facts.at(-1)!;
   };
   const incidentRef = briefing.incident.source_event_id;
   const byId = new Map(evidence.map((e) => [e.event_id, e]));
@@ -261,6 +264,9 @@ export function buildFactSheet(
   }
 
   // ── Movement ────────────────────────────────────────────────────────
+  // The opening breakdown leads with the latest impact, else the baseline observation.
+  let impactFact: Omit<Fact, "id"> | undefined;
+  let observationFact: Omit<Fact, "id"> | undefined;
   for (const p of briefing.motion.patterns) {
     const from = time(p.observed_from);
     const to = time(p.observed_to);
@@ -268,7 +274,7 @@ export function buildFactSheet(
       const strength = p.impact_peak_clipped
         ? `that exceeded the phone sensor's measuring range (at least ${round(p.impact_peak_m_s2, 1)} m/s², about ${round(p.impact_peak_m_s2 / G, 1)} g; the true strength is unknown)`
         : `of ${round(p.impact_peak_m_s2, 1)} m/s² (about ${round(p.impact_peak_m_s2 / G, 1)} g)`;
-      add(
+      impactFact = add(
         "motion",
         "observed",
         `At ${time(p.impact_at)} the phone recorded a sudden impact ${strength}, followed by ${speakDuration(p.still_duration_ms ?? 0)} with no movement. The app cannot tell what caused the impact.`,
@@ -284,13 +290,15 @@ export function buildFactSheet(
   }
   const obs = briefing.motion.observation;
   if (obs) {
-    add(
+    observationFact = add(
       "motion",
       "derived",
       `Between ${time(obs.window_start)} and ${time(obs.window_end)} phone movement was far below this person's usual level earlier in the night (${round(Math.abs(obs.z_score), 0)} standard deviations below their own baseline). This is a movement observation, not a medical finding.`,
       [obs.source_event_id, briefing.motion.baseline?.source_event_id],
     );
   }
+  const lead = impactFact ?? observationFact;
+  if (lead) lead.headline = true;
   const w = briefing.motion.latest_window;
   if (w) {
     add(

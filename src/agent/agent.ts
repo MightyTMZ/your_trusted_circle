@@ -85,6 +85,8 @@ export interface AgentReply {
   retrieval_mode: "hybrid" | "lexical" | null;
   rejected: Rejection[];
   utterance_event_id: string;
+  /** The facts the reply cites, as they read when it was spoken. */
+  facts: Fact[];
 }
 
 interface Spoken {
@@ -119,12 +121,22 @@ export class OperatorCallAgent {
       (e) => e.type === "emergency.simulated_dispatch_requested" && e.incident_id === this.opts.incidentId,
     );
     const started = this.append("voice.call_started", "voice_agent", { call_id: this.opts.callId, mock_endpoint_id: MOCK_OPERATOR_ENDPOINT_ID }, dispatch ? [dispatch.event_id] : []);
+    // The opening is the full breakdown, read from the facts verbatim: who, why, what the
+    // phone recorded, where, their own note, and who has (not) responded. No model call.
     const sheet = this.sheet();
     const pick = (topic: Fact["topic"]) => sheet.facts.find((f) => f.topic === topic);
+    const breakdown = [
+      pick("identity"),
+      pick("incident"),
+      sheet.facts.find((f) => f.topic === "motion" && f.headline),
+      pick("location"),
+      pick("notes"),
+      sheet.facts.filter((f) => f.topic === "alerts").at(-1),
+    ];
     const opening: Spoken[] = [
       { text: "Hello, this is an automated assistant from the YTC group safety app, not a person, and this is a simulated call.", facts: [], events: [started.event_id] },
-      ...[pick("incident"), pick("location"), pick("identity")].filter((f): f is Fact => !!f).map((f) => ({ text: f.text, facts: [f] })),
-      { text: "I can only share what is in the app's record, and I will tell you when something is unknown.", facts: [], events: [started.event_id] },
+      ...breakdown.filter((f): f is Fact => !!f).map((f) => ({ text: f.text, facts: [f] })),
+      { text: "I can only share what is in the app's record, and I will tell you when something is unknown. What would you like to know?", facts: [], events: [started.event_id] },
     ];
     return this.speak(opening, "scripted", null, null, []);
   }
@@ -183,6 +195,20 @@ export class OperatorCallAgent {
     );
     this.end("timeout");
     return reply;
+  }
+
+  /** The operator spoke over agent turn turnIndex after heardMs of its audio played. Logged once per turn. */
+  interrupted(turnIndex: number, heardMs: number): void {
+    this.assertActive();
+    const turn = this.callEvents("voice.utterance").find((e) => e.data.turn_index === turnIndex && e.data.speaker === "voice_agent");
+    if (!turn) throw new Error(`turn ${turnIndex} is not an agent turn on call ${this.opts.callId}`);
+    if (this.interruptedTurns().has(turnIndex)) return;
+    this.append("voice.agent_interrupted", "mock_operator", { call_id: this.opts.callId, turn_index: turnIndex, heard_ms: Math.max(0, Math.round(heardMs)) }, [turn.event_id]);
+  }
+
+  /** The fact sheet as of now: what the agent may say. */
+  factSheet(): FactSheet {
+    return this.sheet();
   }
 
   end(reason: PayloadOf<"voice.call_ended">["reason"]): void {
@@ -322,7 +348,8 @@ export class OperatorCallAgent {
       [],
       modelId ? `${AGENT_PRODUCER}/${modelId}` : AGENT_PRODUCER,
     );
-    return { turn_index: turn, text, fact_ids, grounding_event_ids: grounding, path, model_id: modelId, retrieval_mode: retrievalMode, rejected, utterance_event_id: event.event_id };
+    const facts = [...new Map(parts.flatMap((p) => p.facts).map((f) => [f.id, f])).values()];
+    return { turn_index: turn, text, fact_ids, grounding_event_ids: grounding, path, model_id: modelId, retrieval_mode: retrievalMode, rejected, utterance_event_id: event.event_id, facts };
   }
 
   private logError(err: unknown, source: "model" | "judge"): void {
@@ -330,7 +357,9 @@ export class OperatorCallAgent {
     this.append("voice.agent_error", "voice_agent", { call_id: this.opts.callId, error_code: `${source}_${code}`, recoverable: true });
   }
 
-  private append<T extends "voice.call_started" | "voice.utterance" | "voice.silence_detected" | "voice.draft_rejected" | "voice.agent_error" | "voice.call_ended">(
+  private append<
+    T extends "voice.call_started" | "voice.utterance" | "voice.silence_detected" | "voice.agent_interrupted" | "voice.draft_rejected" | "voice.agent_error" | "voice.call_ended",
+  >(
     type: T,
     actor: "voice_agent" | "mock_operator" | "system",
     data: PayloadOf<T>,
@@ -361,10 +390,23 @@ export class OperatorCallAgent {
     return buildFactSheet(briefing, selectEvidence(events, briefing), { timeZone: this.opts.timeZone });
   }
 
+  /** Recent turns for the prompt. A cut-off agent turn says so: the operator may not have heard the rest. */
   private transcript(): TranscriptTurn[] {
+    const cut = this.interruptedTurns();
     return this.callEvents("voice.utterance")
       .slice(-TRANSCRIPT_TURNS)
-      .map((e) => ({ speaker: e.data.speaker, text: e.data.text }));
+      .map((e) => ({
+        speaker: e.data.speaker,
+        text: cut.has(e.data.turn_index) ? `${e.data.text} [cut off: the operator interrupted and may not have heard all of this]` : e.data.text,
+      }));
+  }
+
+  private interruptedTurns(): Set<number> {
+    return new Set(
+      this.opts.timeline.events
+        .filter((e): e is TimelineEvent<"voice.agent_interrupted"> => e.type === "voice.agent_interrupted" && e.data.call_id === this.opts.callId)
+        .map((e) => e.data.turn_index),
+    );
   }
 
   private callEvents<T extends "voice.utterance" | "voice.call_ended" | "voice.call_started">(type: T): TimelineEvent<T>[] {

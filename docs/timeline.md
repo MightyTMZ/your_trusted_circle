@@ -256,6 +256,7 @@ Must be `simulated: true`; the only endpoint is `mock-operator-local`.
 | `voice.call_started` | The mock call began. | `call_id`, `mock_endpoint_id` |
 | `voice.utterance` | Every turn, both directions; agent turns cite `grounding_event_ids`. | `turn_index`, `speaker`, `text`, `grounding_event_ids[]` |
 | `voice.silence_detected` | Silence on the line. | `duration_ms` |
+| `voice.agent_interrupted` | The operator spoke over the agent; playback of that agent turn stopped early, so the operator heard only part of it. | `turn_index` (agent turn cut off), `heard_ms` |
 | `voice.draft_rejected` | A model-written reply failed a grounding check and was never spoken; the audit trail for "the agent does not make things up". | `turn_index` (operator turn answered), `attempt`, `stage` (`schema`/`guard`/`judge`/`judge_unavailable`/`superseded`), `reasons[]`, `draft_text` |
 | `voice.agent_error` | The agent failed mid-call. | `error_code`, `recoverable` |
 | `voice.call_ended` | How and when the call ended. | `reason`, `duration_ms` |
@@ -309,6 +310,38 @@ briefing. No path in it can place a call. Each operator turn:
 deterministic path, `--interactive` to play the operator). It reads
 `GEMINI_API_KEY` from the environment or `.env`.
 
+### The live call (operator console)
+
+The agent runs on the YTC backend server (`src/server/`, one Node process,
+localhost only), so it reads and appends to the incident timeline directly.
+`npm run dev:full` starts the backend and the UI; open
+`http://localhost:5173/#operator` and play the operator.
+
+```
+ browser (operator console)              YTC backend (npm run server)
+ hold-to-talk mic ──audio──► POST /api/calls/:id/speech ─► ElevenLabs scribe_v2 (speech-to-text)
+ or typed text ──────────► POST /api/calls/:id/turns  ─► OperatorCallAgent.respond() (pipeline above)
+ ◄── reply JSON (text, cited facts, rejected drafts, latency)
+ <audio> ◄──────────────── GET /api/calls/:id/turns/:n/audio ─► ElevenLabs eleven_flash_v2_5 (streamed)
+```
+
+- Each call restores a fresh copy of the synthetic no-response incident
+  onto a clock that follows real time ("about 13 minutes ago" keeps
+  counting) and opens with a full breakdown read verbatim from the facts:
+  who, why the alert opened, the impact, the last-known location, their
+  note, and that nobody has acknowledged it. No model is involved.
+- Speech never changes the pipeline. Operator audio is transcribed, then
+  handled exactly like typed text. Audio is made only from the text of an
+  agent turn already logged in the timeline; no route speaks arbitrary
+  text. `forSpeech` changes pronunciation only (`m/s²`, minus signs, `UTC`).
+- Only ElevenLabs' speech-to-text and text-to-speech endpoints are used,
+  never its Agents platform, which can connect to phone networks.
+- Holding the talk button while the agent speaks stops playback and logs
+  `voice.agent_interrupted` with how much was heard; the next prompt marks
+  that turn as cut off. 25 s of silence gets one prompt, then the agent
+  ends the call (the alert stays unresolved). Keys stay in the server
+  process; the browser only sees `/api`.
+
 ## Adding an event type
 
 1. Add an entry to `EVENT_CATALOG` in `src/timeline/schema/catalog.ts`.
@@ -319,8 +352,8 @@ deterministic path, `--interactive` to play the operator). It reads
 
 | | |
 | --- | --- |
-| Implemented | phyphox adapter, streaming windowing, window features, raw store, baseline and pattern detectors, sensor pipeline, timeline with consent enforcement, briefing with activity history, voice-agent reasoning pipeline (fact sheet, retrieval, guard, judge, fallback). |
+| Implemented | phyphox adapter, streaming windowing, window features, raw store, baseline and pattern detectors, sensor pipeline, timeline with consent enforcement, briefing with activity history, voice-agent reasoning pipeline (fact sheet, retrieval, guard, judge, fallback), backend server with the simulated-call routes, ElevenLabs speech in and out, operator console. |
 | Recorded vs. synthetic | `examples/accelerometer/` holds real Pixel 9 recordings; everything in `docs/examples/` is synthetic. |
-| Simulated | Notification transport, emergency dispatch, voice calls (mock operator only, text in and out). |
+| Simulated | Notification transport, emergency dispatch, voice calls (mock operator only: the person at the operator console, in a browser, over localhost). |
 | Needs validation | Every threshold and rule; cadence and impact detection on real night-out data; the briefing's usefulness to real operators; the guard's and judge's false-accept and false-reject rates on a labelled set of drafts; answer latency with the chosen models. |
-| Not built | Live in-browser sensor capture, gyroscope fusion, the scheduler and state machines (escalation is scripted in the scenario), speech in and out for the agent, a server endpoint connecting the agent to the UI. Single process; the hash chain is tamper-evident, not signed. |
+| Not built | Live in-browser sensor capture, gyroscope fusion, the scheduler and state machines (escalation is scripted in the scenario), connecting the app's own live incidents to the backend (calls use the synthetic incident), streaming speech recognition. Single process; the hash chain is tamper-evident, not signed. |

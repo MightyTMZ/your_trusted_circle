@@ -95,7 +95,8 @@ function minuteOfSamples(m: number, rand: () => number): Sample[] {
 
 const clamp = (v: number) => Math.max(-SENSOR_RANGE, Math.min(SENSOR_RANGE, v));
 
-export function buildNoResponseScenario() {
+/** voiceCall: false stops at the simulated dispatch, before the call, so a live agent can place it. */
+export function buildNoResponseScenario(opts: { voiceCall?: boolean } = {}) {
   const clock = new ManualClock(FIXTURE_START_MS);
   const timeline = new Timeline({ sessionId: FIXTURE_SESSION_ID, clock, ids: new SequentialIds() });
   const rawLines: string[] = [];
@@ -318,26 +319,30 @@ export function buildNoResponseScenario() {
     caused_by: [step3.event_id],
     data: { mock_endpoint_id: MOCK_OPERATOR_ENDPOINT_ID, escalation_id: "esc_0001", delivered_fact_event_ids: delivered },
   });
-  advanceTo(at(244, 5));
-  const call = timeline.append({
-    ...scope,
-    type: "voice.call_started",
-    actor: { kind: "voice_agent", id: null },
-    provenance: prov("voice_agent", true),
-    caused_by: [step3.event_id],
-    data: { call_id: "call_0001", mock_endpoint_id: MOCK_OPERATOR_ENDPOINT_ID },
-  });
-  const say = (turn: number, speaker: "voice_agent" | "mock_operator", text: string, grounding: string[]) =>
-    timeline.append({
+  // ── 00:04:05 The example call (left out for a live agent). ─────────────
+  let call: TimelineEvent<"voice.call_started"> | undefined;
+  if (opts.voiceCall !== false) {
+    advanceTo(at(244, 5));
+    call = timeline.append({
       ...scope,
-      type: "voice.utterance",
-      actor: { kind: speaker, id: null },
+      type: "voice.call_started",
+      actor: { kind: "voice_agent", id: null },
       provenance: prov("voice_agent", true),
-      data: { call_id: "call_0001", turn_index: turn, speaker, text, grounding_event_ids: grounding, interrupted: false },
+      caused_by: [step3.event_id],
+      data: { call_id: "call_0001", mock_endpoint_id: MOCK_OPERATOR_ENDPOINT_ID },
     });
-  say(0, "voice_agent", "This is an automated assistant from the YTC safety system. This is a simulated call.", [call.event_id]);
-  advanceTo(at(244, 10));
-  say(1, "mock_operator", "Go ahead. What is the situation?", []);
+    const say = (turn: number, speaker: "voice_agent" | "mock_operator", text: string, grounding: string[]) =>
+      timeline.append({
+        ...scope,
+        type: "voice.utterance",
+        actor: { kind: speaker, id: null },
+        provenance: prov("voice_agent", true),
+        data: { call_id: "call_0001", turn_index: turn, speaker, text, grounding_event_ids: grounding, interrupted: false },
+      });
+    say(0, "voice_agent", "This is an automated assistant from the YTC safety system. This is a simulated call.", [call.event_id]);
+    advanceTo(at(244, 10));
+    say(1, "mock_operator", "Go ahead. What is the situation?", []);
+  }
 
   const pick = <T extends EventType>(type: T) => timeline.events.filter((e): e is TimelineEvent<T> => e.type === type);
   return {

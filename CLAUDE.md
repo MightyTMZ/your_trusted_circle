@@ -82,6 +82,12 @@ Keep these components separate:
 - Voice-agent adapter.
 - User interface.
 
+The voice-agent escalation runs on the same server as the YTC
+backend: one Node process serves the backend API and the call
+routes (`src/server/`), so the agent reads and appends to the
+incident timeline directly. It is still a separate module
+(`src/agent/`), not mixed into other components.
+
 Use one injectable clock for all deadlines.
 Scenario scripts provide inputs; they must not force detector outputs.
 Recipients may use only information actually delivered to them.
