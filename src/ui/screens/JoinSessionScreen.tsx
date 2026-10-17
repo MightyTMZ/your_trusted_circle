@@ -30,7 +30,7 @@ export function JoinSessionScreen({ code }: { code: string }) {
       <div className="screen">
         <div className="narrow">
           <ScreenHeader title="Join session" onBack={() => go({ name: 'home' })} />
-          <div className="glass card stack" style={{ gap: 8 }}>
+          <div className="surface card stack" style={{ gap: 8 }}>
             <h2 className="t-card">This session isn't available</h2>
             <p className="t-sub">It may have ended or expired. Ask the host for a new QR code.</p>
           </div>
@@ -58,8 +58,8 @@ export function JoinSessionScreen({ code }: { code: string }) {
           right={<span className="t-sub num">{`${step} of 2`}</span>}
         />
         <StepBar step={step} total={2} />
-        <section className="glass card rise" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span className="av glass-2">{initials(host?.displayName ?? '?')}</span>
+        <section className="surface card rise" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span className="av fill">{initials(host?.displayName ?? '?')}</span>
           <span className="stack grow">
             <span className="t-card">{session.name}</span>
             <span className="t-sub">Hosted by {host?.displayName} · Stays sober and gets alerts first</span>

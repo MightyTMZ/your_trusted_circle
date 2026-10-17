@@ -76,17 +76,17 @@ export function HostSetupScreen() {
         {step === 2 && (
           <div className="narrow rise" key="s2">
             <h2 className="t-title">{COPY.hostCommitmentTitle}</h2>
-            <ul className="glass card card-list">
+            <ul className="surface card card-list">
               {COPY.hostCommitmentPoints.map((p) => (
                 <li key={p} className="row">
-                  <span className="av av-sm glass-2">
+                  <span className="av av-sm fill">
                     <Icon name="check" size={16} />
                   </span>
                   <span className="t-body">{p}</span>
                 </li>
               ))}
             </ul>
-            <div className="glass card card-list">
+            <div className="surface card card-list">
               <ToggleRow label={COPY.hostCommitmentCheck} checked={commitment} onChange={setCommitment} />
             </div>
           </div>
@@ -103,7 +103,7 @@ export function HostSetupScreen() {
           <div className="narrow rise" key="s4">
             <h2 className="t-title">If something happens</h2>
             <ParticipantConsentFields value={host} onChange={setHost} checkInWindowSec={cfg.checkInWindowSec} forHost part="responders" />
-            <div className="glass card card-list">
+            <div className="surface card card-list">
               <button type="button" className="btn lrow" aria-expanded={showTiming} onClick={() => setShowTiming(!showTiming)}>
                 <span className="stack grow">
                   <span className="t-name">Escalation timing</span>

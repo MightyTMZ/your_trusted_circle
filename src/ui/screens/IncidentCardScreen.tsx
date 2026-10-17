@@ -54,7 +54,7 @@ export function IncidentCardScreen({ incidentId }: { incidentId: string }) {
       <ScreenHeader title="Incident card" onBack={() => go({ name: 'alert', id: incidentId })} backLabel="Back to alert" />
       <div className="cols">
         <div className="col">
-          <section className="glass card rise" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 16px 20px' }}>
+          <section className="surface card rise" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 16px 20px' }}>
             <div className="spread">
               <span className="stack">
                 <h2 className="t-card">{card.participantName}</h2>
@@ -73,7 +73,7 @@ export function IncidentCardScreen({ incidentId }: { incidentId: string }) {
             />
           </section>
 
-          <section className="glass card card-list rise rise-2" aria-labelledby="facts-h">
+          <section className="surface card card-list rise rise-2" aria-labelledby="facts-h">
             <div className="card-head">
               <h2 className="t-card" id="facts-h">
                 Facts
@@ -129,7 +129,7 @@ export function IncidentCardScreen({ incidentId }: { incidentId: string }) {
         </div>
 
         <div className="col">
-          <section className="glass card rise rise-3" aria-labelledby="tl-h">
+          <section className="surface card rise rise-3" aria-labelledby="tl-h">
             <h2 className="t-card" id="tl-h" style={{ paddingBottom: 12 }}>
               Observed events
             </h2>
@@ -144,7 +144,7 @@ export function IncidentCardScreen({ incidentId }: { incidentId: string }) {
           </ul>
           <button
             type="button"
-            className="btn pbtn glass"
+            className="btn pbtn fill"
             onClick={async () => {
               try {
                 await navigator.clipboard.writeText(cardAsText(card));

@@ -44,18 +44,18 @@ export function ActiveSessionBar() {
   };
   return (
     <>
-      <div className="glass session-bar" role="status" aria-live="polite">
+      <div className="material session-bar" role="status" aria-live="polite">
         <span className={`dot ${ended ? '' : suspended ? 'hollow' : 'live'}`} aria-hidden="true" />
         <div className="meta">
           <div className="line1">{line1}</div>
           <div className="line2 num">{line2}</div>
         </div>
         {ended ? (
-          <button type="button" className="btn chip glass-2" onClick={() => setViewer(null)}>
+          <button type="button" className="btn chip fill" onClick={() => setViewer(null)}>
             Done
           </button>
         ) : (
-          <button type="button" className="btn ibtn ibtn-sm glass-2" aria-label={isHost ? 'End session' : COPY.leaveSession} onClick={() => setConfirming(true)}>
+          <button type="button" className="btn ibtn ibtn-sm fill" aria-label={isHost ? 'End session' : COPY.leaveSession} onClick={() => setConfirming(true)}>
             <Icon name="logOut" />
           </button>
         )}
@@ -72,7 +72,7 @@ export function ActiveSessionBar() {
           <button type="button" className="btn pbtn on-accent" onClick={onLeave}>
             {isHost ? 'End session' : COPY.leaveSession}
           </button>
-          <button type="button" className="btn pbtn glass" onClick={() => setConfirming(false)}>
+          <button type="button" className="btn pbtn fill" onClick={() => setConfirming(false)}>
             Stay
           </button>
         </Sheet>

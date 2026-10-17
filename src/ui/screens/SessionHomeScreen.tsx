@@ -36,13 +36,13 @@ function AlertCard({ incident, now }: { incident: Incident; now: number }) {
       : `Resolved ${fmtTime(incident.resolution!.at)}`;
   const title = incident.trigger === 'help_requested' ? `${p.displayName} asked for help` : `${COPY.movementChanged} · ${p.displayName}`;
   return (
-    <section className="glass card rise" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-      <span className={`av num ${open ? 'on-accent' : 'glass-2'}`}>{initials(p.displayName)}</span>
+    <section className="surface card rise" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <span className={`av num ${open ? 'on-accent' : 'fill'}`}>{initials(p.displayName)}</span>
       <span className="stack grow">
         <h2 className="t-card">{title}</h2>
         <span className="t-sub num">{status}</span>
       </span>
-      <button type="button" className="btn ibtn glass-2" aria-label={`Open alert: ${title}`} onClick={() => go({ name: 'alert', id: incident.id })}>
+      <button type="button" className="btn ibtn fill" aria-label={`Open alert: ${title}`} onClick={() => go({ name: 'alert', id: incident.id })}>
         <Icon name="arrowUpRight" />
       </button>
     </section>
@@ -70,7 +70,7 @@ function PersonRow({ subject, viewer, now, alerting }: { subject: Participant; v
     );
   return (
     <li className="row" style={{ alignItems: 'flex-start' }}>
-      <span className={`av num ${alerting ? 'on-accent' : 'glass-2'}`}>{initials(subject.displayName)}</span>
+      <span className={`av num ${alerting ? 'on-accent' : 'fill'}`}>{initials(subject.displayName)}</span>
       <span className="stack grow" style={{ gap: 4 }}>
         <span className="inline">
           <span className="t-name">{subject.id === viewer.id ? `${subject.displayName} (you)` : subject.displayName}</span>
@@ -101,7 +101,7 @@ function CheckInStatus({ me }: { me: Participant }) {
           ? `Baseline set at ${fmtTime(b.calibratedAt!)} · typical ${b.mean!.toFixed(2)} ± ${b.std!.toFixed(2)} m/s²`
           : 'No baseline yet.';
   return (
-    <section className="glass card card-list rise rise-4">
+    <section className="surface card card-list rise rise-4">
       <button type="button" className="btn lrow" onClick={() => go({ name: 'sharing' })}>
         <span className="stack grow">
           <span className="t-name">Your check-ins</span>
@@ -183,12 +183,12 @@ export function SessionHomeScreen() {
   return (
     <div className="screen">
       <header className="header">
-        <span className="logo glass phone-only" role="img" aria-label="YTC">
+        <span className="logo fill phone-only" role="img" aria-label="YTC">
           YTC
         </span>
         <h1 className="t-title grow">{session.name}</h1>
         {isHost && (
-          <button type="button" className="btn ibtn glass" aria-label="Show QR code" onClick={() => go({ name: 'invite' })}>
+          <button type="button" className="btn ibtn fill" aria-label="Show QR code" onClick={() => go({ name: 'invite' })}>
             <Icon name="qr" />
           </button>
         )}
@@ -196,7 +196,7 @@ export function SessionHomeScreen() {
       </header>
 
       {myIncident && (
-        <section className="glass card stack rise" style={{ gap: 12 }}>
+        <section className="surface card stack rise" style={{ gap: 12 }}>
           <h2 className="t-card">An alert about you is open</h2>
           <p className="t-sub num">
             {myIncident.acknowledged
@@ -204,7 +204,7 @@ export function SessionHomeScreen() {
               : `${firstContact[0].toUpperCase()}${firstContact.slice(1)} ${isHost ? 'were' : 'was'} alerted at ${fmtTime(myIncident.openedAt)}.`}{' '}
             Only a recipient can resolve it.
           </p>
-          <button type="button" className="btn pbtn glass" onClick={() => run((d, t) => participantUpdate(d, viewer.id, t))}>
+          <button type="button" className="btn pbtn fill" onClick={() => run((d, t) => participantUpdate(d, viewer.id, t))}>
             Tell responders I'm OK
           </button>
           <span className="t-cap">Adds to the alert's record. It does not close the alert.</span>
@@ -212,7 +212,7 @@ export function SessionHomeScreen() {
       )}
 
       {trackingActive && motionPerm === 'prompt' && (
-        <section className="glass card stack rise" style={{ gap: 8 }}>
+        <section className="surface card stack rise" style={{ gap: 8 }}>
           <h2 className="t-card">Motion sensor needed</h2>
           <p className="t-sub">Allow access so check-ins can work. Your phone's motion data stays private and is only used to notice unusual movement changes.</p>
           <button type="button" className="btn pbtn on-accent" onClick={requestMotion}>
@@ -221,7 +221,7 @@ export function SessionHomeScreen() {
         </section>
       )}
       {trackingActive && motionPerm === 'denied' && (
-        <section className="glass card stack rise" style={{ gap: 8 }}>
+        <section className="surface card stack rise" style={{ gap: 8 }}>
           <p className="t-sub">Motion sensor access was denied. Check-ins based on movement won't work. You can change this in your browser settings.</p>
         </section>
       )}
@@ -229,10 +229,10 @@ export function SessionHomeScreen() {
       <div className="cols">
         <div className="col">
           {isHost && alerts.map((i) => <AlertCard key={i.id} incident={i} now={now} />)}
-          <section className="glass card rise rise-2" style={{ padding: 8 }} aria-label="Group map">
+          <section className="surface card rise rise-2" style={{ padding: 8 }} aria-label="Group map">
             <div style={{ position: 'relative' }}>
               <GroupMap viewer={viewer} now={now} alerting={alerting} />
-              <span className="glass chip map-chip num">
+              <span className="material chip map-chip num">
                 {sharingCount} of {people.length} sharing
               </span>
             </div>
@@ -245,17 +245,17 @@ export function SessionHomeScreen() {
                 {isHost && (
                   <span className="inline">
                     {session.status === 'active' ? (
-                      <button type="button" className="btn chip glass-2" onClick={() => run((d, t) => suspendSession(d, viewer.id, t))}>
+                      <button type="button" className="btn chip fill" onClick={() => run((d, t) => suspendSession(d, viewer.id, t))}>
                         <Icon name="pause" />
                         Suspend
                       </button>
                     ) : (
-                      <button type="button" className="btn chip glass-2" onClick={() => run((d) => resumeSession(d, viewer.id))}>
+                      <button type="button" className="btn chip fill" onClick={() => run((d) => resumeSession(d, viewer.id))}>
                         <Icon name="play" />
                         Resume
                       </button>
                     )}
-                    <button type="button" className="btn chip glass-2" onClick={() => setSheet('end')}>
+                    <button type="button" className="btn chip fill" onClick={() => setSheet('end')}>
                       End
                     </button>
                   </span>
@@ -276,7 +276,7 @@ export function SessionHomeScreen() {
         </div>
 
         <div className="col">
-          <section className="glass card card-list rise rise-3" aria-labelledby="people-h">
+          <section className="surface card card-list rise rise-3" aria-labelledby="people-h">
             <div className="card-head">
               <h2 className="t-card" id="people-h">
                 People
@@ -306,7 +306,7 @@ export function SessionHomeScreen() {
           >
             End session
           </button>
-          <button type="button" className="btn pbtn glass" onClick={() => setSheet(null)}>
+          <button type="button" className="btn pbtn fill" onClick={() => setSheet(null)}>
             Cancel
           </button>
         </Sheet>

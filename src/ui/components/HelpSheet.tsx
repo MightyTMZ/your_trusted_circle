@@ -46,7 +46,7 @@ export function HelpSheet({ onClose }: { onClose(): void }) {
       >
         Send alert
       </button>
-      <button type="button" className="btn pbtn glass" onClick={onClose}>
+      <button type="button" className="btn pbtn fill" onClick={onClose}>
         Cancel
       </button>
     </Sheet>

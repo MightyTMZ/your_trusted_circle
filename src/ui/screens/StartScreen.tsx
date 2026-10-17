@@ -21,21 +21,21 @@ export function StartScreen() {
     <div className="screen">
       <div className="narrow">
         <div className="spread">
-          <div className="logo glass" role="img" aria-label="YTC" style={{ width: 56, height: 56, fontSize: 12 }}>
+          <div className="logo fill" role="img" aria-label="YTC" style={{ width: 56, height: 56, fontSize: 12 }}>
             YTC
           </div>
           <span className="inline">
             {account ? (
-              <button type="button" className="btn chip glass" onClick={() => go({ name: 'settings' })} style={{ gap: 8 }}>
+              <button type="button" className="btn chip fill" onClick={() => go({ name: 'settings' })} style={{ gap: 8 }}>
                 <Avatar name={account.displayName} src={account.avatar} size={24} />
                 {account.displayName}
               </button>
             ) : (
-              <button type="button" className="btn chip glass" onClick={() => go({ name: 'signin' })}>
+              <button type="button" className="btn chip fill" onClick={() => go({ name: 'signin' })}>
                 Sign in
               </button>
             )}
-            <button type="button" className="btn ibtn glass" aria-label="Settings" onClick={() => go({ name: 'settings' })}>
+            <button type="button" className="btn ibtn fill" aria-label="Settings" onClick={() => go({ name: 'settings' })}>
               <Icon name="settings" />
             </button>
           </span>
@@ -49,7 +49,7 @@ export function StartScreen() {
           <button type="button" className="btn pbtn on-accent" onClick={() => go({ name: 'host-setup' })}>
             Host a session
           </button>
-          <div className="glass inputbar">
+          <div className="fill inputbar">
             <label htmlFor="code" className="sr-only">
               Join code
             </label>
@@ -66,7 +66,7 @@ export function StartScreen() {
               }}
               onKeyDown={(e) => e.key === 'Enter' && ready && join()}
             />
-            <button type="button" className={`btn ibtn ${ready ? 'on-accent' : 'glass-2'}`} aria-label="Join session" disabled={!ready} onClick={join}>
+            <button type="button" className={`btn ibtn ${ready ? 'on-accent' : 'fill'}`} aria-label="Join session" disabled={!ready} onClick={join}>
               <Icon name="arrowRight" />
             </button>
           </div>

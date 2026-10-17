@@ -30,7 +30,7 @@ export function SignInScreen() {
       <div className="narrow">
         <ScreenHeader title="Sign in" onBack={() => { setPendingJoinCode(null); go({ name: 'home' }); }} />
         <div className="stack rise" style={{ gap: 8 }}>
-          <div className="logo glass" role="img" aria-label="YTC" style={{ width: 56, height: 56, fontSize: 12, marginBottom: 16 }}>
+          <div className="logo fill" role="img" aria-label="YTC" style={{ width: 56, height: 56, fontSize: 12, marginBottom: 16 }}>
             YTC
           </div>
           <h2 className="t-display">Sign in or create an account</h2>
@@ -58,7 +58,7 @@ export function SignInScreen() {
           {shown.map((p) => (
             <a
               key={p}
-              className="btn pbtn glass"
+              className="btn pbtn fill"
               href={unavailable || providers === undefined ? undefined : signInUrl(p, returnTo)}
               aria-disabled={unavailable || providers === undefined}
               style={unavailable || providers === undefined ? { opacity: 0.4, pointerEvents: 'none' } : { textDecoration: 'none' }}

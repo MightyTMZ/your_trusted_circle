@@ -36,7 +36,7 @@ function download(name: string, data: unknown) {
 function Row({ icon, label, sub, onClick, href }: { icon: IconName; label: string; sub?: string; onClick?: () => void; href?: string }) {
   const body = (
     <>
-      <span className="av glass-2">
+      <span className="av fill">
         <Icon name={icon} />
       </span>
       <span className="stack grow">
@@ -111,12 +111,12 @@ export function SettingsScreen() {
         {/* On phones Settings opens from a header gear, so it always offers a way back. */}
         <ScreenHeader title="Settings" onBack={() => go({ name: 'home' })} />
 
-        <section className="glass card rise" aria-label="Profile" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <section className="surface card rise" aria-label="Profile" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div className="header">
             {profileName ? (
               <Avatar name={profileName} src={account?.avatar} size={56} />
             ) : (
-              <span className="av glass-2" style={{ width: 56, height: 56 }}>
+              <span className="av fill" style={{ width: 56, height: 56 }}>
                 <Icon name="user" />
               </span>
             )}
@@ -125,7 +125,7 @@ export function SettingsScreen() {
               <span className="t-sub">{profileSub}</span>
             </span>
             {account === null && (
-              <button type="button" className="btn chip glass-2" onClick={() => go({ name: 'signin' })}>
+              <button type="button" className="btn chip fill" onClick={() => go({ name: 'signin' })}>
                 Sign in
               </button>
             )}
@@ -145,12 +145,12 @@ export function SettingsScreen() {
                   if (file) void changePhoto(file);
                 }}
               />
-              <button type="button" className="btn chip glass-2" disabled={saving} onClick={() => fileInput.current?.click()}>
+              <button type="button" className="btn chip fill" disabled={saving} onClick={() => fileInput.current?.click()}>
                 <Icon name="camera" />
                 {account.avatar ? 'Change photo' : 'Add photo'}
               </button>
               {account.avatar && (
-                <button type="button" className="btn chip glass-2" disabled={saving} onClick={() => void savePhoto(null)}>
+                <button type="button" className="btn chip fill" disabled={saving} onClick={() => void savePhoto(null)}>
                   Remove
                 </button>
               )}
@@ -179,7 +179,7 @@ export function SettingsScreen() {
                 onClick={() => pick(t.id)}
               >
                 <span className="tp" data-theme={t.id} aria-hidden="true">
-                  <span className="glass tp-bar">
+                  <span className="material tp-bar">
                     <span className="tp-dot" />
                     <span className="tp-line" />
                   </span>
@@ -199,7 +199,7 @@ export function SettingsScreen() {
           <h2 className="lbl" id="data-h">
             Your data
           </h2>
-          <div className="glass card card-list">
+          <div className="surface card card-list">
             {account ? (
               <Row icon="download" label="Download a copy of your data" href={EXPORT_URL} />
             ) : (
@@ -224,7 +224,7 @@ export function SettingsScreen() {
           <h2 className="lbl" id="account-h">
             Account
           </h2>
-          <div className="glass card card-list">
+          <div className="surface card card-list">
             {account ? (
               <>
                 <Row icon="logOut" label="Sign out" onClick={() => setSheet('signout')} />
@@ -244,7 +244,7 @@ export function SettingsScreen() {
           <p className="t-lead">Removes every session, check-in and alert stored in this browser. You'll leave any session you're in.</p>
           <button
             type="button"
-            className="btn pbtn glass"
+            className="btn pbtn fill"
             onClick={() => {
               store.dispatch((d) => void Object.assign(d, emptyState()));
               setViewer(null);
@@ -255,7 +255,7 @@ export function SettingsScreen() {
           >
             Delete data
           </button>
-          <button type="button" className="btn pbtn glass" onClick={close}>
+          <button type="button" className="btn pbtn fill" onClick={close}>
             Cancel
           </button>
         </Sheet>
@@ -282,7 +282,7 @@ export function SettingsScreen() {
               {error}
             </p>
           )}
-          <button type="button" className="btn pbtn glass" onClick={close}>
+          <button type="button" className="btn pbtn fill" onClick={close}>
             Cancel
           </button>
         </Sheet>
@@ -307,7 +307,7 @@ export function SettingsScreen() {
           )}
           <button
             type="button"
-            className="btn pbtn glass"
+            className="btn pbtn fill"
             disabled={confirmText !== 'DELETE'}
             onClick={async () => {
               if (await deleteAccount()) {
@@ -319,7 +319,7 @@ export function SettingsScreen() {
           >
             Delete account
           </button>
-          <button type="button" className="btn pbtn glass" onClick={close}>
+          <button type="button" className="btn pbtn fill" onClick={close}>
             Cancel
           </button>
         </Sheet>

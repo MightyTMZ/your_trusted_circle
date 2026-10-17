@@ -60,7 +60,7 @@ export function useNav(): Nav | null {
     });
   }
   items.push(
-    { key: 'sharing', label: 'Your sharing', icon: 'mapPin', on: route.name === 'sharing', badge: false, go: () => go({ name: 'sharing' }) },
+    { key: 'sharing', label: 'Sharing', icon: 'mapPin', on: route.name === 'sharing', badge: false, go: () => go({ name: 'sharing' }) },
     { key: 'settings', label: 'Settings', icon: 'settings', on: route.name === 'settings', badge: false, go: () => go({ name: 'settings' }) },
   );
   return { items, canAskForHelp: !mine };
@@ -70,54 +70,55 @@ export function useNavItems(): NavItem[] | null {
   return useNav()?.items ?? null;
 }
 
-function Slot({ item }: { item: NavItem }) {
+/** A tab (phone) or sidebar row (tablet and desktop): icon plus a visible label. */
+function Slot({ item, variant }: { item: NavItem; variant: 'rail' | 'bottom' }) {
   return (
     <button
       type="button"
-      className={`btn slot ${item.on ? 'is-on' : ''}`}
-      aria-label={item.label}
+      className={`btn ${variant === 'bottom' ? 'tab' : 'side-item'} ${item.on ? 'is-on' : ''}`}
       aria-current={item.on ? 'page' : undefined}
       onClick={item.go}
     >
-      <Icon name={item.icon} />
-      {item.badge && <span className="badge" aria-hidden="true" />}
-    </button>
-  );
-}
-
-function HelpSlot({ onClick }: { onClick(): void }) {
-  return (
-    <button type="button" className="btn slot slot-help" aria-label={COPY.checkInHelp} title={COPY.checkInHelp} onClick={onClick}>
-      <Icon name="lifeBuoy" />
+      <span className="slot-ic">
+        <Icon name={item.icon} />
+        {item.badge && <span className="badge" aria-hidden="true" />}
+      </span>
+      <span className="slot-label">{item.label}</span>
     </button>
   );
 }
 
 /**
- * Floating pill at the bottom on phones; a vertical rail on tablet and desktop.
- * "I need help" is the first slot (far left, or top of the rail), so it is one
- * tap away on every in-session screen without a button floating over content.
+ * Tab bar on phones (with the help button beside it, not inside it: tabs
+ * navigate, help acts), a labelled sidebar on tablet and desktop. Help stays
+ * one tap away on every in-session screen.
  */
 export function AppNav({ variant }: { variant: 'rail' | 'bottom' }) {
   const nav = useNav();
   const [helpOpen, setHelpOpen] = useState(false);
   if (!nav) return null;
   const { items, canAskForHelp } = nav;
-  const help = canAskForHelp && <HelpSlot onClick={() => setHelpOpen(true)} />;
   const sheet = helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />;
+  const open = () => setHelpOpen(true);
 
   if (variant === 'bottom') {
     return (
       <>
-        <nav aria-label="Main" className="glass nav bottom-nav">
-          {help}
-          {/* Settings is a gear in the screen header on phones (SettingsButton). */}
-          {items
-            .filter((i) => i.key !== 'settings')
-            .map((i) => (
-              <Slot key={i.key} item={i} />
-            ))}
-        </nav>
+        <div className="tabbar-dock">
+          {canAskForHelp && (
+            <button type="button" className="btn material help-fab" aria-label={COPY.checkInHelp} title={COPY.checkInHelp} onClick={open}>
+              <Icon name="lifeBuoy" />
+            </button>
+          )}
+          <nav aria-label="Main" className="material tabbar">
+            {/* Settings is a gear in the screen header on phones (SettingsButton). */}
+            {items
+              .filter((i) => i.key !== 'settings')
+              .map((i) => (
+                <Slot key={i.key} item={i} variant="bottom" />
+              ))}
+          </nav>
+        </div>
         {sheet}
       </>
     );
@@ -126,18 +127,21 @@ export function AppNav({ variant }: { variant: 'rail' | 'bottom' }) {
   const settings = items.find((i) => i.key === 'settings');
   return (
     <div className="app-rail">
-      <nav aria-label="Main" className="glass nav nav-v">
-        <div className="logo glass-2" role="img" aria-label="YTC">
-          YTC
-        </div>
-        {help}
+      <nav aria-label="Main" className="material sidebar">
+        <div className="side-brand t-card">Your Trusted Companion</div>
+        {canAskForHelp && (
+          <button type="button" className="btn side-help" onClick={open}>
+            <Icon name="lifeBuoy" />
+            {COPY.checkInHelp}
+          </button>
+        )}
         {items
           .filter((i) => i.key !== 'settings')
           .map((i) => (
-            <Slot key={i.key} item={i} />
+            <Slot key={i.key} item={i} variant="rail" />
           ))}
         <div style={{ flex: 1 }} />
-        {settings && <Slot item={settings} />}
+        {settings && <Slot item={settings} variant="rail" />}
       </nav>
       {sheet}
     </div>
@@ -148,7 +152,7 @@ export function AppNav({ variant }: { variant: 'rail' | 'bottom' }) {
 export function SettingsButton() {
   const { go } = useApp();
   return (
-    <button type="button" className="btn ibtn glass phone-only" aria-label="Settings" onClick={() => go({ name: 'settings' })}>
+    <button type="button" className="btn ibtn fill phone-only" aria-label="Settings" onClick={() => go({ name: 'settings' })}>
       <Icon name="settings" />
     </button>
   );

@@ -40,7 +40,7 @@ export function GroupMap({ viewer, now, alerting }: { viewer: Participant; now: 
         return (
           <span
             key={p.id}
-            className={`av mark num ${hot ? 'on-accent' : live ? 'glass-2' : 'stale'}`}
+            className={`av mark num ${hot ? 'on-accent' : live ? 'fill' : 'stale'}`}
             style={{ left: `${pos(r.x)}%`, top: `${100 - pos(r.y)}%` }}
             aria-hidden="true"
           >

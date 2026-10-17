@@ -346,12 +346,12 @@ export function OperatorConsole() {
               <h1 className="t-title">Simulated emergency operator</h1>
               <p className="t-lead">You play the operator. The YTC voice agent calls about a synthetic incident and answers only from its record.</p>
             </div>
-            <a className="btn chip glass" href="#">
+            <a className="btn chip fill" href="#">
               Back to the app
             </a>
           </header>
 
-          <section className="glass card stack" style={{ gap: 6 }}>
+          <section className="surface card stack" style={{ gap: 6 }}>
             <span className="t-name">Simulated call</span>
             <p className="t-sub">No real emergency services or phone line are involved (simulated emergency services only). The incident, person and venue are synthetic.</p>
             <span className="t-cap num">
@@ -367,7 +367,7 @@ export function OperatorConsole() {
           )}
 
           {!call ? (
-            <section className="glass card stack op-start" style={{ gap: 16 }}>
+            <section className="surface card stack op-start" style={{ gap: 16 }}>
               <p className="t-body">
                 When you answer, the agent opens with a breakdown of the incident read from its record. Then ask follow-ups out loud (hold the
                 button or the space bar) or by typing.
@@ -379,7 +379,7 @@ export function OperatorConsole() {
           ) : (
             <div className="cols">
               <div className="col">
-                <section className="glass card" role="status">
+                <section className="surface card" role="status">
                   <span className="header" style={{ gap: 10 }}>
                     <span className={`dot ${dot}`} aria-hidden="true" />
                     <span className="t-name grow">{status}</span>
@@ -392,7 +392,7 @@ export function OperatorConsole() {
                     <Turn key={`${t.turn_index}-${t.speaker}`} turn={t} reply={replies[t.turn_index]} facts={call.facts} />
                   ))}
                   {phase === 'thinking' && (
-                    <li className="bubble glass-2 agent">
+                    <li className="bubble fill agent">
                       <span className="t-body">Checking the record…</span>
                     </li>
                   )}
@@ -403,7 +403,7 @@ export function OperatorConsole() {
                   {micReady && (
                     <button
                       type="button"
-                      className={`btn pbtn op-talk ${phase === 'listening' ? 'on-accent' : 'glass'}`}
+                      className={`btn pbtn op-talk ${phase === 'listening' ? 'on-accent' : 'fill'}`}
                       disabled={!live}
                       onPointerDown={(e) => {
                         e.currentTarget.setPointerCapture(e.pointerId);
@@ -417,7 +417,7 @@ export function OperatorConsole() {
                     </button>
                   )}
                   <form
-                    className="glass inputbar"
+                    className="fill inputbar"
                     onSubmit={(e) => {
                       e.preventDefault();
                       void sendText(text);
@@ -444,18 +444,18 @@ export function OperatorConsole() {
                     </button>
                   </form>
                   <div className="hscroll">
-                    <button type="button" className="btn chip glass" onClick={toggleVoice} disabled={!caps?.text_to_speech}>
+                    <button type="button" className="btn chip fill" onClick={toggleVoice} disabled={!caps?.text_to_speech}>
                       {voiceOn ? 'Mute voice' : 'Unmute voice'}
                     </button>
-                    <button type="button" className="btn chip glass" onClick={replay} disabled={!live || phase === 'thinking' || !voiceOn}>
+                    <button type="button" className="btn chip fill" onClick={replay} disabled={!live || phase === 'thinking' || !voiceOn}>
                       Replay last answer
                     </button>
                     {live ? (
-                      <button type="button" className="btn chip glass" onClick={endCall}>
+                      <button type="button" className="btn chip fill" onClick={endCall}>
                         End call
                       </button>
                     ) : (
-                      <button type="button" className="btn chip glass" onClick={startCall}>
+                      <button type="button" className="btn chip fill" onClick={startCall}>
                         New call
                       </button>
                     )}
@@ -464,7 +464,7 @@ export function OperatorConsole() {
               </div>
 
               <div className="col">
-                <section className="glass card stack" style={{ gap: 12 }}>
+                <section className="surface card stack" style={{ gap: 12 }}>
                   <span className="header">
                     <h2 className="t-card grow">Incident record</h2>
                     <span className="t-cap num">{call.facts.length} facts</span>
@@ -472,7 +472,7 @@ export function OperatorConsole() {
                   <p className="t-sub">Everything the agent may say. Highlighted: what its last answer cited.</p>
                   <FactList facts={call.facts} cited={cited} />
                 </section>
-                <section className="glass card stack" style={{ gap: 12 }}>
+                <section className="surface card stack" style={{ gap: 12 }}>
                   <span className="header">
                     <h2 className="t-card grow">Call log</h2>
                     <span className="t-cap num">
@@ -504,7 +504,7 @@ function Turn({ turn, reply, facts }: { turn: CallView['transcript'][number]; re
   const agent = turn.speaker === 'voice_agent';
   const sources = reply?.facts.length ? reply.facts : facts.filter((f) => reply?.fact_ids.includes(f.id));
   return (
-    <li className={`bubble ${agent ? 'glass-2 agent' : 'glass operator'}`}>
+    <li className={`bubble ${agent ? 'fill agent' : 'fill-2 operator'}`}>
       <span className="t-cap num">
         {agent ? 'YTC automated assistant' : 'You (operator)'} · {turn.at.slice(11, 16)} UTC
       </span>

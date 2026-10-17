@@ -65,7 +65,7 @@ export function ParticipantConsentFields({
           value={value.locationSharing}
           onChange={(o) => set('locationSharing', o)}
         />
-        <div className="glass card card-list">
+        <div className="surface card card-list">
           <ToggleRow
             label="Movement check-ins"
             sub={`You get a private check-in first. No answer within ${checkInWindowSec}s alerts ${forHost ? 'your backup contacts' : 'the host'}.`}
@@ -106,7 +106,7 @@ export function ParticipantConsentFields({
         {value.backupContacts.length < MAX_BACKUP_CONTACTS && (
           <button
             type="button"
-            className="btn chip glass"
+            className="btn chip fill"
             style={{ alignSelf: 'flex-start' }}
             onClick={() => set('backupContacts', [...value.backupContacts, { name: '', relation: '' }])}
           >
@@ -127,7 +127,7 @@ export function ParticipantConsentFields({
           onChange={(e) => set('emergencyNote', e.target.value)}
         />
       </div>
-      <div className="glass card card-list">
+      <div className="surface card card-list">
         <ToggleRow
           label="Share my last-known location with backup contacts and simulated emergency services during an alert"
           checked={value.shareLocationWithResponders}

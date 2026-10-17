@@ -30,7 +30,7 @@ export function EscalationLadder({ incident, now, showNames }: { incident: Incid
                 : 'Waiting';
         return (
           <li key={step.key} className="row">
-            <span className={`av av-sm num ${isCurrent ? 'on-accent' : 'glass-2'}`}>{i + 1}</span>
+            <span className={`av av-sm num ${isCurrent ? 'on-accent' : 'fill'}`}>{i + 1}</span>
             <span className="stack grow">
               <span className="t-name">{stepTitle(step)}</span>
               {names && <span className="t-sub">{names}</span>}

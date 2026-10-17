@@ -17,7 +17,7 @@ function groundLabel(g: string, incident: Incident): string {
 function Utterance({ u, incident }: { u: VoiceUtterance; incident: Incident }) {
   const agent = u.speaker === 'agent';
   return (
-    <li className={`bubble ${agent ? 'glass-2 agent' : 'glass operator'}`}>
+    <li className={`bubble ${agent ? 'fill agent' : 'fill-2 operator'}`}>
       <span className="t-cap num">
         {agent ? 'Automated assistant' : 'Mock operator'} · {fmtTime(u.at)}
       </span>
@@ -59,7 +59,7 @@ export function SimulatedEmergencyCallScreen({ incidentId }: { incidentId: strin
     <div className="screen">
       <div className="narrow">
         <ScreenHeader title={COPY.emergencySimulated} onBack={() => go({ name: 'alert', id: incidentId })} backLabel="Back to alert" />
-        <section className="glass card stack rise" role="status" style={{ gap: 8 }}>
+        <section className="surface card stack rise" role="status" style={{ gap: 8 }}>
           <span className="header" style={{ gap: 10 }}>
             <span className={`dot ${live ? 'live' : 'hollow'}`} aria-hidden="true" />
             <span className="t-name grow num">
@@ -82,12 +82,12 @@ export function SimulatedEmergencyCallScreen({ incidentId }: { incidentId: strin
           <span className="lbl">Play the mock operator</span>
           <div className="hscroll">
             {MOCK_OPERATOR_LINES.map((l) => (
-              <button key={l} type="button" className="btn chip glass" disabled={!live} onClick={() => say(l)}>
+              <button key={l} type="button" className="btn chip fill" disabled={!live} onClick={() => say(l)}>
                 {l}
               </button>
             ))}
           </div>
-          <div className="glass inputbar">
+          <div className="fill inputbar">
             <label htmlFor="op" className="sr-only">
               Operator question
             </label>
@@ -106,24 +106,24 @@ export function SimulatedEmergencyCallScreen({ incidentId }: { incidentId: strin
             </button>
           </div>
           <div className="tiles">
-            <button type="button" className="btn qtile glass" disabled={!live} onClick={() => store.dispatch((d, t) => operatorSilent(d, incidentId, t))}>
+            <button type="button" className="btn qtile fill" disabled={!live} onClick={() => store.dispatch((d, t) => operatorSilent(d, incidentId, t))}>
               <Icon name="micOff" />
               Operator silent
             </button>
             <button
               type="button"
-              className="btn qtile glass"
+              className="btn qtile fill"
               disabled={!live}
               onClick={() => store.dispatch((d, t) => disconnectCall(d, incidentId, 'disconnected', t))}
             >
               <Icon name="x" />
               Disconnect
             </button>
-            <button type="button" className="btn qtile glass" disabled={!live} onClick={() => store.dispatch((d, t) => disconnectCall(d, incidentId, 'failed', t))}>
+            <button type="button" className="btn qtile fill" disabled={!live} onClick={() => store.dispatch((d, t) => disconnectCall(d, incidentId, 'failed', t))}>
               <Icon name="alert" />
               Agent failure
             </button>
-            <button type="button" className="btn qtile glass" disabled={live} onClick={() => store.dispatch((d, t) => reconnectCall(d, incidentId, t))}>
+            <button type="button" className="btn qtile fill" disabled={live} onClick={() => store.dispatch((d, t) => reconnectCall(d, incidentId, t))}>
               <Icon name="rotate" />
               Reconnect
             </button>

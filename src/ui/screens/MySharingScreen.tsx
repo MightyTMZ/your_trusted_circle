@@ -30,7 +30,7 @@ export function MySharingScreen() {
             onChange={(o) => set({ locationSharing: o })}
           />
         </div>
-        <section className="glass card card-list rise rise-2" aria-label="Check-ins and responders">
+        <section className="surface card card-list rise rise-2" aria-label="Check-ins and responders">
           <ToggleRow
             label="Movement check-ins"
             sub={p.consent.motionMonitoring ? undefined : 'Off. Open alerts are not affected.'}
@@ -40,7 +40,7 @@ export function MySharingScreen() {
             {p.consent.motionMonitoring && (
               <button
                 type="button"
-                className="btn chip glass-2"
+                className="btn chip fill"
                 style={{ alignSelf: 'flex-start', marginTop: 8 }}
                 onClick={() => {
                   store.dispatch((d) => recalibrate(d, p.id, p.id));
@@ -63,7 +63,7 @@ export function MySharingScreen() {
             onChange={(v) => set({ shareNoteWithResponders: v })}
           />
         </section>
-        <section className="glass card card-list rise rise-3" aria-labelledby="backups-h">
+        <section className="surface card card-list rise rise-3" aria-labelledby="backups-h">
           <div className="card-head">
             <h2 className="t-card" id="backups-h">
               Backup contacts
@@ -75,7 +75,7 @@ export function MySharingScreen() {
             <ul>
               {p.backupContacts.map((c) => (
                 <li key={c.id} className="row">
-                  <span className="av glass-2">{initials(c.name)}</span>
+                  <span className="av fill">{initials(c.name)}</span>
                   <span className="t-name grow">{c.name}</span>
                   {c.relation && <span className="t-sub">{c.relation}</span>}
                 </li>

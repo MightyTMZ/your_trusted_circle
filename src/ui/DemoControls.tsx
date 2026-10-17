@@ -97,7 +97,7 @@ export function DemoControls() {
       <button
         ref={fab}
         type="button"
-        className={`btn glass demo-fab ${open ? 'is-open' : ''}`}
+        className={`btn material demo-fab ${open ? 'is-open' : ''}`}
         aria-expanded={open}
         aria-controls="demo-panel"
         aria-label={open ? 'Close demo controls' : 'Open demo controls (drag to move)'}
@@ -148,7 +148,7 @@ function DemoPanel({ style }: { style: CSSProperties }) {
   const advance = (ms: number) => store.dispatch((d) => void (d.clockOffsetMs += ms));
 
   return (
-    <aside id="demo-panel" className="glass demo" aria-label="Demo controls" style={style}>
+    <aside id="demo-panel" className="material demo" aria-label="Demo controls" style={style}>
       <div>
         <h3>Demo controls · simulation only</h3>
         <p className="t-cap">Presenter tools outside the app. Synthetic people, places, and sensor data.</p>
@@ -161,9 +161,9 @@ function DemoPanel({ style }: { style: CSSProperties }) {
           <span className="t-cap">offset +{Math.round(state.clockOffsetMs / 1000)}s</span>
         </div>
         <div className="btns">
-          <button className="btn chip glass-2" onClick={() => advance(15_000)}>+15s</button>
-          <button className="btn chip glass-2" onClick={() => advance(60_000)}>+1 min</button>
-          <button className="btn chip glass-2" onClick={() => advance(5 * 60_000)}>+5 min</button>
+          <button className="btn chip fill" onClick={() => advance(15_000)}>+15s</button>
+          <button className="btn chip fill" onClick={() => advance(60_000)}>+1 min</button>
+          <button className="btn chip fill" onClick={() => advance(5 * 60_000)}>+5 min</button>
         </div>
       </div>
 
@@ -194,7 +194,7 @@ function DemoPanel({ style }: { style: CSSProperties }) {
           {session.status !== 'ended' && (
             <div className="btns" style={{ marginTop: 8 }}>
               <button
-                className="btn chip glass-2"
+                className="btn chip fill"
                 onClick={() => {
                   setViewer(null);
                   go({ name: 'join', code: session.code });
@@ -202,7 +202,7 @@ function DemoPanel({ style }: { style: CSSProperties }) {
               >
                 Join as new person here
               </button>
-              <button className="btn chip glass-2" onClick={() => window.open(joinUrl(session.code), '_blank', 'noopener')}>
+              <button className="btn chip fill" onClick={() => window.open(joinUrl(session.code), '_blank', 'noopener')}>
                 Open join link in new tab
               </button>
             </div>
@@ -227,16 +227,16 @@ function DemoPanel({ style }: { style: CSSProperties }) {
           </p>
           <div className="btns">
             <button
-              className="btn chip glass-2"
+              className="btn chip fill"
               onClick={() => store.dispatch((d, t) => ingestMotion(d, target.id, typicalMovement(30, t)))}
             >
               Typical movement (30 s)
             </button>
-            <button className="btn chip glass-2" onClick={() => store.dispatch((d, t) => ingestMotion(d, target.id, suddenChange(t)))}>
+            <button className="btn chip fill" onClick={() => store.dispatch((d, t) => ingestMotion(d, target.id, suddenChange(t)))}>
               Sudden change (15 s)
             </button>
             <button
-              className="btn chip glass-2"
+              className="btn chip fill"
               onClick={() => store.dispatch((d, t) => setDeviceOnline(d, target.id, !target.device.online, t))}
             >
               {target.device.online ? 'Take phone offline' : 'Bring phone online'}
@@ -248,7 +248,7 @@ function DemoPanel({ style }: { style: CSSProperties }) {
       <div>
         <h3>Voice agent</h3>
         <div className="btns">
-          <a className="btn chip glass-2" href="#operator">
+          <a className="btn chip fill" href="#operator">
             Play the operator (live voice)
           </a>
         </div>
@@ -260,7 +260,7 @@ function DemoPanel({ style }: { style: CSSProperties }) {
       <div>
         <h3>Reset</h3>
         <button
-          className="btn chip glass-2"
+          className="btn chip fill"
           onClick={() => {
             if (!confirm('Clear all demo data in this browser?')) return;
             store.dispatch((d) => void Object.assign(d, emptyState()));

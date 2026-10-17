@@ -85,9 +85,9 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
       <ScreenHeader title="Alert" onBack={back} />
       <div className="cols">
         <div className="col">
-          <section className="glass card rise" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <section className="surface card rise" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div className="header">
-              <span className={`av num ${open ? 'on-accent' : 'glass-2'}`}>{initials(payload.participantName)}</span>
+              <span className={`av num ${open ? 'on-accent' : 'fill'}`}>{initials(payload.participantName)}</span>
               <span className="stack grow">
                 <h2 className="t-card">{title}</h2>
                 <span className="t-sub">{open ? 'Unacknowledged' : incident.status === 'acknowledged' ? 'Acknowledged' : 'Resolved'}</span>
@@ -116,12 +116,12 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
               <p className="t-sub center">{COPY.acknowledgeCaveat}</p>
               <div className="inline" style={{ justifyContent: 'center' }}>
                 {isHost && (
-                  <button type="button" className="btn chip glass" onClick={doRepeat}>
+                  <button type="button" className="btn chip fill" onClick={doRepeat}>
                     <Icon name="repeat" />
                     {COPY.repeatAlert}
                   </button>
                 )}
-                <button type="button" className="btn chip glass" onClick={() => go({ name: 'card', id: incident.id })}>
+                <button type="button" className="btn chip fill" onClick={() => go({ name: 'card', id: incident.id })}>
                   <Icon name="file" />
                   Incident card
                 </button>
@@ -133,13 +133,13 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
               )}
             </div>
           ) : (
-            <section className="glass card col rise rise-2" style={{ gap: 16 }}>
+            <section className="surface card col rise rise-2" style={{ gap: 16 }}>
               <p className="t-body num" role="status">
                 {COPY.acknowledgedNotice(incident.acknowledged!.name, fmtTime(incident.acknowledged!.at))}
               </p>
               {incident.status === 'resolved' ? (
                 <div className="header">
-                  <span className="av glass-2">
+                  <span className="av fill">
                     <Icon name="circleCheck" />
                   </span>
                   <p className="t-body num grow">
@@ -170,7 +170,7 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
                 </>
               )}
               <div className="inline" style={{ justifyContent: 'center' }}>
-                <button type="button" className="btn chip glass" onClick={() => go({ name: 'card', id: incident.id })}>
+                <button type="button" className="btn chip fill" onClick={() => go({ name: 'card', id: incident.id })}>
                   <Icon name="file" />
                   Incident card
                 </button>
@@ -178,14 +178,14 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
             </section>
           )}
           {callReached && (
-            <button type="button" className="btn pbtn glass" onClick={() => go({ name: 'call', id: incident.id })}>
+            <button type="button" className="btn pbtn fill" onClick={() => go({ name: 'call', id: incident.id })}>
               Simulated emergency call <SimulatedTag />
             </button>
           )}
         </div>
 
         <div className="col">
-          <section className="glass card card-list rise rise-3" aria-labelledby="esc-h">
+          <section className="surface card card-list rise rise-3" aria-labelledby="esc-h">
             <div className="card-head">
               <h2 className="t-card" id="esc-h">
                 Escalation
@@ -194,7 +194,7 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
             <EscalationLadder incident={incident} now={now} showNames={isHost} />
           </section>
 
-          <section className="glass card rise rise-4" aria-labelledby="loc-h" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <section className="surface card rise rise-4" aria-labelledby="loc-h" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <h2 className="t-card" id="loc-h">
               Last-known location
             </h2>
@@ -211,7 +211,7 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
           </section>
 
           {payload.emergencyNote && (
-            <section className="glass card stack rise rise-4" style={{ gap: 8 }}>
+            <section className="surface card stack rise rise-4" style={{ gap: 8 }}>
               <h2 className="t-card">Note they chose to share</h2>
               <p className="t-body">"{payload.emergencyNote}"</p>
             </section>
