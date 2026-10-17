@@ -29,6 +29,16 @@ export function groupBounds(points: Pt[]): { cx: number; cy: number; w: number; 
   return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, w: maxX - minX, h: maxY - minY };
 }
 
+/**
+ * Margin kept around the group, in CSS px: about 12% of the map's shorter
+ * side, so a small phone map doesn't lose most of its area to padding and a
+ * large monitor doesn't crowd the edges. Never less than an avatar's radius
+ * plus a little, so pins at the edge aren't clipped.
+ */
+export function fitPadding(width: number, height: number): number {
+  return clamp(Math.round(Math.min(width, height) * 0.12), 24, 72);
+}
+
 export interface PlotView {
   /** Centre in metres (same frame as the points). */
   cx: number;
@@ -42,7 +52,7 @@ export interface PlotView {
 
 /**
  * The view for a synthetic plot of `width`×`height` px. The group fits inside
- * `pad` px on every side (`padTop` at the top, where the map label sits); a lone person or a tight group shows at least
+ * `pad` px on every side (default: `fitPadding`; `padTop` at the top, where the map label sits); a lone person or a tight group shows at least
  * `minSpanM` metres across: phone GPS is only good to a few metres, so
  * zooming closer would show precision the data does not have.
  */
@@ -50,8 +60,10 @@ export function fitPlot(
   points: Pt[],
   width: number,
   height: number,
-  { pad = 36, padTop = 36, minSpanM = 10, maxSpanM = 2_000, emptySpanM = 120 }: { pad?: number; padTop?: number; minSpanM?: number; maxSpanM?: number; emptySpanM?: number } = {},
+  opts: { pad?: number; padTop?: number; minSpanM?: number; maxSpanM?: number; emptySpanM?: number } = {},
 ): PlotView {
+  const { pad = fitPadding(width, height), minSpanM = 10, maxSpanM = 2_000, emptySpanM = 120 } = opts;
+  const padTop = Math.max(pad, opts.padTop ?? pad);
   const b = groupBounds(points);
   const usableW = Math.max(1, width - 2 * pad);
   const usableH = Math.max(1, height - pad - padTop);
@@ -70,10 +82,18 @@ export function toPlotPx(p: Pt, view: PlotView): Pt {
 
 /**
  * The Google zoom level that fits a group spanning `spanXM` × `spanYM` metres
- * into a `width`×`height` px map with `pad` px margins, capped at `maxZoom`
+ * into a `width`×`height` px map with `pad` px margins (default: `fitPadding`), capped at `maxZoom`
  * (the deepest level the imagery has at that spot).
  */
-export function zoomForSpan(spanXM: number, spanYM: number, width: number, height: number, lat: number, maxZoom: number, pad = 48): number {
+export function zoomForSpan(
+  spanXM: number,
+  spanYM: number,
+  width: number,
+  height: number,
+  lat: number,
+  maxZoom: number,
+  pad = fitPadding(width, height),
+): number {
   const usableW = Math.max(1, width - 2 * pad);
   const usableH = Math.max(1, height - 2 * pad);
   // Metres per pixel needed so the span fits, on the tighter axis.

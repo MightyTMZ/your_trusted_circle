@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitPlot, groupBounds, spreadOverlaps, toPlotPx, worldPx, zoomForSpan } from '../src/ui/mapFit';
+import { fitPadding, fitPlot, groupBounds, spreadOverlaps, toPlotPx, worldPx, zoomForSpan } from '../src/ui/mapFit';
 
 describe('groupBounds', () => {
   it('centres on the midpoint of the bounding box, not the average', () => {
@@ -53,7 +53,20 @@ describe('fitPlot', () => {
   });
 });
 
+describe('fitPadding', () => {
+  it('scales the margin with the map, within limits', () => {
+    expect(fitPadding(320, 200)).toBe(24);
+    expect(fitPadding(600, 420)).toBe(50);
+    expect(fitPadding(2400, 1400)).toBe(72);
+  });
+});
+
 describe('zoomForSpan', () => {
+  it('zooms out further on a smaller map for the same group', () => {
+    const big = zoomForSpan(80, 50, 1600, 1000, 43.65, 21);
+    const small = zoomForSpan(80, 50, 320, 220, 43.65, 21);
+    expect(small).toBeLessThan(big);
+  });
   it('zooms closer for a smaller group, up to the imagery limit', () => {
     const wide = zoomForSpan(300, 200, 390, 280, 43.65, 21);
     const tight = zoomForSpan(6, 4, 390, 280, 43.65, 21);
