@@ -1,18 +1,20 @@
 /**
  * Documents stored by the backend in one MongoDB database (docs/YTC Grand
- * Architecture.png): users, auth_sessions, sessions, traces, checkins,
- * incidents, notification_jobs.
+ * Architecture.png): users, auth_sessions, sessions, traces, raw_recordings,
+ * checkins, incidents, notification_jobs, timeline_events, contact_invites.
  *
  * Deliberately absent: IP addresses, OAuth access/refresh tokens, and
  * location coordinates outside an active incident (lifecycle/location.ts).
  */
 
-export const PROVIDER_IDS = ["google", "github", "apple", "microsoft"] as const;
+import type { DataOrigin } from "../timeline/schema/envelope.js";
+
+export const PROVIDER_IDS = ["google", "apple", "microsoft"] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 export interface Identity {
   provider: ProviderId;
-  /** The provider's stable user id (OIDC `sub`, or GitHub's numeric id). */
+  /** The provider's stable user id (OIDC `sub`). */
   subject: string;
   linkedAt: Date;
 }
@@ -47,11 +49,16 @@ export interface ParticipantConsent {
   shareLocationWithResponders: boolean;
 }
 
-/** Synthetic people with no YTC account. Alerts to them go through the simulated transport. */
+/**
+ * Someone a participant wants alerted if their host doesn't respond. Without
+ * an account (userId null) alerts go through the simulated transport; once
+ * they accept an invite, alerts reach their YTC inbox and they can acknowledge.
+ */
 export interface BackupContact {
   id: string; // con_<uuid>
   name: string;
   relation: string;
+  userId: string | null;
 }
 
 export interface ParticipantDoc {
@@ -62,6 +69,9 @@ export interface ParticipantDoc {
   joinedAt: Date;
   leftAt: Date | null;
   consent: ParticipantConsent;
+  /** Which consent text the person agreed to, and when they last chose. The full history is in the timeline. */
+  consentTextVersion: string;
+  consentUpdatedAt: Date;
   backupContacts: BackupContact[];
   /** Last heartbeat from this participant's device. Missing heartbeats never cancel a deadline. */
   lastHeartbeatAt: Date | null;
@@ -93,6 +103,8 @@ export interface SessionDoc {
   createdAt: Date;
   expiresAt: Date;
   endedAt: Date | null;
+  /** Set while the host has paused the session: no new check-ins or live location; open alerts keep escalating. */
+  suspendedAt: Date | null;
   rules: SessionRules;
   participants: ParticipantDoc[];
 }
@@ -125,11 +137,15 @@ export type Recipient =
 export type EscalationLevel = "host" | "backup" | "emergency_simulated";
 
 export interface EscalationStep {
+  /** esc_<uuid>, the id timeline escalation events use for this step. */
+  escalationId: string;
   level: EscalationLevel;
   recipients: Recipient[];
   /** When this step fires if nobody has acknowledged. Set when the previous step is notified. */
   dueAt: Date | null;
   notifiedAt: Date | null;
+  /** Times this step was repeated. Repeats never move the deadline. */
+  repeats: number;
 }
 
 export interface IncidentLogEntry {
@@ -147,6 +163,9 @@ export interface IncidentDoc {
   participantId: string;
   trigger: "checkin_missed" | "help_requested";
   checkInId: string | null;
+  /** Timeline events: what triggered it, and the incident.opened event itself. */
+  triggerEventId: string | null;
+  openedEventId: string | null;
   openedAt: Date;
   status: IncidentStatus;
   /** `${sessionId}:${participantId}` while open or acknowledged, so a person has at most one active incident. */
@@ -162,6 +181,21 @@ export interface IncidentDoc {
 
 export type JobStatus = "queued" | "sending" | "delivered" | "failed" | "cancelled";
 
+/**
+ * Exactly what an alert told its recipient, frozen when it was sent.
+ * Recipients see this and nothing more (CLAUDE.md: recipients may use only
+ * information actually delivered to them).
+ */
+export interface AlertPayload {
+  about: string;
+  sessionName: string;
+  trigger: IncidentDoc["trigger"];
+  openedAt: Date;
+  message: string;
+  /** The timeline events this alert's facts come from. */
+  factEventIds: string[];
+}
+
 /** One alert to one recipient for one escalation step. `dedupeKey` is unique: never sent twice. */
 export interface NotificationJobDoc {
   _id: string; // ntf_<uuid>
@@ -170,7 +204,10 @@ export interface NotificationJobDoc {
   sessionId: string;
   stepIndex: number;
   level: EscalationLevel;
+  /** 0 for the first send, 1.. for repeats of the same step. */
+  repeat: number;
   recipient: Recipient;
+  payload: AlertPayload;
   /** The user this alert concerns, so account deletion can find it. */
   subjectUserId: string;
   status: JobStatus;
@@ -181,6 +218,8 @@ export interface NotificationJobDoc {
   results: { at: Date; ok: boolean; reason?: string }[];
   createdAt: Date;
   deliveredAt: Date | null;
+  /** First time the recipient opened it. Not an acknowledgment. */
+  viewedAt: Date | null;
   acknowledgedAt: Date | null;
 }
 
@@ -207,4 +246,28 @@ export interface TraceDoc {
   data: unknown;
   /** True when location fields were removed before storing. */
   locationRedacted: boolean;
+  /** For timeline events, the client's event_id: a resent event is stored once. */
+  eventId: string | null;
+  /** Optional client id for other items, for the same de-duplication. */
+  clientItemId: string | null;
+  /** Where the data came from; recorded and synthetic data are never mixed up (CLAUDE.md). */
+  dataOrigin: DataOrigin | null;
+  /** Sensor data only: raw samples (stored in raw_recordings) or derived features. */
+  dataClass: "raw" | "derived" | null;
+  units: string | null;
+  /** The server timeline event this was copied into, if any. */
+  timelineEventId: string | null;
+}
+
+export { DATA_ORIGINS, type DataOrigin } from "../timeline/schema/envelope.js";
+
+/** A link that lets a backup contact attach their own YTC account. Only the hash of the token is stored. */
+export interface ContactInviteDoc {
+  _id: string; // sha256 hex of the invite token
+  sessionId: string;
+  participantId: string;
+  contactId: string;
+  createdAt: Date;
+  expiresAt: Date;
+  acceptedByUserId: string | null;
 }

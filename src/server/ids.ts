@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
 
 /** Server-side ids. ses_/par_ match the timeline's id format (src/shared/ids.ts). */
-export const newId = (prefix: "usr" | "ses" | "par" | "trc" | "chk" | "inc" | "ntf" | "con") => `${prefix}_${randomUUID()}`;
+export const newId = (prefix: "usr" | "ses" | "par" | "trc" | "chk" | "inc" | "ntf" | "con" | "esc" | "call") => `${prefix}_${randomUUID()}`;
 
 /** No 0/O or 1/I, so codes read cleanly off a screen. Matches the client's #join=XXXXXX link. */
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

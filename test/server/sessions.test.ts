@@ -17,9 +17,9 @@ test("session creation validates input", async () => {
   const { app } = setup();
   const maya = await signIn(app, "maya");
   const consent = { monitoring: true, locationSharing: "group", shareLocationWithResponders: true };
-  assert.equal((await maya.call("POST", "/api/sessions", { name: "x", durationMin: 999, consent })).status, 400);
-  assert.equal((await maya.call("POST", "/api/sessions", { name: "", durationMin: 240, consent })).status, 400);
-  const extra = await maya.call("POST", "/api/sessions", { name: "x", durationMin: 240, consent, hostUserId: "usr_x" });
+  assert.equal((await maya.call("POST", "/api/sessions", { name: "x", durationMin: 999, consent, consentTextVersion: "consent-v1" })).status, 400);
+  assert.equal((await maya.call("POST", "/api/sessions", { name: "", durationMin: 240, consent, consentTextVersion: "consent-v1" })).status, 400);
+  const extra = await maya.call("POST", "/api/sessions", { name: "x", durationMin: 240, consent, consentTextVersion: "consent-v1", hostUserId: "usr_x" });
   assert.equal(extra.status, 400, "unknown fields are rejected");
 });
 
@@ -63,9 +63,9 @@ test("an unknown or expired code cannot be joined", async () => {
   const s = await hostSession(maya);
   const code = (await maya.call("GET", `/api/sessions/${s.id}`)).body.session.code as string;
   const consent = { monitoring: true, locationSharing: "off", shareLocationWithResponders: false };
-  assert.equal((await sam.call("POST", "/api/sessions/join", { code: "ZZZZZZ", consent })).status, 404);
+  assert.equal((await sam.call("POST", "/api/sessions/join", { code: "ZZZZZZ", consent, consentTextVersion: "consent-v1" })).status, 404);
   advance(5 * 60 * 60 * 1000);
-  assert.equal((await sam.call("POST", "/api/sessions/join", { code, consent })).status, 404);
+  assert.equal((await sam.call("POST", "/api/sessions/join", { code, consent, consentTextVersion: "consent-v1" })).status, 404);
 });
 
 test("joining needs a sign-in", async () => {
@@ -91,7 +91,7 @@ test("only the host sets rules; a full session refuses new people", async () => 
   assert.equal((await maya.call("PATCH", `/api/sessions/${s.id}/rules`, { maxParticipants: 2 })).status, 200);
 
   const consent = { monitoring: true, locationSharing: "group", shareLocationWithResponders: true };
-  const full = await jo.call("POST", "/api/sessions/join", { code, consent });
+  const full = await jo.call("POST", "/api/sessions/join", { code, consent, consentTextVersion: "consent-v1" });
   assert.equal(full.status, 409);
   assert.equal(full.body.error.code, "session_full");
 });
@@ -113,6 +113,7 @@ test("turning location off for the session overrides everyone's choice", async (
     monitoring: true,
     locationSharing: "group",
     shareLocationWithResponders: true,
+    consentTextVersion: "consent-v1",
   });
   assert.equal(res.body.session.me.consent.locationSharing, "off");
 });
@@ -128,6 +129,7 @@ test("each person changes only their own consent", async () => {
     monitoring: false,
     locationSharing: "off",
     shareLocationWithResponders: false,
+    consentTextVersion: "consent-v1",
   });
   const ps = store.sessions.get(s.id)!.participants;
   assert.equal(ps.find((p) => p.role === "participant")!.consent.monitoring, false);

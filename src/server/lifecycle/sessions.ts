@@ -11,6 +11,8 @@
  * PATCH /api/sessions/:id/me/consent     a participant changes their own sharing
  * POST  /api/sessions/:id/leave          a participant leaves
  * POST  /api/sessions/:id/end            host ends the session for everyone
+ * POST  /api/sessions/:id/suspend        host pauses check-ins and live location (alerts keep escalating)
+ * POST  /api/sessions/:id/resume         host resumes
  *
  * Consent is per person (CLAUDE.md): nobody, including the host, can change
  * another participant's sharing or monitoring.
@@ -22,12 +24,21 @@ import { activeParticipant, anyParticipant, isHost, isLive } from "../auth/authz
 import { requireAuth } from "../auth/session.js";
 import { fail, type AppEnv, type Deps } from "../context.js";
 import { newId, newJoinCode, normalizeJoinCode } from "../ids.js";
+import { recorder } from "../timeline/recorder.js";
 import type { ParticipantConsent, ParticipantDoc, SessionDoc, SessionRules, UserDoc } from "../types.js";
 
 const consentSchema = v.object({
   monitoring: v.boolean(),
   locationSharing: v.enum(["group", "host", "off"] as const),
   shareLocationWithResponders: v.boolean(),
+});
+/** Which consent text the person was shown. Recorded with every choice (the audit trail is the timeline). */
+const consentTextVersion = v.string({ minLength: 1, maxLength: 40 });
+const consentPatchSchema = v.object({
+  monitoring: v.boolean(),
+  locationSharing: v.enum(["group", "host", "off"] as const),
+  shareLocationWithResponders: v.boolean(),
+  consentTextVersion,
 });
 
 /** Synthetic names only in demos (CLAUDE.md). Two at most, as in the client. */
@@ -50,6 +61,7 @@ const createSchema = v.object({
   name: v.string({ minLength: 1, maxLength: 60 }),
   durationMin: v.number({ integer: true }),
   consent: consentSchema,
+  consentTextVersion,
   backupContacts: v.optional(backupContactsSchema),
   rules: v.optional(rulesPatchSchema),
 });
@@ -57,7 +69,10 @@ const createSchema = v.object({
 const joinSchema = v.object({
   code: v.string({ minLength: 6, maxLength: 12 }),
   consent: consentSchema,
+  consentTextVersion,
   backupContacts: v.optional(backupContactsSchema),
+  /** How the code arrived: typed or from a link ("code"), or scanned ("qr"). */
+  joinedVia: v.optional(v.enum(["code", "qr"] as const)),
 });
 
 type RulesPatch = Infer<typeof rulesPatchSchema>;
@@ -74,7 +89,14 @@ function mergeRules(base: SessionRules, patch: RulesPatch | undefined): SessionR
   return next;
 }
 
-function newParticipant(user: UserDoc, role: ParticipantDoc["role"], consent: ParticipantConsent, contacts: ContactsInput, now: Date): ParticipantDoc {
+function newParticipant(
+  user: UserDoc,
+  role: ParticipantDoc["role"],
+  consent: ParticipantConsent,
+  textVersion: string,
+  contacts: ContactsInput,
+  now: Date,
+): ParticipantDoc {
   return {
     participantId: newId("par"),
     userId: user._id,
@@ -83,7 +105,9 @@ function newParticipant(user: UserDoc, role: ParticipantDoc["role"], consent: Pa
     joinedAt: now,
     leftAt: null,
     consent,
-    backupContacts: (contacts ?? []).map((c) => ({ id: newId("con"), name: c.name.trim(), relation: c.relation.trim() })),
+    consentTextVersion: textVersion,
+    consentUpdatedAt: now,
+    backupContacts: (contacts ?? []).map((c) => ({ id: newId("con"), name: c.name.trim(), relation: c.relation.trim(), userId: null })),
     lastHeartbeatAt: now,
     deviceOnline: true,
   };
@@ -102,6 +126,7 @@ function sessionView(s: SessionDoc, viewer: UserDoc, now: Date) {
     id: s._id,
     name: s.name,
     status: isLive(s, now) ? "active" : s.status === "ended" ? "ended" : "expired",
+    suspended: s.suspendedAt !== null,
     endedReason: s.endedReason,
     createdAt: s.createdAt,
     expiresAt: s.expiresAt,
@@ -114,7 +139,9 @@ function sessionView(s: SessionDoc, viewer: UserDoc, now: Date) {
           joinedAt: me.joinedAt,
           leftAt: me.leftAt,
           consent: me.consent,
-          backupContacts: me.backupContacts.map((c) => ({ name: c.name, relation: c.relation })),
+          consentTextVersion: me.consentTextVersion,
+          consentUpdatedAt: me.consentUpdatedAt,
+          backupContacts: me.backupContacts.map((c) => ({ id: c.id, name: c.name, relation: c.relation, hasAccount: c.userId !== null })),
         }
       : null,
     participants: s.participants
@@ -134,6 +161,7 @@ function sessionView(s: SessionDoc, viewer: UserDoc, now: Date) {
 export function sessionRoutes(deps: Deps) {
   const r = new Hono<AppEnv>();
   r.use("*", requireAuth(deps));
+  const rec = recorder(deps);
   const joinUrl = (code: string) => `${deps.config.appOrigin}/#join=${code}`;
 
   async function uniqueCode(): Promise<string> {
@@ -178,10 +206,13 @@ export function sessionRoutes(deps: Deps) {
       createdAt: now,
       expiresAt: new Date(now.getTime() + input.durationMin * 60_000),
       endedAt: null,
+      suspendedAt: null,
       rules,
-      participants: [newParticipant(user, "host", capConsent(input.consent, rules), input.backupContacts, now)],
+      participants: [newParticipant(user, "host", capConsent(input.consent, rules), input.consentTextVersion, input.backupContacts, now)],
     };
     await deps.store.insertSession(session);
+    await rec.sessionCreated(session, session.participants[0]!);
+    await rec.joined(session, session.participants[0]!, "host_created");
     return c.json({ session: sessionView(session, user, now), joinUrl: joinUrl(session.code) }, 201);
   });
 
@@ -214,10 +245,11 @@ export function sessionRoutes(deps: Deps) {
     if (existing && existing.leftAt === null) return c.json({ session: sessionView(s, user, now) });
     if (existing) return fail(c, 409, "already_left", "You left this session. Ask the host for a new one.");
 
-    const participant = newParticipant(user, "participant", capConsent(input.consent, s.rules), input.backupContacts, now);
+    const participant = newParticipant(user, "participant", capConsent(input.consent, s.rules), input.consentTextVersion, input.backupContacts, now);
     if (!(await deps.store.addParticipant(s._id, participant, s.rules.maxParticipants))) {
       return fail(c, 409, "session_full", "This session is full.");
     }
+    await rec.joined(s, participant, input.joinedVia === "qr" ? "qr_code" : "invite_link");
     return c.json({ session: sessionView((await deps.store.getSession(s._id))!, user, now) }, 201);
   });
 
@@ -263,10 +295,13 @@ export function sessionRoutes(deps: Deps) {
     if (!s || !me) return fail(c, 404, "no_session", "You are not in this session.");
     if (!isLive(s, deps.now())) return fail(c, 409, "session_over", "This session has ended.");
     const body = await c.req.json().catch(() => undefined);
-    const issues = validate(consentSchema, body);
+    const issues = validate(consentPatchSchema, body);
     if (issues.length > 0) return fail(c, 400, "invalid_request", "Check your sharing choices.", issues);
-    const consent = capConsent(body as ParticipantConsent, s.rules);
-    await deps.store.setParticipantConsent(s._id, me.participantId, consent);
+    const { consentTextVersion: version, ...choice } = body as Infer<typeof consentPatchSchema>;
+    const consent = capConsent(choice, s.rules);
+    const now = deps.now();
+    await deps.store.updateParticipant(s._id, me.participantId, { consent, consentTextVersion: version, consentUpdatedAt: now });
+    await rec.consentChanged(s, { ...me, consentTextVersion: version }, me.consent, consent);
     // Stopping sharing takes effect now, not when the last fix expires.
     if (consent.locationSharing === "off") deps.relay.clearParticipant(s._id, me.participantId);
     return c.json({ session: sessionView((await deps.store.getSession(s._id))!, c.var.user, deps.now()) });
@@ -279,6 +314,7 @@ export function sessionRoutes(deps: Deps) {
     if (me.role === "host") return fail(c, 409, "host_must_end", "As host, end the session instead of leaving it.");
     await deps.store.updateParticipant(s._id, me.participantId, { leftAt: deps.now() });
     deps.relay.clearParticipant(s._id, me.participantId);
+    await rec.left(s, me, "voluntary");
     // Leaving stops new check-ins. An alert already open about you stays open for your host.
     await cancelPendingCheckIns(s._id, me.participantId, "participant_left");
     return c.body(null, 204);
@@ -290,10 +326,41 @@ export function sessionRoutes(deps: Deps) {
     if (!isHost(s, c.var.user._id)) return fail(c, 403, "host_only", "Only the host can end the session.");
     const open = (await deps.store.listIncidentsForSession(s._id)).some((i) => i.activeKey !== null);
     if (open) return fail(c, 409, "open_incidents", "Resolve open alerts before ending the session.");
-    await deps.store.endSession(s._id, "host_ended", deps.now());
+    if (await deps.store.endSession(s._id, "host_ended", deps.now())) {
+      await rec.ended(s, s.participants.find((p) => p.role === "host")!);
+    }
     deps.relay.clearSession(s._id);
     await cancelPendingCheckIns(s._id, null, "session_ended");
     return c.body(null, 204);
+  });
+
+  /**
+   * Suspend pauses new check-ins, missed-heartbeat detection and live
+   * location for everyone. Pending check-ins and open alerts keep running:
+   * a pause never cancels a deadline (CLAUDE.md). The event catalog has no
+   * suspend event, so this is recorded on the session only.
+   */
+  r.post("/:id/suspend", async (c) => {
+    const s = await loadMember(c.req.param("id"), c.var.user._id);
+    if (!s) return fail(c, 404, "no_session", "Session not found.");
+    if (!isHost(s, c.var.user._id)) return fail(c, 403, "host_only", "Only the host can suspend the session.");
+    if (!isLive(s, deps.now())) return fail(c, 409, "session_over", "This session has ended.");
+    if (!s.suspendedAt) await deps.store.setSessionSuspended(s._id, deps.now());
+    deps.relay.clearSession(s._id);
+    return c.json({ session: sessionView((await deps.store.getSession(s._id))!, c.var.user, deps.now()) });
+  });
+
+  r.post("/:id/resume", async (c) => {
+    const s = await loadMember(c.req.param("id"), c.var.user._id);
+    if (!s) return fail(c, 404, "no_session", "Session not found.");
+    if (!isHost(s, c.var.user._id)) return fail(c, 403, "host_only", "Only the host can resume the session.");
+    if (!isLive(s, deps.now())) return fail(c, 409, "session_over", "This session has ended.");
+    await deps.store.setSessionSuspended(s._id, null);
+    // Devices were allowed to be silent while suspended; restart their heartbeat clocks.
+    for (const p of s.participants) {
+      if (p.leftAt === null) await deps.store.updateParticipant(s._id, p.participantId, { lastHeartbeatAt: deps.now() });
+    }
+    return c.json({ session: sessionView((await deps.store.getSession(s._id))!, c.var.user, deps.now()) });
   });
 
   return r;

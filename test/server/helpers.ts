@@ -4,7 +4,7 @@ import { createApp } from "../../src/server/app.js";
 import type { OAuthProvider, ProviderRegistry } from "../../src/server/auth/providers.js";
 import { loadConfig } from "../../src/server/config.js";
 import type { Deps } from "../../src/server/context.js";
-import { LocationRelay } from "../../src/server/lifecycle/relay.js";
+import { createDeps } from "../../src/server/deps.js";
 import { runSchedulerPass } from "../../src/server/safety/scheduler.js";
 import { MemoryStore } from "../../src/server/store/memory.js";
 import { ManualClock } from "../../src/shared/clock.js";
@@ -27,12 +27,13 @@ const fakeGoogle: OAuthProvider = {
   }),
 };
 
-export function setup(transport: Transport = defaultTransport) {
+export function setup(transport: Transport = defaultTransport, env: Record<string, string> = {}) {
   const store = new MemoryStore();
   let nowMs = T0;
-  const config = loadConfig({ APP_ORIGIN } as NodeJS.ProcessEnv);
+  const config = loadConfig({ APP_ORIGIN, ...env } as NodeJS.ProcessEnv);
   const providers: ProviderRegistry = { google: fakeGoogle };
-  const deps: Deps = { store, config, providers, transport, relay: new LocationRelay(), now: () => new Date(nowMs) };
+  // strictTimeline: any event the server records must pass the catalog, or the test fails.
+  const deps: Deps = createDeps(config, store, { providers, transport, now: () => new Date(nowMs), strictTimeline: true });
   const app = createApp(deps);
   return {
     app,
@@ -92,13 +93,13 @@ export async function signIn(app: App, subject: string): Promise<Client> {
 }
 
 export async function hostSession(host: Client, consent = { monitoring: true, locationSharing: "group", shareLocationWithResponders: true }) {
-  const res = await host.call("POST", "/api/sessions", { name: "Friday at Ridgeway Hall", durationMin: 240, consent });
+  const res = await host.call("POST", "/api/sessions", { name: "Friday at Ridgeway Hall", durationMin: 240, consent, consentTextVersion: "consent-v1" });
   assert.equal(res.status, 201, JSON.stringify(res.body));
   return res.body.session as { id: string; code: string; me: { participantId: string } };
 }
 
 export async function join(client: Client, code: string, consent = { monitoring: true, locationSharing: "group", shareLocationWithResponders: true }) {
-  const res = await client.call("POST", "/api/sessions/join", { code, consent });
+  const res = await client.call("POST", "/api/sessions/join", { code, consent, consentTextVersion: "consent-v1" });
   assert.ok(res.status === 201 || res.status === 200, JSON.stringify(res.body));
   return res.body.session as { id: string; me: { participantId: string } };
 }

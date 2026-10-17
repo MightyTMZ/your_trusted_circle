@@ -1,28 +1,36 @@
 /**
- * POST /api/ingest — receive and store client data in the `traces` collection.
+ * POST /api/ingest — receive and store client data.
  *
- * Body: { items: [{ kind, sessionId?, occurredAt?, data }] }, up to 500 items.
- *   kind "event"  data is a complete timeline event (src/timeline). It is checked
- *                 against the event catalog, its hash-chain fields and summary.
+ * Body: { items: [{ kind, sessionId?, occurredAt?, data, clientItemId?, dataOrigin?, dataClass?, units? }] },
+ * up to 500 items.
+ *   kind "event"  data is a complete timeline event (src/timeline), checked
+ *                 against the catalog, its hash and its summary. Stored once per
+ *                 (session, event_id), so an offline device can safely resend.
  *   kind "log" | "action" | "sensor" | "device" | "app"
  *                 free-form JSON (≤ 256 KB per item), location keys removed.
+ *                 `dataOrigin` is required (recorded vs synthetic, CLAUDE.md).
+ *                 Sensor items also need `dataClass` ("raw" | "derived") and
+ *                 `units`; raw samples go to `raw_recordings`, apart from
+ *                 derived features (CLAUDE.md). `clientItemId` de-duplicates resends.
  *
  * Who the sender is comes from the sign-in, never from the body. Items are
  * processed in order and independently: one bad item does not drop the batch.
- * See lifecycle/location.ts for when location is kept.
  *
- * Client incident events are stored as a record only. Incidents, deadlines and
- * alerts are decided by the server (safety/), never by what a client reports.
+ * Client motion, profile and (during an incident) location events are also
+ * copied onto the server's session timeline, so the voice agent's briefing and
+ * the Incident Card include them. Client incident/alert events are stored as
+ * a record only: incidents and deadlines are decided by the server (safety/).
  */
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { checkEvent, specFor, type TimelineEvent } from "../../timeline/schema/catalog.js";
+import { categoryOf, checkEvent, specFor, type TimelineEvent } from "../../timeline/schema/catalog.js";
 import { v, validate, type Infer, type Issue } from "../../timeline/schema/validate.js";
 import { activeParticipant } from "../auth/authz.js";
 import { requireAuth } from "../auth/session.js";
 import { fail, type AppEnv, type Deps } from "../context.js";
 import { newId } from "../ids.js";
-import { TRACE_KINDS, type ParticipantDoc, type SessionDoc, type TraceDoc } from "../types.js";
+import { recorder } from "../timeline/recorder.js";
+import { DATA_ORIGINS, TRACE_KINDS, type ParticipantDoc, type SessionDoc, type TraceDoc } from "../types.js";
 import { MAX_DEPTH, TooDeepError, mayStoreLocation, stripLocation } from "./location.js";
 
 export const MAX_ITEMS = 500;
@@ -36,6 +44,10 @@ const batchSchema = v.object({
       sessionId: v.optional(v.nullable(v.id("ses"))),
       occurredAt: v.optional(v.timestamp()),
       data: v.unknown(),
+      clientItemId: v.optional(v.string({ minLength: 1, maxLength: 100 })),
+      dataOrigin: v.optional(v.enum(DATA_ORIGINS)),
+      dataClass: v.optional(v.enum(["raw", "derived"] as const)),
+      units: v.optional(v.string({ minLength: 1, maxLength: 40 })),
     }),
     { minLength: 1, maxLength: MAX_ITEMS },
   ),
@@ -44,6 +56,9 @@ type Item = Infer<typeof batchSchema>["items"][number];
 
 /** Actors that are software, not people. They may act for the sender, or for anyone if the sender is the host. */
 const SYSTEM_ACTORS = new Set(["detector", "scheduler", "system", "transport_sim", "voice_agent", "mock_operator", "scenario_script", "backup_contact"]);
+
+/** Client event categories the server copies onto its own timeline. The server owns the rest. */
+const COPIED_CATEGORIES = new Set(["sensor", "profile", "location"]);
 
 interface Rejection {
   index: number;
@@ -55,6 +70,7 @@ interface Rejection {
 export function ingestRoutes(deps: Deps) {
   const r = new Hono<AppEnv>();
   r.use("*", requireAuth(deps));
+  const rec = recorder(deps);
   r.post(
     "/",
     bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => fail(c, 413, "too_large", `Send at most ${MAX_BODY_BYTES / 1024 / 1024} MB per batch.`) }),
@@ -66,8 +82,10 @@ export function ingestRoutes(deps: Deps) {
       const user = c.var.user;
       const now = deps.now();
       const sessions = new Map<string, SessionDoc | null>();
-      const stored: TraceDoc[] = [];
       const rejected: Rejection[] = [];
+      let accepted = 0;
+      let duplicates = 0;
+      let copiedToTimeline = 0;
       let locationDropped = 0;
       let locationFieldsRemoved = 0;
 
@@ -117,9 +135,7 @@ export function ingestRoutes(deps: Deps) {
             reject("session_mismatch", "The event belongs to a different session.");
             continue;
           }
-          const subject = event.participant_id
-            ? session.participants.find((p) => p.participantId === event.participant_id)
-            : undefined;
+          const subject = event.participant_id ? session.participants.find((p) => p.participantId === event.participant_id) : undefined;
           if (event.participant_id && !subject) {
             reject("unknown_participant", "The event is about someone who is not in this session.");
             continue;
@@ -136,12 +152,13 @@ export function ingestRoutes(deps: Deps) {
             continue;
           }
 
-          if (specFor(event.type).sensitivity === "location" && !(await locationAllowed(session._id, subject))) {
+          const isLocation = specFor(event.type).sensitivity === "location";
+          if (isLocation && !(await locationAllowed(session._id, subject))) {
             locationDropped++;
             continue;
           }
 
-          stored.push({
+          const trace: TraceDoc = {
             _id: newId("trc"),
             userId: user._id,
             sessionId: session._id,
@@ -153,7 +170,34 @@ export function ingestRoutes(deps: Deps) {
             receivedAt: now,
             data: event,
             locationRedacted: false,
-          });
+            eventId: event.event_id,
+            clientItemId: null,
+            dataOrigin: event.provenance.data_origin,
+            dataClass: null,
+            units: null,
+            timelineEventId: null,
+          };
+          if (!(await deps.store.insertTraceIfAbsent(trace))) {
+            duplicates++;
+            continue;
+          }
+          accepted++;
+          if (COPIED_CATEGORIES.has(categoryOf(event.type)) && event.incident_id === null) {
+            const copy = await rec.copyClientEvent(session, event);
+            if (copy) {
+              copiedToTimeline++;
+              await deps.store.setTraceTimelineEvent(trace._id, copy.event_id);
+            }
+          }
+          continue;
+        }
+
+        if (!item.dataOrigin) {
+          reject("data_origin_required", 'Say where the data came from: dataOrigin "live_device", "recorded_dataset", "synthetic_scenario" or "system_generated".');
+          continue;
+        }
+        if (item.kind === "sensor" && (!item.dataClass || !item.units)) {
+          reject("sensor_metadata_required", 'Sensor data needs dataClass ("raw" or "derived") and units (e.g. "m/s^2").');
           continue;
         }
 
@@ -173,7 +217,7 @@ export function ingestRoutes(deps: Deps) {
             throw err;
           }
         }
-        stored.push({
+        const doc: TraceDoc = {
           _id: newId("trc"),
           userId: user._id,
           sessionId,
@@ -185,16 +229,19 @@ export function ingestRoutes(deps: Deps) {
           receivedAt: now,
           data,
           locationRedacted: redacted,
-        });
+          eventId: null,
+          clientItemId: item.clientItemId ?? null,
+          dataOrigin: item.dataOrigin,
+          dataClass: item.kind === "sensor" ? item.dataClass! : null,
+          units: item.units ?? null,
+          timelineEventId: null,
+        };
+        const stored = doc.dataClass === "raw" ? await deps.store.insertRawRecordingIfAbsent(doc) : await deps.store.insertTraceIfAbsent(doc);
+        if (stored) accepted++;
+        else duplicates++;
       }
 
-      await deps.store.insertTraces(stored);
-      return c.json({
-        accepted: stored.length,
-        rejected,
-        locationDropped,
-        locationFieldsRemoved,
-      });
+      return c.json({ accepted, duplicates, rejected, locationDropped, locationFieldsRemoved, copiedToTimeline });
     },
   );
   return r;
