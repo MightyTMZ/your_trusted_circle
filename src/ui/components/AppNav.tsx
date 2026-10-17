@@ -1,5 +1,8 @@
+import { useState } from 'react';
 import { activeIncidentFor } from '../../domain/incident';
+import { COPY } from '../copy';
 import { useApp } from '../context';
+import { HelpSheet } from './HelpSheet';
 import { Icon, type IconName } from './Icon';
 
 interface NavItem {
@@ -11,8 +14,14 @@ interface NavItem {
   go(): void;
 }
 
-/** Nav slots for an active participant, or null when the screen has no navigation. */
-export function useNavItems(): NavItem[] | null {
+interface Nav {
+  items: NavItem[];
+  /** False while an alert about this person is already open. */
+  canAskForHelp: boolean;
+}
+
+/** Nav for an active participant, or null when the screen has no navigation. */
+export function useNav(): Nav | null {
   const { state, me, meRecipient, route, go } = useApp();
   const session = state.session;
   if (meRecipient || !me || !session || me.sessionId !== session.id) return null;
@@ -31,7 +40,14 @@ export function useNavItems(): NavItem[] | null {
   const inAlert = route.name === 'alert' || route.name === 'card' || route.name === 'call';
 
   const items: NavItem[] = [
-    { key: 'home', label: 'Group', icon: 'users', on: route.name === 'home' || route.name === 'invite', badge: !!mine, go: () => go({ name: 'home' }) },
+    {
+      key: 'home',
+      label: 'Group',
+      icon: 'users',
+      on: route.name === 'home' || route.name === 'invite',
+      badge: !!mine,
+      go: () => go({ name: 'home' }),
+    },
   ];
   if (alertTarget || inAlert) {
     items.push({
@@ -47,7 +63,11 @@ export function useNavItems(): NavItem[] | null {
     { key: 'sharing', label: 'Your sharing', icon: 'mapPin', on: route.name === 'sharing', badge: false, go: () => go({ name: 'sharing' }) },
     { key: 'settings', label: 'Settings', icon: 'settings', on: route.name === 'settings', badge: false, go: () => go({ name: 'settings' }) },
   );
-  return items;
+  return { items, canAskForHelp: !mine };
+}
+
+export function useNavItems(): NavItem[] | null {
+  return useNav()?.items ?? null;
 }
 
 function Slot({ item }: { item: NavItem }) {
@@ -65,19 +85,44 @@ function Slot({ item }: { item: NavItem }) {
   );
 }
 
-/** Floating pill at the bottom on phones; a vertical rail on tablet and desktop. */
+function HelpSlot({ onClick }: { onClick(): void }) {
+  return (
+    <button type="button" className="btn slot slot-help" aria-label={COPY.checkInHelp} title={COPY.checkInHelp} onClick={onClick}>
+      <Icon name="lifeBuoy" />
+    </button>
+  );
+}
+
+/**
+ * Floating pill at the bottom on phones; a vertical rail on tablet and desktop.
+ * "I need help" is the first slot (far left, or top of the rail), so it is one
+ * tap away on every in-session screen without a button floating over content.
+ */
 export function AppNav({ variant }: { variant: 'rail' | 'bottom' }) {
-  const items = useNavItems();
-  if (!items) return null;
+  const nav = useNav();
+  const [helpOpen, setHelpOpen] = useState(false);
+  if (!nav) return null;
+  const { items, canAskForHelp } = nav;
+  const help = canAskForHelp && <HelpSlot onClick={() => setHelpOpen(true)} />;
+  const sheet = helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />;
+
   if (variant === 'bottom') {
     return (
-      <nav aria-label="Main" className="glass nav bottom-nav">
-        {items.map((i) => (
-          <Slot key={i.key} item={i} />
-        ))}
-      </nav>
+      <>
+        <nav aria-label="Main" className="glass nav bottom-nav">
+          {help}
+          {/* Settings is a gear in the screen header on phones (SettingsButton). */}
+          {items
+            .filter((i) => i.key !== 'settings')
+            .map((i) => (
+              <Slot key={i.key} item={i} />
+            ))}
+        </nav>
+        {sheet}
+      </>
     );
   }
+
   const settings = items.find((i) => i.key === 'settings');
   return (
     <div className="app-rail">
@@ -85,6 +130,7 @@ export function AppNav({ variant }: { variant: 'rail' | 'bottom' }) {
         <div className="logo glass-2" role="img" aria-label="YTC">
           YTC
         </div>
+        {help}
         {items
           .filter((i) => i.key !== 'settings')
           .map((i) => (
@@ -93,6 +139,17 @@ export function AppNav({ variant }: { variant: 'rail' | 'bottom' }) {
         <div style={{ flex: 1 }} />
         {settings && <Slot item={settings} />}
       </nav>
+      {sheet}
     </div>
+  );
+}
+
+/** Header gear for phones; tablet and desktop reach Settings from the rail. */
+export function SettingsButton() {
+  const { go } = useApp();
+  return (
+    <button type="button" className="btn ibtn glass phone-only" aria-label="Settings" onClick={() => go({ name: 'settings' })}>
+      <Icon name="settings" />
+    </button>
   );
 }

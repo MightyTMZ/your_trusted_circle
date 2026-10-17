@@ -237,6 +237,8 @@ ul { padding: 0; list-style: none; }
   transition: transform 120ms ease-out, background 200ms var(--ease), box-shadow 200ms var(--ease), opacity 200ms var(--ease),
     border-color 200ms var(--ease);
 }
+/* Glass buttons keep their hairline border; the reset above only clears native borders. */
+.btn.glass, .btn.glass-2 { border: 1px solid var(--border-hairline); }
 .btn:active { transform: scale(0.96); }
 .btn:focus-visible, .field:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn:disabled { opacity: 0.4; pointer-events: none; }
@@ -277,6 +279,8 @@ ul { padding: 0; list-style: none; }
   display: flex; align-items: center; justify-content: center; color: var(--icon-muted);
   background: var(--surface-glass-2); border: 1px solid var(--border-hairline);
 }
+.slot-help { background: transparent; border: 1.5px solid var(--accent-ring); color: var(--text-primary); }
+.btn.slot-help { border: 1.5px solid var(--accent-ring); }
 .slot.is-on { background: var(--accent-gradient); color: var(--accent-icon); border-color: transparent; box-shadow: var(--accent-highlight), var(--accent-glow); }
 .badge { position: absolute; top: 9px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg-base); }
 .logo {
@@ -437,12 +441,6 @@ textarea.field { height: 96px; padding: 14px 20px; border-radius: var(--r-tile);
 .session-bar .line1 { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .session-bar .line2 { font-size: 11px; font-weight: 500; color: var(--text-secondary); }
 @media (min-width: 768px) { .session-bar { margin: 24px 32px 0; } }
-
-/* ---------- Help dock ---------- */
-.help-dock { position: sticky; bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 4; margin-top: auto; }
-.app:not(.with-nav) .help-dock { bottom: calc(16px + env(safe-area-inset-bottom)); }
-@media (min-width: 768px) { .app.with-nav .help-dock { bottom: 24px; width: 100%; max-width: 440px; align-self: center; } }
-.help-dock .pbtn.outline-accent { background: var(--surface-glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
 
 /* ---------- Sheet ---------- */
 .sheet-backdrop {

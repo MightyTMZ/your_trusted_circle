@@ -2,16 +2,18 @@ import { useState } from 'react';
 import { UNVALIDATED_LABEL } from '../../domain/config';
 import { activeIncidentFor, nextDeadline } from '../../domain/incident';
 import { canViewLocation, latestReading, participantFreshness } from '../../domain/location';
-import { endSession, participantUpdate, requestHelp, resumeSession, suspendSession } from '../../domain/session';
+import { endSession, participantUpdate, resumeSession, suspendSession } from '../../domain/session';
 import type { Incident, Participant } from '../../domain/types';
 import { COPY } from '../copy';
 import { useApp, useNow } from '../context';
 import { fmtAgo, fmtCountdown, fmtTime } from '../format';
+import { SettingsButton } from '../components/AppNav';
 import { initials } from '../components/Controls';
 import { Scrubber } from '../components/Gauges';
 import { GroupMap } from '../components/GroupMap';
 import { Icon } from '../components/Icon';
 import { LocationStamp } from '../components/LocationStamp';
+import { useFirstContact } from '../components/HelpSheet';
 import { Sheet } from '../components/Sheet';
 
 function fmtHM(ms: number): string {
@@ -120,7 +122,7 @@ function CheckInStatus({ me }: { me: Participant }) {
 export function SessionHomeScreen() {
   const { state, me, store, go } = useApp();
   const now = useNow();
-  const [sheet, setSheet] = useState<null | 'end' | 'help'>(null);
+  const [sheet, setSheet] = useState<null | 'end'>(null);
   const [error, setError] = useState<string | null>(null);
   const session = state.session!;
   const viewer = me!;
@@ -133,15 +135,7 @@ export function SessionHomeScreen() {
   const alerting = new Set(state.incidents.filter((i) => i.status === 'open').map((i) => i.participantId));
   const myIncident = activeIncidentFor(state, viewer.id);
   const hostName = state.participants[session.hostId]?.displayName;
-  const backups = viewer.backupContacts.map((c) => c.name).join(', ');
-  // Who a help request goes to first, by name where we have one.
-  const firstContact = isHost
-    ? backups
-      ? `your backup contacts (${backups})`
-      : 'your backup contacts'
-    : hostName
-      ? `${hostName} (your host)`
-      : 'your host';
+  const firstContact = useFirstContact();
   const run = (fn: Parameters<typeof store.dispatch>[0]) => {
     const err = store.dispatch(fn);
     setError(err);
@@ -192,6 +186,7 @@ export function SessionHomeScreen() {
             <Icon name="qr" />
           </button>
         )}
+        <SettingsButton />
       </header>
 
       {myIncident && (
@@ -277,33 +272,6 @@ export function SessionHomeScreen() {
         </div>
       </div>
 
-      {!myIncident && (
-        <div className="help-dock">
-          <button type="button" className="btn pbtn outline-accent" onClick={() => setSheet('help')}>
-            <Icon name="lifeBuoy" />
-            {COPY.checkInHelp}
-          </button>
-        </div>
-      )}
-
-      {sheet === 'help' && (
-        <Sheet title={`Alert ${firstContact} now?`} onClose={() => setSheet(null)}>
-          <p className="t-lead">They will be alerted right away. If nobody acknowledges, it escalates.</p>
-          {errorBox}
-          <button
-            type="button"
-            className="btn pbtn on-accent"
-            onClick={() => {
-              if (run((d, t) => requestHelp(d, viewer.id, t))) setSheet(null);
-            }}
-          >
-            Send alert
-          </button>
-          <button type="button" className="btn pbtn glass" onClick={() => setSheet(null)}>
-            Cancel
-          </button>
-        </Sheet>
-      )}
       {sheet === 'end' && (
         <Sheet title="End the session for everyone?" onClose={() => setSheet(null)}>
           <p className="t-lead">Location sharing and check-ins stop for the whole group. Open alerts must be acknowledged first.</p>

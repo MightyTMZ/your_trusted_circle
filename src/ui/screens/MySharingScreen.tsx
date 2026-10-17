@@ -3,6 +3,7 @@ import { recalibrate, updateConsent } from '../../domain/session';
 import type { LocationSharing, ParticipantConsent } from '../../domain/types';
 import { SHARING_LABEL } from '../copy';
 import { useApp } from '../context';
+import { SettingsButton } from '../components/AppNav';
 import { OptionList, ToggleRow, initials } from '../components/Controls';
 import { Icon } from '../components/Icon';
 
@@ -17,7 +18,10 @@ export function MySharingScreen() {
   return (
     <div className="screen">
       <div className="narrow">
-        <h1 className="t-title">Your sharing</h1>
+        <header className="header">
+          <h1 className="t-title grow">Your sharing</h1>
+          <SettingsButton />
+        </header>
         <div className="rise">
           <OptionList
             label="Who can see your location"
