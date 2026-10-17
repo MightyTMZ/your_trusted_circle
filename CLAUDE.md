@@ -24,6 +24,26 @@ and features requiring further validation.
 
 ## Safety boundaries
 - Never place real emergency calls or contact real authorities.
+  This is enforced in code and tooling, not left to agent judgment:
+  - **No path exists.** The codebase contains no telephony, PSTN,
+    SMS, or emergency-dispatch integration and no dependency on a
+    telephony SDK (e.g., Twilio, Vonage, Plivo, Telnyx, RapidSOS).
+  - **Mock-only transport.** Emergency-service delivery and the
+    voice agent's operator line are in-process mocks. The mock
+    operator endpoint is a hard-coded local constant; it is not
+    configurable by environment variables, UI, scenario scripts,
+    or operator speech.
+  - **No dial targets.** Emergency numbers (911, 112, 933) and
+    `tel:`/`sip:`/`sms:` URIs never appear as destinations in code,
+    config, or prompts.
+  - **Build guard.** A test must fail the build if any of the above
+    appears in source or dependencies (excluding the guard's own
+    denylist).
+  - **Agent guard.** The `PreToolUse` hook
+    `.claude/hooks/block-emergency-contact.sh` (registered in
+    `.claude/settings.json`) blocks any Claude Code shell, web, or
+    MCP tool call containing an emergency number, telephony URI,
+    or telephony provider. Do not disable, bypass, or weaken it.
 - Use a mock operator endpoint for voice-agent demonstrations.
 - Never connect demo controls to a live emergency number.
 - Do not use drug exposure, intentional incapacitation, or
