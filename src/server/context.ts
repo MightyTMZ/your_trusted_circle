@@ -3,6 +3,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { Transport } from "./alerts/transport.js";
 import type { ProviderRegistry } from "./auth/providers.js";
 import type { ServerConfig } from "./config.js";
+import type { LocationRelay } from "./lifecycle/relay.js";
 import type { Store } from "./store/store.js";
 import type { UserDoc } from "./types.js";
 
@@ -16,6 +17,8 @@ export interface Deps {
   config: ServerConfig;
   providers: ProviderRegistry;
   transport: Transport;
+  /** Live group positions, memory only. Never persisted (lifecycle/relay.ts). */
+  relay: LocationRelay;
   now: () => Date;
 }
 
