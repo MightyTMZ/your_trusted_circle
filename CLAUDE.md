@@ -140,7 +140,8 @@ Apply these guardrails to every voice-model prompt and response:
   as an author or co-author, and omit `Co-Authored-By: Claude` and
   `Claude-Session:` trailers from commit messages.
 - Sign commits with Tim's SSH signing key so GitHub shows them as
-  Verified. If the `YPC_SIGNING_KEY` environment variable is set, write
+  Verified. If the `YPC_SIGNING_KEY` environment variable is set (the
+  private key, base64-encoded on one line; accept a raw PEM too), decode
   it to a 0600 file outside the repo and configure this repo with
   `gpg.format ssh`, `user.signingkey <that file>`,
   `gpg.ssh.program ssh-keygen` and `commit.gpgsign true`. Never print,
