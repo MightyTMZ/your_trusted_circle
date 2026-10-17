@@ -62,7 +62,7 @@ export class MongoStore implements Store {
       this.checkIns.createIndex({ sessionId: 1, participantId: 1 }),
       // At most one active incident per person per session.
       this.incidents.createIndex({ activeKey: 1 }, { unique: true, partialFilterExpression: { activeKey: { $type: "string" } } }),
-      this.incidents.createIndex({ status: 1 }),
+      this.incidents.createIndex({ status: 1 }, { name: "ix_status" }), 
       this.incidents.createIndex({ sessionId: 1 }),
       // Never two jobs for the same recipient and step.
       this.jobs.createIndex({ dedupeKey: 1 }, { unique: true }),
