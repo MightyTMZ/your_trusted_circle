@@ -171,8 +171,9 @@ export function sessionRoutes(deps: Deps) {
     const issues = validate(createSchema, body);
     if (issues.length > 0) return fail(c, 400, "invalid_request", "Check the session details.", issues);
     const input = body as Infer<typeof createSchema>;
-    if (!deps.config.allowedDurationsMin.includes(input.durationMin)) {
-      return fail(c, 400, "invalid_duration", `Pick one of: ${deps.config.allowedDurationsMin.join(", ")} minutes.`);
+    const { minDurationMin, maxDurationMin } = deps.config;
+    if (input.durationMin < minDurationMin || input.durationMin > maxDurationMin) {
+      return fail(c, 400, "invalid_duration", `A session must last between ${minDurationMin} and ${maxDurationMin} minutes.`);
     }
     const user = c.var.user;
     const now = deps.now();
