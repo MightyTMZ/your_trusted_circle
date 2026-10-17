@@ -194,6 +194,7 @@ React wrappers in `src/ui/components/Controls.tsx`: `Toggle`, `ToggleRow`,
 | --- | --- | --- |
 | Arc gauge | Countdowns (next escalation, check-in window) | ~200° SVG arc, 8px round stroke, flat accent active stroke, white knob with accent ring, hero numeral + label inside, start/end times at the arc ends. Turns grey with no knob when stopped. Word values use `.t-hero-word` so they stay inside the arc. |
 | Tick dial | Elapsed time across a window (incident card) | 48 radial ticks generated in JS. Lit ticks fade in and grow toward the current point; the leading tick is tallest; unlit ticks fade out toward the end. Hero numeral sits inside the arc. |
+| Group map | Where people are (`GroupMap`) | Google satellite imagery with labels (`GoogleMap`, hybrid map type) when `VITE_GOOGLE_MAPS_API_KEY` is set at build time; otherwise, or if the key is rejected, the synthetic venue plot (`--map-*` tokens). Markers are avatars (`.av.pin` on Google, `.av.mark` on the plot): `fill` live, `stale` dashed, `on-accent` open alert. Simulated positions also get a dotted outline (`.sim`) and the map chip counts them, so they never pass for a real fix. |
 | Scrubber | Session progress | 4px accent line on grey, white knob with accent ring, elapsed left, remaining right (13px). |
 
 Read-only data components use `role="img"` or `role="timer"` with an
@@ -262,6 +263,14 @@ screen says the feature needs the server, or falls back to the on-device
 equivalent (Download data on this device, Delete data on this device).
 Only show sign-in providers the server reports from
 `GET /api/auth/providers`. Sign in and sign up are one flow.
+
+Server sessions (hosted or joined through the API) poll the server for
+the participant list and for live positions (`LiveLocationProvider` in
+`src/ui/hooks/useServerSession.tsx`). Live positions stay in memory and are
+never written to local storage. A device relays its GPS fix only while its
+owner shares location; if the browser refuses location, the home screen
+says so. Location sharing has no "nobody" option: participants choose the
+group or the host only, and the host always shares with the group.
 
 Profile pictures are stored by the server (`avatar` on `GET`/`PATCH
 /api/me`) as a PNG, JPEG or WebP data URL of at most 100 KB. The app

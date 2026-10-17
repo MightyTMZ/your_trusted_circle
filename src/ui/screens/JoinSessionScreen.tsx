@@ -91,6 +91,9 @@ export function JoinSessionScreen({ code }: { code: string }) {
       let id = '';
       const err = store.dispatch((d, now) => {
         id = joinSession(d, code, input, now).id;
+        // In the same browser the server sees the same account, so only link an id nobody here has yet.
+        const sid = result.me?.participantId;
+        if (sid && !Object.values(d.participants).some((x) => x.serverId === sid)) d.participants[id].serverId = sid;
       });
       if (err) { setJoining(false); return setError(err); }
       setViewer({ kind: 'participant', id });

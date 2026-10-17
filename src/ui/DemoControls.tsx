@@ -138,7 +138,8 @@ function panelPlacement(pos: Pos, fab: { w: number; h: number }): CSSProperties 
 function DemoPanel({ style }: { style: CSSProperties }) {
   const { state, store, viewer, setViewer, go } = useApp();
   const now = useNow();
-  const participants = Object.values(state.participants).filter((p) => p.status === 'active');
+  // People who joined from other devices are driven by their own phones, not from here.
+  const participants = Object.values(state.participants).filter((p) => p.status === 'active' && !p.remote);
   const recipients = Object.values(state.recipients).filter((r) => r.kind !== 'host');
   const [targetId, setTargetId] = useState('');
   const target = state.participants[targetId] ?? participants.find((p) => p.role === 'participant') ?? participants[0];
@@ -272,8 +273,9 @@ function DemoPanel({ style }: { style: CSSProperties }) {
       </div>
 
       <p className="t-cap">
-        Prototype limits: tabs in this browser share state through local storage. Joining from another device needs a
-        backend, which is not built. Thresholds are unvalidated.
+        Prototype limits: tabs in this browser share state through local storage. People who join from other devices
+        appear through the backend, with their real location if they share it; their check-ins and alerts stay on their
+        own phone for now. Thresholds are unvalidated.
       </p>
     </aside>
   );

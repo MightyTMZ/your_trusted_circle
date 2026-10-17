@@ -400,6 +400,13 @@ textarea.field { height: 100px; padding: 13px 16px; resize: none; line-height: 1
 .mark.fill { background: var(--bg-elevated); }
 .mark.stale { background: transparent; border: 1.5px dashed var(--text-tertiary); color: var(--text-secondary); }
 .map-chip { position: absolute; left: 12px; top: 12px; min-height: 32px; padding: 0 12px; font-size: 13px; }
+.map-google { background: var(--map-bg); }
+/* Google advanced-marker content: an avatar ringed so it reads on satellite imagery. */
+.pin { width: 36px; height: 36px; font-size: 13px; border: 2px solid var(--surface); }
+.pin.fill { background: var(--bg-elevated); }
+.pin.stale { background: var(--bg-elevated); border: 2px dashed var(--text-tertiary); color: var(--text-secondary); }
+/* Simulated positions are outlined with dots, so they never pass for a real fix. */
+.mark.sim, .pin.sim { outline: 2px dotted var(--text-secondary); outline-offset: 2px; }
 .map-entrance { position: absolute; width: 10px; height: 10px; border-radius: 3px; transform: translate(-50%, -50%); background: var(--text-tertiary); }
 @container (min-width: 760px) { .map { aspect-ratio: 1.2; } }
 

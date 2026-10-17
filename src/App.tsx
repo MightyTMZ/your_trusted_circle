@@ -4,6 +4,7 @@ import { AppNav, useNavItems } from './ui/components/AppNav';
 import { SettingsScreen } from './ui/screens/SettingsScreen';
 import { SignInScreen } from './ui/screens/SignInScreen';
 import { DemoControls } from './ui/DemoControls';
+import { LiveLocationProvider } from './ui/hooks/useServerSession';
 import { AlertEscalationScreen } from './ui/screens/AlertEscalationScreen';
 import { HostSetupScreen } from './ui/screens/HostSetupScreen';
 import { IncidentCardScreen } from './ui/screens/IncidentCardScreen';
@@ -79,10 +80,12 @@ export function App() {
 
   return (
     <AppProvider initialRoute={initialRoute}>
-      <div className="stage">
-        <Shell />
-        <DemoControls />
-      </div>
+      <LiveLocationProvider>
+        <div className="stage">
+          <Shell />
+          <DemoControls />
+        </div>
+      </LiveLocationProvider>
     </AppProvider>
   );
 }

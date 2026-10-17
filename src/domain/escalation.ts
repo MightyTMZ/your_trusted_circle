@@ -51,7 +51,7 @@ export function tick(state: AppState, now: Millis): void {
   if (session.status === 'active') {
     const every = session.config.locationUpdateEverySec * 1000;
     for (const p of Object.values(state.participants)) {
-      if (p.status !== 'active' || !p.device.online || p.consent.locationSharing === 'off') continue;
+      if (p.remote || p.status !== 'active' || !p.device.online || p.consent.locationSharing === 'off') continue;
       const last = latestReading(p);
       if (last && now - last.recordedAt < every) continue;
       p.locations.push(nextSimulatedReading(last, now));

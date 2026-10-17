@@ -66,6 +66,14 @@ export interface Participant {
   locations: LocationReading[];
   baseline: MotionBaseline;
   motion: MotionState;
+  /** The server's participant id, when the session is on the server. */
+  serverId?: string;
+  /**
+   * Joined from another device. Known only from the server's session view:
+   * no simulated readings or check-ins run for them here, and their location
+   * comes only from the server's live relay.
+   */
+  remote?: boolean;
 }
 
 export interface SessionConfig {
@@ -100,6 +108,8 @@ export interface Session {
   endedReason?: 'host_ended' | 'expired';
   hostCommitmentAcceptedAt: Millis;
   config: SessionConfig;
+  /** The server's id for this session, when it was created or joined through the API. */
+  serverId?: string;
 }
 
 export interface Observation {

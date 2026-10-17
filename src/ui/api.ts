@@ -213,6 +213,69 @@ export async function joinSessionOnServer(input: {
   return result.ok ? result.data.session : result.message;
 }
 
+async function sendJson(method: 'POST' | 'PATCH', path: string, body?: unknown): Promise<boolean> {
+  try {
+    const res = await fetch(`/api${path}`, {
+      method,
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export interface ServerSessionPoll extends Omit<ServerSessionView, 'participants'> {
+  participants: (ServerParticipant & { consent?: { monitoring: boolean; locationSharing: string; shareLocationWithResponders: boolean } })[];
+}
+
+/** The server's current view of a session, or null when it can't be reached. */
+export async function fetchServerSession(serverId: string): Promise<ServerSessionPoll | null> {
+  const body = await getJson<{ session: ServerSessionPoll }>(`/sessions/${encodeURIComponent(serverId)}`);
+  return body?.session ?? null;
+}
+
+export function updateConsentOnServer(
+  serverId: string,
+  consent: { monitoring: boolean; locationSharing: string; shareLocationWithResponders: boolean },
+): Promise<boolean> {
+  return sendJson('PATCH', `/sessions/${encodeURIComponent(serverId)}/me/consent`, consent);
+}
+
+export function leaveSessionOnServer(serverId: string): Promise<boolean> {
+  return sendJson('POST', `/sessions/${encodeURIComponent(serverId)}/leave`);
+}
+
+export function endSessionOnServer(serverId: string): Promise<boolean> {
+  return sendJson('POST', `/sessions/${encodeURIComponent(serverId)}/end`);
+}
+
+/** A live position from the server's in-memory relay (docs/backend.md, "Live group location"). */
+export interface LiveFix {
+  participantId: string;
+  displayName: string;
+  isYou: boolean;
+  latitude: number;
+  longitude: number;
+  accuracyM: number;
+  fixAt: string;
+  ageSec: number;
+  status: 'live' | 'stale';
+}
+
+/** Positions this viewer may see, or null when the server can't be reached. */
+export async function fetchLiveLocations(serverId: string): Promise<LiveFix[] | null> {
+  const body = await getJson<{ locations: LiveFix[] }>(`/sessions/${encodeURIComponent(serverId)}/locations`);
+  return body?.locations ?? null;
+}
+
+/** Relays one device fix. The server keeps it in memory only, unless an incident about you is active. */
+export function sendLiveLocation(serverId: string, fix: { latitude: number; longitude: number; accuracyM: number; fixAt: string }): Promise<boolean> {
+  return sendJson('POST', `/sessions/${encodeURIComponent(serverId)}/location`, fix);
+}
+
 // ---------------------------------------------------------------------------
 
 const LOGIN_ERRORS: Record<string, string> = {

@@ -10,12 +10,14 @@ import { fmtAgo, fmtCountdown, fmtTime } from '../format';
 import { SettingsButton } from '../components/AppNav';
 import { initials } from '../components/Controls';
 import { Scrubber } from '../components/Gauges';
-import { GroupMap } from '../components/GroupMap';
+import { GroupMap, liveFixFor, useGroupPoints } from '../components/GroupMap';
 import { Icon } from '../components/Icon';
 import { LocationStamp } from '../components/LocationStamp';
 import { useFirstContact } from '../components/HelpSheet';
 import { Sheet } from '../components/Sheet';
 import { useMotionTracking } from '../hooks/useMotionTracking';
+import { useLive } from '../hooks/useServerSession';
+import { endSessionOnServer, type LiveFix } from '../api';
 
 function fmtHM(ms: number): string {
   const m = Math.max(0, Math.round(ms / 60_000));
@@ -49,14 +51,36 @@ function AlertCard({ incident, now }: { incident: Incident; now: number }) {
   );
 }
 
-function PersonRow({ subject, viewer, now, alerting }: { subject: Participant; viewer: Participant; now: number; alerting: boolean }) {
+/** A relayed device fix, labelled live or last known with its time. */
+function LiveFixStamp({ fix, now }: { fix: LiveFix; now: number }) {
+  const at = new Date(fix.fixAt).getTime();
+  return (
+    <span className="inline t-sub num" style={{ gap: 6 }}>
+      <span className={`dot ${fix.status === 'live' ? 'live' : 'hollow'}`} aria-hidden="true" />
+      {fix.status === 'live' ? (
+        <span>
+          <span className="t-name" style={{ fontSize: 12 }}>Live</span> · GPS ±{fix.accuracyM} m · {fmtTime(at)}
+        </span>
+      ) : (
+        <span>
+          <span className="t-name" style={{ fontSize: 12 }}>Stale</span> · last known {fmtTime(at)} · {fmtAgo(Math.max(0, now - at))}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function PersonRow({ subject, viewer, now, alerting, fixes }: { subject: Participant; viewer: Participant; now: number; alerting: boolean; fixes: LiveFix[] }) {
   const { state } = useApp();
   const session = state.session!;
   const isHostView = viewer.id === session.hostId;
-  const reading = latestReading(subject);
+  const fix = liveFixFor(subject, fixes);
+  const reading = subject.remote ? undefined : latestReading(subject);
   const visible = canViewLocation(session, viewer, subject);
   let location;
-  if (subject.consent.locationSharing === 'off') location = <span className="t-sub">{COPY.locationOff}</span>;
+  if (fix) location = <LiveFixStamp fix={fix} now={now} />;
+  else if (subject.remote) location = <span className="t-sub">{subject.id === viewer.id ? COPY.locationNone : COPY.locationNotShared}</span>;
+  else if (subject.consent.locationSharing === 'off') location = <span className="t-sub">{COPY.locationOff}</span>;
   else if (!visible) location = <span className="t-sub">{COPY.locationNotShared}</span>;
   else if (!reading) location = <span className="t-sub">{COPY.locationNone}</span>;
   else
@@ -142,6 +166,8 @@ export function SessionHomeScreen() {
   const myIncident = activeIncidentFor(state, viewer.id);
   const hostName = state.participants[session.hostId]?.displayName;
   const firstContact = useFirstContact();
+  const live = useLive();
+  const { points, anchor } = useGroupPoints(viewer, now);
   const run = (fn: Parameters<typeof store.dispatch>[0]) => {
     const err = store.dispatch(fn);
     setError(err);
@@ -183,7 +209,7 @@ export function SessionHomeScreen() {
 
   const elapsed = now - session.createdAt;
   const total = session.expiresAt - session.createdAt;
-  const sharingCount = people.filter((p) => p.consent.locationSharing !== 'off').length;
+  const simulatedCount = points.filter((pt) => pt.source === 'simulated').length;
 
   return (
     <div className="screen">
@@ -231,14 +257,23 @@ export function SessionHomeScreen() {
         </section>
       )}
 
+      {live.geo === 'denied' && (
+        <section className="surface card stack rise" style={{ gap: 8 }}>
+          <h2 className="t-card">Location access is off</h2>
+          <p className="t-sub">
+            Others in the session can't see where you are. Allow location for this site in your browser settings.
+          </p>
+        </section>
+      )}
+
       <div className="cols">
         <div className="col">
           {isHost && alerts.map((i) => <AlertCard key={i.id} incident={i} now={now} />)}
           <section className="surface card rise rise-2" style={{ padding: 8 }} aria-label="Group map">
             <div style={{ position: 'relative' }}>
-              <GroupMap viewer={viewer} now={now} alerting={alerting} />
+              <GroupMap points={points} anchor={anchor} alerting={alerting} />
               <span className="material chip map-chip num">
-                {sharingCount} of {people.length} sharing
+                {points.length} of {people.length} on map{simulatedCount > 0 ? ` · ${simulatedCount} simulated` : ''}
               </span>
             </div>
             <div className="stack" style={{ gap: 12, padding: '16px 12px 8px' }}>
@@ -290,7 +325,7 @@ export function SessionHomeScreen() {
             </div>
             <ul>
               {people.map((p) => (
-                <PersonRow key={p.id} subject={p} viewer={viewer} now={now} alerting={alerting.has(p.id)} />
+                <PersonRow key={p.id} subject={p} viewer={viewer} now={now} alerting={alerting.has(p.id)} fixes={live.fixes} />
               ))}
             </ul>
           </section>
@@ -306,7 +341,10 @@ export function SessionHomeScreen() {
             type="button"
             className="btn pbtn on-accent"
             onClick={() => {
-              if (run((d, t) => endSession(d, viewer.id, t))) setSheet(null);
+              if (run((d, t) => endSession(d, viewer.id, t))) {
+                if (session.serverId) endSessionOnServer(session.serverId);
+                setSheet(null);
+              }
             }}
           >
             End session
