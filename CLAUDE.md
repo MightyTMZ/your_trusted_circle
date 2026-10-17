@@ -136,7 +136,7 @@ or changed screen:
 - One focal point and one primary action per screen. Prefer steps or
   expandable sections over long forms.
 - Every screen must work on phone, tablet and desktop layouts and in all
-  four themes (Ember, Brass, Glacier, Porcelain).
+  four themes (Ember, Onyx, Mono, Porcelain).
 - If you add a component or theme, document it in the guidelines in the
   same change.
 

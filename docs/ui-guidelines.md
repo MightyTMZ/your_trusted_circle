@@ -41,15 +41,21 @@ class on the app root (`.ytc.theme-<name>`) that overrides tokens.
 
 | Theme | Base | Accent | Use |
 | --- | --- | --- | --- |
-| Ember (default) | `#0B0B0C` charcoal | `#FF6A1F` orange | Night use, the reference look |
-| Brass | `#0D0C0A` warm black | `#D4A55A` champagne | Warmer, quieter |
-| Glacier | `#0A0C0F` blue-black | `#7FB7E8` ice blue | Cooler, calm |
+| Ember (default) | `#0B0B0C` charcoal | `#FF6A1F` orange | The reference look |
+| Onyx | `#000000` true black | `#FF6A1F` orange | Night / OLED: dimmer glass and lighting |
+| Mono | `#0C0C0D` charcoal | `#F2F2F2` white | No colour at all; white marks what's active |
 | Porcelain | `#ECEAE5` warm light | `#E2601F` orange | Daylight / light mode |
 
+Themes change surfaces and lighting, not the brand. Orange is the accent
+everywhere except Mono, which drops colour entirely. Don't add themes that
+re-tint the whole UI with a new hue (gold, ice blue, purple). They read as
+generic and dilute the brand.
+
 Adding a theme: override the same tokens as the existing ones (base, wash,
-spots, accent set, track, map), check every text token against its surfaces
-for contrast (section 9), and add a preview tile in Settings → Theme.
-Do not add themes that change layout, radius or type.
+spots, glass, accent set, `--accent-ink`, `--accent-icon`, track, map),
+check every text token against its surfaces for contrast (section 9), and
+add a preview tile in Settings → Theme. Do not add themes that change
+layout, radius or type.
 
 ## 3. Tokens
 
@@ -64,7 +70,7 @@ where a theme can change them).
 | Lines | `--border-hairline`, `--border-highlight` (1px inset top edge only) |
 | Text | `--text-primary`, `--text-secondary`, `--text-tertiary` (decorative only, never body text) |
 | Icons | `--icon` (default), `--icon-muted` (inactive nav) |
-| Accent | `--accent`, `--accent-light`, `--accent-dark`, `--accent-gradient`, `--accent-ink` (text on accent), `--accent-glow` (active controls only), `--accent-ring`, `--accent-highlight` |
+| Accent | `--accent`, `--accent-light`, `--accent-dark`, `--accent-gradient`, `--accent-ink` (text on accent), `--accent-icon` (icons on accent), `--accent-glow` (active controls only), `--accent-ring`, `--accent-highlight` |
 | Data | `--track-inactive`, `--tick-inactive`, `--knob` |
 | Map | `--map-bg`, `--map-street`, `--map-block` |
 | Misc | `--qr-bg`, `--qr-ink`, `--scrim`, `--shadow-card` |
@@ -155,7 +161,7 @@ type="range">` or `<progress>` visually.
 One family: Lucide-style line icons, 24px grid drawn at 20px (22px in quick
 tiles, 16px in chips), 1.5px stroke, round caps and joins, inline SVG with
 `class="ic"` and `aria-hidden="true"`. Colour comes from `currentColor`
-(`--icon` by default, white on accent). No filled icons, no emoji, no icon
+(`--icon` by default, `--accent-icon` on accent). No filled icons, no emoji, no icon
 fonts.
 
 ## 8. Layout across devices
