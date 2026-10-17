@@ -35,7 +35,10 @@ export interface BriefingOptions {
   incidentId: string;
   /** Briefing time in epoch ms, from the injected clock. */
   now: number;
-  /** Motion windows older than this are left out of the evidence; the timeline keeps them all. Default 10 min. */
+  /**
+   * Motion windows older than this are left out of the evidence (except the newest);
+   * the timeline keeps them all. Default 10 min.
+   */
   motionLookbackMs?: number;
 }
 
@@ -133,6 +136,10 @@ export function buildOperatorBriefing(events: readonly TimelineEvent[], opts: Br
   // Consent is evaluated as of now: revoking or leaving withdraws earlier data too.
   const consent = ConsentLedger.from(events.filter((e) => parseIso(e.recorded_at)! <= now));
   const lookbackStart = now - (opts.motionLookbackMs ?? DEFAULT_MOTION_LOOKBACK_MS);
+  // The newest window is always kept, even if stale: it shows when motion data stopped.
+  const newestWindowId = events.findLast(
+    (e) => e.type === "sensor.motion_window" && e.participant_id === subject && parseIso(e.recorded_at)! <= now,
+  )?.event_id;
 
   const evidence: TimelineEvent[] = [];
   const redacted: OperatorBriefing["evidence"]["redacted"] = [];
@@ -144,7 +151,9 @@ export function buildOperatorBriefing(events: readonly TimelineEvent[], opts: Br
       (e.incident_id === null && e.participant_id === subject) ||
       e.type === "session.created";
     if (!inScope) continue;
-    if (e.type === "sensor.motion_window" && parseIso(e.occurred_at)! < lookbackStart) continue;
+    if (e.type === "sensor.motion_window" && e.event_id !== newestWindowId && parseIso(e.occurred_at)! < lookbackStart) {
+      continue;
+    }
     const sensitivity = specFor(e.type).sensitivity;
     if (sensitivity !== "none" && !consent.has(subject, RESPONDER_SCOPE_FOR[sensitivity])) {
       redacted.push({ event_id: e.event_id, type: e.type, reason: `${RESPONDER_SCOPE_FOR[sensitivity]} not granted` });

@@ -1,0 +1,181 @@
+{
+  "schema": "ypc.operator_briefing",
+  "schema_version": "2.0",
+  "generated_at": "2026-10-18T00:04:08.000Z",
+  "session_id": "ses_0001",
+  "incident_id": "inc_0001",
+  "participant_id": "par_0002",
+  "timeline_head_hash": "sha256:f35d4cf9e78b5c66d5dd7280cb89515ab76602aa8d176b03b50f8afcbe7a92af",
+  "incident": {
+    "state": "open",
+    "trigger": "checkin_missed",
+    "opened_at": "2026-10-17T23:54:00.000Z",
+    "source_event_id": "evt_0028",
+    "acknowledged": null,
+    "resolved": null
+  },
+  "person": {
+    "status": "shared",
+    "details": {
+      "display_name": "Sam (synthetic)",
+      "preferred_language": "English",
+      "emergency_notes": "Synthetic demo note: carries an inhaler in left jacket pocket.",
+      "source_event_id": "evt_0006"
+    }
+  },
+  "location": {
+    "status": "last_known",
+    "is_current": false,
+    "last_known": {
+      "latitude": 43.6629,
+      "longitude": -79.3957,
+      "accuracy_m": 12,
+      "fix_at": "2026-10-17T23:50:00.000Z",
+      "source": "synthetic",
+      "speed_m_s": 0,
+      "heading_deg": null,
+      "place_label": "Synthetic Venue A, rear patio",
+      "age_ms": 848000,
+      "source_event_id": "evt_0019"
+    }
+  },
+  "motion": {
+    "baseline": {
+      "features": [
+        {
+          "name": "dynamic_mean_m_s2",
+          "unit": "m/s^2",
+          "mean": 0.6592,
+          "std_dev": 0.1505,
+          "window_count": 5
+        },
+        {
+          "name": "dynamic_peak_m_s2",
+          "unit": "m/s^2",
+          "mean": 1.3049,
+          "std_dev": 0.2485,
+          "window_count": 5
+        },
+        {
+          "name": "stillness_ratio",
+          "unit": "ratio",
+          "mean": 0.105,
+          "std_dev": 0.0248,
+          "window_count": 5
+        }
+      ],
+      "source_event_id": "evt_0014"
+    },
+    "observation": {
+      "feature": "dynamic_mean_m_s2",
+      "unit": "m/s^2",
+      "observed_value": 0.01,
+      "baseline_mean": 0.6592,
+      "baseline_std_dev": 0.1505,
+      "z_score": -4.3136,
+      "window_start": "2026-10-17T23:51:00.000Z",
+      "window_end": "2026-10-17T23:52:00.000Z",
+      "rule_id": "stillness-z",
+      "source_event_id": "evt_0023"
+    },
+    "latest_window": {
+      "window_end": "2026-10-17T23:52:00.000Z",
+      "age_ms": 728000,
+      "dynamic_mean_m_s2": 0.01,
+      "dynamic_peak_m_s2": 0.0211,
+      "stillness_ratio": 1,
+      "coverage_ratio": 1,
+      "source_event_id": "evt_0022"
+    }
+  },
+  "device": {
+    "status": "offline",
+    "since": "2026-10-17T23:52:40.000Z",
+    "source_event_id": "evt_0026"
+  },
+  "escalation": {
+    "pending": [],
+    "fired": [
+      {
+        "step": 2,
+        "target_role": "backup_contact",
+        "at": "2026-10-17T23:59:00.000Z",
+        "source_event_id": "evt_0034"
+      },
+      {
+        "step": 3,
+        "target_role": "emergency_service_sim",
+        "at": "2026-10-18T00:04:00.000Z",
+        "source_event_id": "evt_0038"
+      }
+    ],
+    "simulated_emergency_requested": true
+  },
+  "alerts": [
+    {
+      "notification_id": "ntf_0001",
+      "recipient_id": "par_0001",
+      "recipient_role": "host",
+      "escalation_step": 1,
+      "first_sent_at": "2026-10-17T23:54:00.000Z",
+      "attempts": 2,
+      "delivered": true,
+      "viewed": true,
+      "delivery_failed": false,
+      "acknowledged": false
+    },
+    {
+      "notification_id": "ntf_0002",
+      "recipient_id": "con_0001",
+      "recipient_role": "backup_contact",
+      "escalation_step": 2,
+      "first_sent_at": "2026-10-17T23:59:00.000Z",
+      "attempts": 1,
+      "delivered": false,
+      "viewed": false,
+      "delivery_failed": true,
+      "acknowledged": false
+    }
+  ],
+  "unknowns": [
+    "The participant's condition and the cause of the observations are unknown; the system does not diagnose.",
+    "Current location is unknown; the last fix is from 2026-10-17T23:50:00.000Z.",
+    "No motion data has arrived since 2026-10-17T23:52:00.000Z.",
+    "The device has been offline since 2026-10-17T23:52:40.000Z.",
+    "The participant has not answered a check-in.",
+    "No responder has acknowledged the alert."
+  ],
+  "evidence": {
+    "event_ids": [
+      "evt_0001",
+      "evt_0004",
+      "evt_0005",
+      "evt_0006",
+      "evt_0014",
+      "evt_0015",
+      "evt_0019",
+      "evt_0022",
+      "evt_0023",
+      "evt_0024",
+      "evt_0025",
+      "evt_0026",
+      "evt_0027",
+      "evt_0028",
+      "evt_0029",
+      "evt_0030",
+      "evt_0031",
+      "evt_0032",
+      "evt_0033",
+      "evt_0034",
+      "evt_0035",
+      "evt_0036",
+      "evt_0037",
+      "evt_0038",
+      "evt_0039",
+      "evt_0040",
+      "evt_0041",
+      "evt_0042"
+    ],
+    "redacted": []
+  }
+}

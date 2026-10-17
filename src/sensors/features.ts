@@ -79,7 +79,10 @@ const UNITS: Record<BaselineFeatureName, string> = {
 };
 
 /** Personal baseline: mean and spread of each feature across calibration windows. */
-export function baselineFrom(windows: readonly AccelWindowFeatures[], names: readonly BaselineFeatureName[]) {
+export function baselineFrom(
+  windows: readonly Pick<AccelWindowFeatures, BaselineFeatureName>[],
+  names: readonly BaselineFeatureName[],
+) {
   if (windows.length < 2) throw new Error("A baseline needs at least two windows");
   return names.map((name) => {
     const values = windows.map((w) => w[name]);

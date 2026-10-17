@@ -182,3 +182,10 @@ test("repeat flag must agree with attempt number", () => {
   assert.deepEqual(sent(2, true), []);
   assert.deepEqual(paths(sent(2, false)), ["data.is_repeat"]);
 });
+
+test("docs/timeline.md documents every event type", async () => {
+  const { readFileSync } = await import("node:fs");
+  const doc = readFileSync("docs/timeline.md", "utf8");
+  const missing = EVENT_TYPES.filter((t) => !doc.includes(`\`${t}\``));
+  assert.deepEqual(missing, []);
+});

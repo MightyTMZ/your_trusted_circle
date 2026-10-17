@@ -75,3 +75,20 @@ test("baselineFrom summarizes features across windows", () => {
   assert.deepEqual(mean, { name: "dynamic_mean_m_s2", unit: "m/s^2", mean: 2, std_dev: 1, window_count: 3 });
   assert.throws(() => baselineFrom([base], ["stillness_ratio"]), /at least two/);
 });
+
+test("every motion window in the scenario recomputes exactly from its raw batch", async () => {
+  const { buildNoResponseScenario } = await import("../../src/timeline/fixtures/no-response.js");
+  const { timeline, rawLines } = buildNoResponseScenario();
+  const batches = parseRawBatches(rawLines.join("\n"));
+  const windows = timeline.events.filter((e) => e.type === "sensor.motion_window");
+  assert.equal(windows.length, batches.length);
+  for (const w of windows) {
+    if (w.type !== "sensor.motion_window") continue;
+    const batch = findBatch(batches, w.provenance.raw_ref!);
+    assert.ok(batch, `${w.provenance.raw_ref} not found`);
+    const { window_ms: _w, ...recomputed } = accelerometerFeatures(batch);
+    for (const [key, value] of Object.entries(recomputed)) {
+      assert.deepEqual(w.data[key as keyof typeof w.data], value, `${w.event_id}.${key}`);
+    }
+  }
+});
