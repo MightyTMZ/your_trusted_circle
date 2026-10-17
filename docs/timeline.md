@@ -312,14 +312,16 @@ deterministic path, `--interactive` to play the operator). It reads
 
 ### The live call (operator console)
 
-The agent runs on the YTC backend server (`src/server/`, one Node process,
-localhost only), so it reads and appends to the incident timeline directly.
-`npm run dev:full` starts the backend and the UI; open
-`http://localhost:5173/#operator` and play the operator.
+The agent runs on the YTC backend server, in the same process as the rest
+of the API (`src/server/voice/`, mounted at `/api/calls`; see
+`docs/backend.md`), so it reads and appends to the incident timeline
+directly. The backend's Origin check and JSON-only rule apply, so a
+recording travels as base64 JSON. `npm run dev:full` starts the backend
+and the UI; open `http://localhost:5173/#operator` and play the operator.
 
 ```
  browser (operator console)              YTC backend (npm run server)
- hold-to-talk mic ──audio──► POST /api/calls/:id/speech ─► ElevenLabs scribe_v2 (speech-to-text)
+ hold-to-talk mic ──base64──► POST /api/calls/:id/speech ─► ElevenLabs scribe_v2 (speech-to-text)
  or typed text ──────────► POST /api/calls/:id/turns  ─► OperatorCallAgent.respond() (pipeline above)
  ◄── reply JSON (text, cited facts, rejected drafts, latency)
  <audio> ◄──────────────── GET /api/calls/:id/turns/:n/audio ─► ElevenLabs eleven_flash_v2_5 (streamed)

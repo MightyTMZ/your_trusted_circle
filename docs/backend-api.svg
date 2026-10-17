@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 860" width="1200" height="860" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <title>YTC Backend API (Main Server): responsibilities</title>
+  <rect width="1200" height="860" fill="#ffffff"/>
+  <rect x="10" y="10" width="1180" height="840" rx="18" fill="#f6fcf7" stroke="#2e9d4f" stroke-width="3"/>
+
+  <text x="600" y="52" text-anchor="middle" font-size="28" font-weight="700" fill="#0f3d1f">2. YTC Backend API (Main Server)</text>
+  <text x="600" y="82" text-anchor="middle" font-size="16" fill="#3b5a46">Identifies users, enforces participant rules, holds every deadline, and delivers each alert exactly once</text>
+
+  <g font-size="14" fill="#1f2a24">
+    <!-- 1 -->
+    <rect x="30" y="105" width="366" height="320" rx="12" fill="#ffffff" stroke="#9fd3ae" stroke-width="1.5"/>
+    <circle cx="58" cy="135" r="15" fill="#2e9d4f"/><text x="58" y="140" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">1</text>
+    <text x="82" y="132" font-size="17" font-weight="700" fill="#0f3d1f">Authentication &amp;</text>
+    <text x="82" y="153" font-size="17" font-weight="700" fill="#0f3d1f">session authorization</text>
+    <text x="48" y="190">
+      <tspan x="48">• OAuth sign-in: Google, GitHub, Apple,</tspan>
+      <tspan x="62" dy="20">Microsoft</tspan>
+      <tspan x="48" dy="26">• Cookie sign-in; only a hash of the token</tspan>
+      <tspan x="62" dy="20">is stored</tspan>
+      <tspan x="48" dy="26">• Only members see or act in a session</tspan>
+      <tspan x="48" dy="26">• Only the host sets rules, shows the</tspan>
+      <tspan x="62" dy="20">invite, or ends the session</tspan>
+      <tspan x="48" dy="26">• Each person changes only their own consent</tspan>
+      <tspan x="48" dy="26" font-weight="600">• The host is first responder: alerts about</tspan>
+      <tspan x="62" dy="20" font-weight="600">everyone else go to the host first</tspan>
+    </text>
+
+    <!-- 2 -->
+    <rect x="417" y="105" width="366" height="320" rx="12" fill="#ffffff" stroke="#9fd3ae" stroke-width="1.5"/>
+    <circle cx="445" cy="135" r="15" fill="#2e9d4f"/><text x="445" y="140" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">2</text>
+    <text x="469" y="132" font-size="17" font-weight="700" fill="#0f3d1f">Session lifecycle &amp;</text>
+    <text x="469" y="153" font-size="17" font-weight="700" fill="#0f3d1f">event validation</text>
+    <text x="435" y="190">
+      <tspan x="435">• Create (signed-in host); join by code</tspan>
+      <tspan x="449" dy="20">or QR link</tspan>
+      <tspan x="435" dy="26">• Leave, end, automatic expiry</tspan>
+      <tspan x="435" dy="26">• Accept only catalogued timeline events,</tspan>
+      <tspan x="449" dy="20">with intact hash and summary</tspan>
+      <tspan x="435" dy="26">• The sender is the signed-in user, never</tspan>
+      <tspan x="449" dy="20">whatever the request body claims</tspan>
+      <tspan x="435" dy="26">• Location is stored only while an incident</tspan>
+      <tspan x="449" dy="20">about that person is active</tspan>
+    </text>
+
+    <!-- 3 -->
+    <rect x="804" y="105" width="366" height="320" rx="12" fill="#ffffff" stroke="#9fd3ae" stroke-width="1.5"/>
+    <circle cx="832" cy="135" r="15" fill="#2e9d4f"/><text x="832" y="140" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">3</text>
+    <text x="856" y="132" font-size="17" font-weight="700" fill="#0f3d1f">Safety state &amp;</text>
+    <text x="856" y="153" font-size="17" font-weight="700" fill="#0f3d1f">deadlines</text>
+    <text x="822" y="190">
+      <tspan x="822">• Private check-ins; the server holds</tspan>
+      <tspan x="836" dy="20">the deadline</tspan>
+      <tspan x="822" dy="26">• A missed deadline opens an incident,</tspan>
+      <tspan x="836" dy="20">even if the phone is closed</tspan>
+      <tspan x="822" dy="26">• Missed heartbeats mark a device offline;</tspan>
+      <tspan x="836" dy="20">they never cancel a deadline</tspan>
+      <tspan x="822" dy="26">• "I'm OK" cancels; leaving or ending</tspan>
+      <tspan x="836" dy="20">cancels pending check-ins</tspan>
+      <tspan x="822" dy="26">• Escalation: host → backup contacts →</tspan>
+      <tspan x="836" dy="20">emergency services (simulated)</tspan>
+    </text>
+
+    <!-- 4 -->
+    <rect x="30" y="445" width="560" height="235" rx="12" fill="#ffffff" stroke="#9fd3ae" stroke-width="1.5"/>
+    <circle cx="58" cy="475" r="15" fill="#2e9d4f"/><text x="58" y="480" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">4</text>
+    <text x="82" y="481" font-size="17" font-weight="700" fill="#0f3d1f">Alert orchestration</text>
+    <text x="48" y="520">
+      <tspan x="48">• One notification job per recipient per step, de-duplicated</tspan>
+      <tspan x="48" dy="26">• Dispatch, record every result, retry with backoff (up to 5 tries)</tspan>
+      <tspan x="48" dy="26">• A failed or repeated delivery never moves the escalation deadline</tspan>
+      <tspan x="48" dy="26" font-weight="600">• Acknowledge stops escalation; it does not confirm wellbeing</tspan>
+      <tspan x="48" dy="26">• The acknowledgment is reported back to the person</tspan>
+      <tspan x="48" dy="26">• Resolving is a separate action</tspan>
+    </text>
+
+    <!-- 5 -->
+    <rect x="610" y="445" width="560" height="235" rx="12" fill="#ffffff" stroke="#9fd3ae" stroke-width="1.5"/>
+    <circle cx="638" cy="475" r="15" fill="#2e9d4f"/><text x="638" y="480" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">5</text>
+    <text x="662" y="481" font-size="17" font-weight="700" fill="#0f3d1f">Data access &amp; retention</text>
+    <text x="628" y="520">
+      <tspan x="628">• Timelines filtered by role and each person's consent</tspan>
+      <tspan x="628" dy="26">• Check-ins stay private; the host sees incidents</tspan>
+      <tspan x="628" dy="26">• Expiry: sessions end on time; sign-ins expire</tspan>
+      <tspan x="628" dy="26">• Export all my data as one JSON download</tspan>
+      <tspan x="628" dy="26">• Deleting an account removes everything about the person</tspan>
+      <tspan x="628" dy="26">• Retention: 30 days; active incidents are kept</tspan>
+    </text>
+  </g>
+
+  <!-- scheduler -->
+  <rect x="30" y="700" width="1140" height="58" rx="12" fill="#e7f6eb" stroke="#2e9d4f" stroke-width="1.5"/>
+  <text x="600" y="724" text-anchor="middle" font-size="15" font-weight="700" fill="#0f3d1f">Scheduler, every second, on one injectable clock (idempotent; safe to run twice)</text>
+  <text x="600" y="746" text-anchor="middle" font-size="14" fill="#1f2a24">session expiry → missed heartbeats → missed check-ins → escalation steps → alert dispatch</text>
+
+  <!-- storage -->
+  <rect x="30" y="775" width="1140" height="58" rx="12" fill="#fff8e1" stroke="#e0b400" stroke-width="1.5"/>
+  <text x="600" y="799" text-anchor="middle" font-size="15" font-weight="700" fill="#5a4600">MongoDB (single database)</text>
+  <text x="600" y="821" text-anchor="middle" font-size="14" fill="#3d3200">users · auth_sessions · sessions · checkins · incidents · notification_jobs · traces</text>
+</svg>

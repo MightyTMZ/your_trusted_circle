@@ -9,7 +9,7 @@
     "test": "vitest run && npm run test:node",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit",
     "agent:demo": "vite-node src/agent/demo.ts",
-    "server": "vite-node src/server/main.ts",
+    "server": "tsc -p tsconfig.node.json && node --env-file-if-exists=.env dist/src/server/main.js",
     "dev:full": "node scripts/dev.mjs",
     "test:node": "tsc -p tsconfig.node.json && node --test --test-reporter=dot \"dist/test/**/*.test.js\"",
     "examples": "tsc -p tsconfig.node.json && node dist/src/timeline/fixtures/no-response.js docs/examples data/examples"
@@ -27,6 +27,10 @@
   "homepage": "https://github.com/MightyTMZ/your_trusted_companion#readme",
   "dependencies": {
     "@google/genai": "^2.30.0",
+    "@hono/node-server": "^2.1.5",
+    "arctic": "^3.7.0",
+    "hono": "^4.13.13",
+    "mongodb": "^7.7.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

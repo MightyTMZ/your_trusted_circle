@@ -18,28 +18,30 @@ export function LocationStamp({
   showPlace?: boolean;
 }) {
   return (
-    <div className="stack" style={{ gap: 2 }}>
-      <span className={`loc ${fresh}`}>
-        <span className={`dot ${fresh === 'live' ? 'live' : 'hollow'}`} aria-hidden />
+    <span className="stack" style={{ gap: 2 }}>
+      <span className="inline t-sub num" style={{ gap: 6 }}>
+        <span className={`dot ${fresh === 'live' ? 'live' : 'hollow'}`} aria-hidden="true" />
         {fresh === 'live' ? (
-          <>
-            <span className="state">Live</span>
-            <span className="mono">· {fmtTime(reading.recordedAt)}</span>
-          </>
+          <span>
+            <span className="t-name" style={{ fontSize: 12 }}>
+              Live
+            </span>{' '}
+            · {fmtTime(reading.recordedAt)}
+          </span>
         ) : (
-          <>
-            <span className="state">Stale</span>
-            <span>
-              · last known <span className="mono">{fmtTime(reading.recordedAt)}</span> · {fmtAgo(now - reading.recordedAt)}
-            </span>
-          </>
+          <span>
+            <span className="t-name" style={{ fontSize: 12 }}>
+              Stale
+            </span>{' '}
+            · last known {fmtTime(reading.recordedAt)} · {fmtAgo(now - reading.recordedAt)}
+          </span>
         )}
       </span>
       {showPlace && (
-        <span className="tiny">
+        <span className="t-cap">
           {describeOffset(reading)} · ±{reading.accuracyM} m · synthetic
         </span>
       )}
-    </div>
+    </span>
   );
 }

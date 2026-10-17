@@ -8,17 +8,18 @@
  * handled exactly like typed text; the agent's audio is synthesized only
  * from the text of an agent turn already logged in the timeline.
  */
-import type { Clock } from "../shared/clock.js";
-import { SequentialIds, type IdGenerator } from "../shared/ids.js";
-import { OperatorCallAgent, type AgentReply, type CallAgentOptions } from "../agent/agent.js";
-import type { Embedder } from "../agent/retrieval.js";
-import type { ReasoningModel } from "../agent/model.js";
-import type { Fact } from "../agent/facts.js";
-import { FIXTURE_INCIDENT_ID, buildNoResponseScenario } from "../timeline/fixtures/no-response.js";
-import type { TimelineEvent } from "../timeline/schema/catalog.js";
-import { Timeline } from "../timeline/timeline.js";
-import type { SpeechProvider } from "./elevenlabs.js";
-import type { CallView, FactView, ReplyView, TurnResponse } from "./protocol.js";
+import type { Clock } from "../../shared/clock.js";
+import { SequentialIds, type IdGenerator } from "../../shared/ids.js";
+import { OperatorCallAgent, type AgentReply, type CallAgentOptions } from "../../agent/agent.js";
+import type { Embedder } from "../../agent/retrieval.js";
+import type { ReasoningModel } from "../../agent/model.js";
+import type { Fact } from "../../agent/facts.js";
+import { FIXTURE_INCIDENT_ID, buildNoResponseScenario } from "../../timeline/fixtures/no-response.js";
+import type { TimelineEvent } from "../../timeline/schema/catalog.js";
+import { Timeline } from "../../timeline/timeline.js";
+import { GEMINI_FAST_MODEL, GEMINI_REASONING_MODEL, createGeminiModels } from "../../agent/gemini.js";
+import { ElevenLabsSpeech, type SpeechProvider } from "./elevenlabs.js";
+import type { CallView, CapabilitiesResponse, FactView, ReplyView, TurnResponse } from "./protocol.js";
 
 export class CallError extends Error {
   override name = "CallError";
@@ -32,6 +33,8 @@ export class CallError extends Error {
 
 export interface CallServiceOptions {
   models?: { model: ReasoningModel; judge: ReasoningModel; embedder?: Embedder };
+  /** Shown to the console: which models answer. */
+  reasoningId?: string;
   speech?: SpeechProvider;
   /** Calls kept at once; the oldest ended or idle call is dropped first. Default 8. */
   maxCalls?: number;
@@ -50,7 +53,7 @@ interface LiveCall {
   lastActive: number;
 }
 
-const OPERATOR_AUDIO_LIMIT = 10 * 1024 * 1024;
+const OPERATOR_AUDIO_LIMIT = 5 * 1024 * 1024;
 
 export class CallService {
   private readonly calls = new Map<string, LiveCall>();
@@ -61,8 +64,12 @@ export class CallService {
     this.wall = opts.wallClock ?? (() => performance.now());
   }
 
-  get speechEnabled(): boolean {
-    return !!this.opts.speech;
+  capabilities(): CapabilitiesResponse {
+    return {
+      reasoning: this.opts.models ? (this.opts.reasoningId ?? "configured") : null,
+      speech_to_text: this.opts.speech?.sttId ?? null,
+      text_to_speech: this.opts.speech?.ttsId ?? null,
+    };
   }
 
   /** Builds a fresh incident, places the simulated call, and speaks the opening breakdown. */
@@ -235,6 +242,20 @@ export class CallService {
       rejected_drafts: mine.filter((e) => e.type === "voice.draft_rejected").length,
     };
   }
+}
+
+/**
+ * The production wiring, from the server's environment: Gemini when
+ * GEMINI_API_KEY is set (else facts are read verbatim), ElevenLabs when
+ * ELEVENLABS_API_KEY is set (else text only). Keys stay in this process.
+ */
+export function createCallService(env: NodeJS.ProcessEnv): CallService {
+  const gemini = env.GEMINI_API_KEY?.trim();
+  const eleven = env.ELEVENLABS_API_KEY?.trim();
+  return new CallService({
+    ...(gemini ? { models: createGeminiModels(gemini), reasoningId: `${GEMINI_REASONING_MODEL} -> ${GEMINI_FAST_MODEL}` } : {}),
+    ...(eleven ? { speech: new ElevenLabsSpeech({ apiKey: eleven, voiceId: env.ELEVENLABS_VOICE_ID?.trim() }) } : {}),
+  });
 }
 
 function factView(f: Fact): FactView {

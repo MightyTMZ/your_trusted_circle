@@ -77,14 +77,20 @@ export interface CallUpdateResponse {
   call: CallView;
 }
 
-export interface HealthResponse {
-  ok: true;
+export interface CapabilitiesResponse {
   /** Gemini reasoning, judge and embeddings; without it the agent speaks facts verbatim. */
   reasoning: string | null;
   speech_to_text: string | null;
   text_to_speech: string | null;
 }
 
+/** One recorded operator turn. JSON like every other request (the API accepts JSON only). */
+export interface SpeechRequest {
+  audio_base64: string;
+  mime_type: string;
+}
+
+/** The backend's one error shape (src/server/context.ts). */
 export interface ErrorResponse {
-  error: string;
+  error: { code: string; message: string };
 }

@@ -1,48 +1,61 @@
 import { inboxFor } from '../../domain/transport';
 import { useApp } from '../context';
 import { fmtTime } from '../format';
+import { initials } from '../components/Controls';
+import { Icon } from '../components/Icon';
 import { SimulatedTag } from '../components/SimulatedTag';
 
 /** What a simulated recipient (backup contact or emergency services) has been sent. Nothing more. */
 export function RecipientInboxScreen() {
-  const { state, meRecipient, go } = useApp();
+  const { state, meRecipient, go, setViewer } = useApp();
   const r = meRecipient!;
   const inbox = inboxFor(state, r.id);
   const isEmergency = r.kind === 'emergency_simulated';
-
   return (
     <div className="screen">
-      <div className="stack">
-        <div className="row" style={{ gap: 8 }}>
-          <span className="eyebrow">{isEmergency ? 'Simulated emergency services' : 'Backup contact'}</span>
+      <div className="narrow">
+        <header className="header">
+          <span className="av glass">{initials(r.name)}</span>
+          <span className="stack grow">
+            <h1 className="t-title">Messages</h1>
+            <span className="t-sub">
+              {r.name} · {isEmergency ? 'Simulated emergency services' : 'Backup contact'}
+            </span>
+          </span>
+          <button type="button" className="btn ibtn glass" aria-label="Exit recipient view" onClick={() => setViewer(null)}>
+            <Icon name="logOut" />
+          </button>
+        </header>
+        <span style={{ alignSelf: 'flex-start' }}>
           <SimulatedTag />
-        </div>
-        <h1 className="title">Messages</h1>
-        <p className="small">Delivered by the simulated transport. Nothing here was sent over a real network.</p>
+        </span>
+        {inbox.length === 0 ? (
+          <p className="t-lead">Nothing has been sent to you.</p>
+        ) : (
+          <section className="glass card card-list rise" aria-label="Messages">
+            {inbox.map((n) => (
+              <button
+                key={n.id}
+                type="button"
+                className="btn lrow"
+                style={{ alignItems: 'flex-start', padding: '14px 0' }}
+                onClick={() => go(isEmergency ? { name: 'call', id: n.incidentId } : { name: 'alert', id: n.incidentId })}
+              >
+                <span className="stack grow" style={{ gap: 6 }}>
+                  <span className="inline">
+                    <span className="t-cap num">{fmtTime(n.deliveredAt)}</span>
+                    {n.repeat && <span className="tag">Repeat</span>}
+                  </span>
+                  <span className="t-body">{n.payload.message}</span>
+                </span>
+                <span className="chev" style={{ marginTop: 2 }}>
+                  <Icon name="chevronRight" />
+                </span>
+              </button>
+            ))}
+          </section>
+        )}
       </div>
-
-      {inbox.length === 0 ? (
-        <p className="lead">Nothing has been sent to you.</p>
-      ) : (
-        <div className="list">
-          {inbox.map((n) => (
-            <div
-              key={n.id}
-              className="list-row clickable"
-              onClick={() => go(isEmergency ? { name: 'call', id: n.incidentId } : { name: 'alert', id: n.incidentId })}
-            >
-              <div className="grow stack" style={{ gap: 2 }}>
-                <div className="row" style={{ gap: 8 }}>
-                  <span className="mono small">{fmtTime(n.deliveredAt)}</span>
-                  {n.repeat && <span className="tag">Repeat</span>}
-                </div>
-                <span>{n.payload.message}</span>
-              </div>
-              <span className="chev">›</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

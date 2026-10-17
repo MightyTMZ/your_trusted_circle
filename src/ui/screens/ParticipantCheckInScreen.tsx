@@ -3,6 +3,9 @@ import type { CheckIn } from '../../domain/types';
 import { COPY } from '../copy';
 import { useApp, useNow } from '../context';
 import { fmtCountdown, fmtTime } from '../format';
+import { ArcGauge } from '../components/Gauges';
+
+const hm = (t: number) => fmtTime(t).slice(0, 5);
 
 /** Private: rendered only on the participant's own device. The host never sees pending check-ins. */
 export function ParticipantCheckInScreen({ checkIn }: { checkIn: CheckIn }) {
@@ -21,37 +24,40 @@ export function ParticipantCheckInScreen({ checkIn }: { checkIn: CheckIn }) {
       ? `${hostName} (your host) is`
       : 'your host is';
   const respond = (r: 'ok' | 'help') => store.dispatch((d, t) => respondToCheckIn(d, me!.id, checkIn.id, r, t));
-
   return (
-    <div className="screen checkin">
-      <div className="stack">
-        <span className="eyebrow">{COPY.checkInTitle}</span>
-        <span className="small">{COPY.checkInPrivacy}</span>
-      </div>
-
-      <div className="stack-lg">
-        <p className="lead">
-          {COPY.movementChanged} at <span className="mono">{fmtTime(checkIn.promptedAt)}</span>.
-        </p>
-        <h1 className="question">Are you OK?</h1>
-        <div className="stack" style={{ gap: 2 }}>
-          <span className="countdown" aria-live="polite">
-            {fmtCountdown(remaining)}
-          </span>
-          <span className="small">
-            If you don't answer, {whoIsAlerted} alerted at <span className="mono">{fmtTime(checkIn.dueAt)}</span>.
-          </span>
+    <div className="screen">
+      <div className="narrow">
+        <div className="spread">
+          <span className="tag">{COPY.checkInTitle}</span>
+          <span className="t-sub">{COPY.checkInPrivacy}</span>
         </div>
-      </div>
-
-      <div className="screen-footer">
-        <button className="btn btn-primary btn-block btn-large" onClick={() => respond('ok')}>
-          {COPY.checkInOk}
-        </button>
-        <button className="btn btn-critical btn-block btn-large" onClick={() => respond('help')}>
-          {COPY.checkInHelp}
-        </button>
-        <p className="tiny">{COPY.observationNotDiagnosis}</p>
+        <div className="stack center rise" style={{ alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <h1 className="t-display">Are you OK?</h1>
+          <p className="t-lead num">
+            {COPY.movementChanged} at {fmtTime(checkIn.promptedAt)}.
+          </p>
+        </div>
+        <ArcGauge
+          progress={(now - checkIn.promptedAt) / (checkIn.dueAt - checkIn.promptedAt)}
+          label="Respond within"
+          value={fmtCountdown(remaining)}
+          startLabel={hm(checkIn.promptedAt)}
+          endLabel={hm(checkIn.dueAt)}
+          ariaLabel={`${fmtCountdown(remaining)} left to respond.`}
+          role="timer"
+        />
+        <p className="t-sub center num" aria-live="polite">
+          If you don't answer, {whoIsAlerted} alerted at {fmtTime(checkIn.dueAt)}.
+        </p>
+        <div className="screen-footer">
+          <button type="button" className="btn pbtn on-accent" onClick={() => respond('ok')}>
+            {COPY.checkInOk}
+          </button>
+          <button type="button" className="btn pbtn outline-accent" onClick={() => respond('help')}>
+            {COPY.checkInHelp}
+          </button>
+          <p className="t-cap center">{COPY.observationNotDiagnosis}</p>
+        </div>
       </div>
     </div>
   );

@@ -2,7 +2,10 @@ import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { OperatorConsole } from './ui/operator/OperatorConsole';
+import { applyTheme, loadTheme } from './ui/theme';
 import './styles.css';
+
+applyTheme(loadTheme());
 
 /** #operator opens the simulated operator console; anything else is the app. */
 function Root() {

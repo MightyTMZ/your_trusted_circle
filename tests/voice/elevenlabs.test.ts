@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ELEVENLABS_API, ELEVENLABS_DEFAULT_VOICE, ElevenLabsSpeech, SpeechError, forSpeech } from "../../src/server/elevenlabs.js";
+import { ELEVENLABS_API, ELEVENLABS_DEFAULT_VOICE, ElevenLabsSpeech, SpeechError, forSpeech } from "../../src/server/voice/elevenlabs.js";
 
 type Seen = { url: string; init: RequestInit };
 
