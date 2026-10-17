@@ -24,6 +24,12 @@ export const STREAMS = {
     { name: "y", unit: "m/s^2" },
     { name: "z", unit: "m/s^2" },
   ],
+  /** OS linear acceleration: gravity already removed (phyphox "without g"). */
+  linear_acceleration: [
+    { name: "x", unit: "m/s^2" },
+    { name: "y", unit: "m/s^2" },
+    { name: "z", unit: "m/s^2" },
+  ],
   /** Fixes with OS-reported velocity; speed and heading come from GNSS, not integrated acceleration. */
   location: [
     { name: "latitude", unit: "deg" },
@@ -41,7 +47,7 @@ const headerSchema = v.object({
   batch_seq: v.number({ min: 1, integer: true }),
   session_id: v.id("ses"),
   participant_id: v.id("par"),
-  stream: v.enum(["accelerometer", "location"] as const),
+  stream: v.enum(["accelerometer", "linear_acceleration", "location"] as const),
   /** Nominal rate; null for event-driven streams such as location. */
   sample_rate_hz: v.nullable(v.number({ min: 0 })),
   started_at: v.timestamp(),
