@@ -15,6 +15,7 @@ import { Icon } from '../components/Icon';
 import { LocationStamp } from '../components/LocationStamp';
 import { useFirstContact } from '../components/HelpSheet';
 import { Sheet } from '../components/Sheet';
+import { useMotionTracking } from '../hooks/useMotionTracking';
 
 function fmtHM(ms: number): string {
   const m = Math.max(0, Math.round(ms / 60_000));
@@ -126,6 +127,11 @@ export function SessionHomeScreen() {
   const [error, setError] = useState<string | null>(null);
   const session = state.session!;
   const viewer = me!;
+  const trackingActive = viewer.consent.motionMonitoring && session.status === 'active' && viewer.status === 'active';
+  const { permissionState: motionPerm, requestPermission: requestMotion } = useMotionTracking(
+    store,
+    trackingActive ? viewer.id : null,
+  );
   const isHost = viewer.id === session.hostId;
   const ended = session.status === 'ended' || viewer.status === 'left';
   const people = Object.values(state.participants).filter((p) => p.status === 'active');
@@ -202,6 +208,21 @@ export function SessionHomeScreen() {
             Tell responders I'm OK
           </button>
           <span className="t-cap">Adds to the alert's record. It does not close the alert.</span>
+        </section>
+      )}
+
+      {trackingActive && motionPerm === 'prompt' && (
+        <section className="glass card stack rise" style={{ gap: 8 }}>
+          <h2 className="t-card">Motion sensor needed</h2>
+          <p className="t-sub">Allow access so check-ins can work. Your phone's motion data stays private and is only used to notice unusual movement changes.</p>
+          <button type="button" className="btn pbtn on-accent" onClick={requestMotion}>
+            Enable motion sensor
+          </button>
+        </section>
+      )}
+      {trackingActive && motionPerm === 'denied' && (
+        <section className="glass card stack rise" style={{ gap: 8 }}>
+          <p className="t-sub">Motion sensor access was denied. Check-ins based on movement won't work. You can change this in your browser settings.</p>
         </section>
       )}
 
