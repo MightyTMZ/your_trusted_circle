@@ -1,16 +1,16 @@
 {
   "schema": "ypc.operator_briefing",
   "schema_version": "2.0",
-  "generated_at": "2026-10-18T00:04:08.000Z",
+  "generated_at": "2026-10-18T00:04:10.000Z",
   "session_id": "ses_0001",
   "incident_id": "inc_0001",
   "participant_id": "par_0002",
-  "timeline_head_hash": "sha256:f35d4cf9e78b5c66d5dd7280cb89515ab76602aa8d176b03b50f8afcbe7a92af",
+  "timeline_head_hash": "sha256:23e5ffb7fb01199249e0bae334d29ac610c8ee1db0ca39c7bd2fad830272576e",
   "incident": {
     "state": "open",
     "trigger": "checkin_missed",
-    "opened_at": "2026-10-17T23:54:00.000Z",
-    "source_event_id": "evt_0028",
+    "opened_at": "2026-10-17T23:54:02.000Z",
+    "source_event_id": "evt_0257",
     "acknowledged": null,
     "resolved": null
   },
@@ -30,13 +30,13 @@
       "latitude": 43.6629,
       "longitude": -79.3957,
       "accuracy_m": 12,
-      "fix_at": "2026-10-17T23:50:00.000Z",
+      "fix_at": "2026-10-17T23:50:30.000Z",
       "source": "synthetic",
-      "speed_m_s": 0,
-      "heading_deg": null,
+      "speed_m_s": 0.9,
+      "heading_deg": 100,
       "place_label": "Synthetic Venue A, rear patio",
-      "age_ms": 848000,
-      "source_event_id": "evt_0019"
+      "age_ms": 820000,
+      "source_event_id": "evt_0246"
     }
   },
   "motion": {
@@ -45,53 +45,60 @@
         {
           "name": "dynamic_mean_m_s2",
           "unit": "m/s^2",
-          "mean": 0.6592,
-          "std_dev": 0.1505,
-          "window_count": 5
+          "mean": 1.2798,
+          "std_dev": 0.05,
+          "window_count": 10
         },
         {
           "name": "dynamic_peak_m_s2",
           "unit": "m/s^2",
-          "mean": 1.3049,
-          "std_dev": 0.2485,
-          "window_count": 5
+          "mean": 2.4467,
+          "std_dev": 0.2,
+          "window_count": 10
         },
         {
           "name": "stillness_ratio",
           "unit": "ratio",
-          "mean": 0.105,
-          "std_dev": 0.0248,
-          "window_count": 5
+          "mean": 0.0467,
+          "std_dev": 0.02,
+          "window_count": 10
+        },
+        {
+          "name": "cadence_hz",
+          "unit": "Hz",
+          "mean": 1.8182,
+          "std_dev": 0.05,
+          "window_count": 10
         }
       ],
-      "source_event_id": "evt_0014"
+      "source_event_id": "evt_0021"
     },
     "observation": {
       "feature": "dynamic_mean_m_s2",
       "unit": "m/s^2",
-      "observed_value": 0.01,
-      "baseline_mean": 0.6592,
-      "baseline_std_dev": 0.1505,
-      "z_score": -4.3136,
+      "observed_value": 0.0049,
+      "baseline_mean": 1.2798,
+      "baseline_std_dev": 0.05,
+      "z_score": -25.498,
       "window_start": "2026-10-17T23:51:00.000Z",
       "window_end": "2026-10-17T23:52:00.000Z",
-      "rule_id": "stillness-z",
-      "source_event_id": "evt_0023"
+      "rule_id": "stillness-onset-z",
+      "source_event_id": "evt_0249"
     },
     "latest_window": {
-      "window_end": "2026-10-17T23:52:00.000Z",
-      "age_ms": 728000,
-      "dynamic_mean_m_s2": 0.01,
-      "dynamic_peak_m_s2": 0.0211,
+      "window_end": "2026-10-17T23:53:00.000Z",
+      "age_ms": 670000,
+      "dynamic_mean_m_s2": 0.0049,
+      "dynamic_peak_m_s2": 0.0104,
       "stillness_ratio": 1,
-      "coverage_ratio": 1,
-      "source_event_id": "evt_0022"
+      "coverage_ratio": 0.6674,
+      "source_event_id": "evt_0255"
     }
   },
   "device": {
     "status": "offline",
-    "since": "2026-10-17T23:52:40.000Z",
-    "source_event_id": "evt_0026"
+    "since": "2026-10-17T23:52:55.000Z",
+    "source_event_id": "evt_0254"
   },
   "escalation": {
     "pending": [],
@@ -99,14 +106,14 @@
       {
         "step": 2,
         "target_role": "backup_contact",
-        "at": "2026-10-17T23:59:00.000Z",
-        "source_event_id": "evt_0034"
+        "at": "2026-10-17T23:59:02.000Z",
+        "source_event_id": "evt_0264"
       },
       {
         "step": 3,
         "target_role": "emergency_service_sim",
-        "at": "2026-10-18T00:04:00.000Z",
-        "source_event_id": "evt_0038"
+        "at": "2026-10-18T00:04:02.000Z",
+        "source_event_id": "evt_0268"
       }
     ],
     "simulated_emergency_requested": true
@@ -117,7 +124,7 @@
       "recipient_id": "par_0001",
       "recipient_role": "host",
       "escalation_step": 1,
-      "first_sent_at": "2026-10-17T23:54:00.000Z",
+      "first_sent_at": "2026-10-17T23:54:02.000Z",
       "attempts": 2,
       "delivered": true,
       "viewed": true,
@@ -129,7 +136,7 @@
       "recipient_id": "con_0001",
       "recipient_role": "backup_contact",
       "escalation_step": 2,
-      "first_sent_at": "2026-10-17T23:59:00.000Z",
+      "first_sent_at": "2026-10-17T23:59:02.000Z",
       "attempts": 1,
       "delivered": false,
       "viewed": false,
@@ -139,10 +146,9 @@
   ],
   "unknowns": [
     "The participant's condition and the cause of the observations are unknown; the system does not diagnose.",
-    "Current location is unknown; the last fix is from 2026-10-17T23:50:00.000Z.",
-    "No motion data has arrived since 2026-10-17T23:52:00.000Z.",
-    "The device has been offline since 2026-10-17T23:52:40.000Z.",
-    "The participant has not answered a check-in.",
+    "Current location is unknown; the last fix is from 2026-10-17T23:50:30.000Z.",
+    "No motion data has arrived since 2026-10-17T23:53:00.000Z.",
+    "The device has been offline since 2026-10-17T23:52:55.000Z.",
     "No responder has acknowledged the alert."
   ],
   "evidence": {
@@ -151,30 +157,45 @@
       "evt_0004",
       "evt_0005",
       "evt_0006",
-      "evt_0014",
-      "evt_0015",
-      "evt_0019",
-      "evt_0022",
-      "evt_0023",
-      "evt_0024",
-      "evt_0025",
-      "evt_0026",
-      "evt_0027",
-      "evt_0028",
-      "evt_0029",
-      "evt_0030",
-      "evt_0031",
-      "evt_0032",
-      "evt_0033",
-      "evt_0034",
-      "evt_0035",
-      "evt_0036",
-      "evt_0037",
-      "evt_0038",
-      "evt_0039",
-      "evt_0040",
+      "evt_0009",
+      "evt_0010",
+      "evt_0021",
       "evt_0041",
-      "evt_0042"
+      "evt_0074",
+      "evt_0075",
+      "evt_0076",
+      "evt_0077",
+      "evt_0092",
+      "evt_0093",
+      "evt_0101",
+      "evt_0192",
+      "evt_0228",
+      "evt_0239",
+      "evt_0246",
+      "evt_0249",
+      "evt_0250",
+      "evt_0251",
+      "evt_0252",
+      "evt_0253",
+      "evt_0254",
+      "evt_0255",
+      "evt_0256",
+      "evt_0257",
+      "evt_0258",
+      "evt_0259",
+      "evt_0260",
+      "evt_0261",
+      "evt_0262",
+      "evt_0263",
+      "evt_0264",
+      "evt_0265",
+      "evt_0266",
+      "evt_0267",
+      "evt_0268",
+      "evt_0269",
+      "evt_0270",
+      "evt_0271",
+      "evt_0272"
     ],
     "redacted": []
   }

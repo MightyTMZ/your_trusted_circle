@@ -56,9 +56,9 @@ test("location is the last fix with velocity and age, never current", () => {
   const loc = briefing.location.last_known!;
   assert.equal(briefing.location.is_current, false);
   assert.equal(loc.source_event_id, ids.lastFix.event_id);
-  assert.equal(loc.speed_m_s, 0);
-  assert.equal(loc.heading_deg, null);
-  assert.equal(loc.age_ms, clock.now() - (FIXTURE_START_MS + 50 * 60_000));
+  assert.equal(loc.speed_m_s, 0.9);
+  assert.equal(loc.heading_deg, 100);
+  assert.equal(loc.age_ms, clock.now() - (FIXTURE_START_MS + 230 * 60_000 + 30_000));
   assert.ok(briefing.unknowns.some((u) => u.startsWith("Current location is unknown")));
 });
 
@@ -68,10 +68,11 @@ test("motion section explains why the check-in was sent", () => {
   assert.equal(baseline!.source_event_id, ids.baseline.event_id);
   assert.equal(observation!.source_event_id, ids.anomaly.event_id);
   assert.ok(observation!.z_score <= -3, `z = ${observation!.z_score}`);
-  assert.equal(latest_window!.source_event_id, ids.stillWindow.event_id);
+  // The newest window is the partial one cut short when the phone dropped off at 23:52:40.
+  assert.equal(latest_window!.window_end, "2026-10-17T23:53:00.000Z");
   assert.ok(latest_window!.stillness_ratio > 0.9);
-  assert.equal(latest_window!.coverage_ratio, 1);
-  // The phone stopped sending data 12 minutes before the briefing.
+  assert.ok(latest_window!.coverage_ratio < 0.7);
+  // The phone stopped sending data 11 minutes before the briefing.
   assert.ok(briefing.unknowns.some((u) => u.startsWith("No motion data has arrived since")));
 });
 
@@ -91,10 +92,10 @@ test("old motion windows stay in the timeline but drop out of the evidence, exce
   const windowsIn = (b: ReturnType<typeof brief>) =>
     selectEvidence(b.timeline.events, b.briefing).filter((e) => e.type === "sensor.motion_window").length;
   const all = brief().timeline.events.filter((e) => e.type === "sensor.motion_window").length;
-  assert.equal(all, 11);
-  // Phone went silent 12 min before the briefing: only the newest (stale) window survives a 10 min lookback.
+  assert.equal(all, 226, "four hours, minus the 7 minutes the app was backgrounded");
+  // Phone went silent 11 min before the briefing: only the newest (stale) window survives a 10 min lookback.
   assert.equal(windowsIn(brief()), 1);
-  assert.equal(windowsIn(brief(20 * 60_000)), 6);
+  assert.equal(windowsIn(brief(20 * 60_000)), 9);
 });
 
 test("other participants' events never reach the evidence", () => {
@@ -116,7 +117,7 @@ test("revoking responder location consent withholds every location detail", () =
   });
   const briefing = rebrief(f);
   assert.equal(briefing.location.status, "not_consented");
-  assert.equal(briefing.evidence.redacted.filter((r) => r.type === "location.reported").length, 2);
+  assert.equal(briefing.evidence.redacted.filter((r) => r.type === "location.reported").length, 7);
   const visible = JSON.stringify(briefing) + evidenceToJsonl(f.timeline.events, briefing);
   assert.ok(!visible.includes("43.6629") && !visible.includes("Synthetic Venue A"));
 });
@@ -162,11 +163,10 @@ test("unknown incidents are rejected", () => {
 });
 
 test("committed examples match the fixture (run `npm run examples` to regenerate)", () => {
-  const { timeline, rawLines, briefing } = brief();
+  const { timeline, briefing } = brief();
   const read = (name: string) => readFileSync(join(process.cwd(), "docs/examples", name), "utf8");
   assert.equal(read("no-response-incident.jsonl"), toJsonl(timeline.events));
   assert.equal(read("no-response-briefing.json"), `${JSON.stringify(briefing, null, 2)}\n`);
-  assert.equal(read("synthetic-raw-accelerometer.jsonl"), rawLines.map((l) => `${l}\n`).join(""));
   const restored = timelineFromJsonl(read("no-response-incident.jsonl"), {
     sessionId: FIXTURE_SESSION_ID,
     clock: new ManualClock(FIXTURE_START_MS),

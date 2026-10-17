@@ -236,9 +236,53 @@ export const EVENT_CATALOG = {
   }),
 
   // ── Sensors and detection ────────────────────────────────────────────
+  "sensor.stream_started": defineEvent({
+    description:
+      "A motion stream began. Records the sensor and every threshold once, so each later window " +
+      "and detection can be interpreted exactly without repeating them.",
+    sensitivity: "none",
+    incident: "optional",
+    participant: "required",
+    requiresConsent: ["monitoring"],
+    payload: v.object({
+      recording_id: v.id("rec"),
+      sensor: v.enum(["accelerometer", "linear_acceleration"] as const),
+      gravity_included: v.boolean(),
+      device_kind: v.enum(["phone", "wearable", "synthetic"] as const),
+      device_model: v.nullable(shortText()),
+      sensor_name: v.nullable(shortText()),
+      sensor_range_m_s2: v.number({ min: 0 }),
+      nominal_rate_hz: v.nullable(v.number({ min: 0 })),
+      window_ms: v.number({ min: 1000, integer: true }),
+      features: v.object({
+        still_m_s2: v.number({ min: 0 }),
+        impact_m_s2: v.number({ min: 0 }),
+        moderate_m_s2: v.number({ min: 0 }),
+        vigorous_m_s2: v.number({ min: 0 }),
+        still_window_ratio: v.number({ min: 0, max: 1 }),
+      }),
+      detector: v.object({
+        calibration_windows: v.number({ min: 2, integer: true }),
+        min_coverage: v.number({ min: 0, max: 1 }),
+        anomaly_z: v.number(),
+        min_stillness_ratio: v.number({ min: 0, max: 1 }),
+        refractory_ms: ms(),
+        impact_still_within_ms: ms(),
+        prolonged_still_ms: ms(),
+        tilt_change_deg: v.number({ min: 0, max: 180 }),
+      }),
+      thresholds_validated: v.literal(false),
+    }),
+    summarize: (d, ctx) =>
+      `Motion stream ${d.recording_id} started for ${who(ctx)}: ${d.sensor}` +
+      `${d.sensor_name ? ` (${d.sensor_name}` + (d.device_model ? `, ${d.device_model})` : ")") : ""}, ` +
+      `${d.gravity_included ? "gravity included" : "gravity removed"}, range ${num(d.sensor_range_m_s2)} m/s^2, ` +
+      `${duration(d.window_ms)} windows. Thresholds are unvalidated prototype settings.`,
+  }),
+
   "sensor.motion_window": defineEvent({
     description:
-      "Accelerometer features for one window, derived from a raw batch (provenance.raw_ref). " +
+      "Accelerometer features for one window, computed from a raw batch (provenance.raw_ref). " +
       "Emitted continuously so activity before and after an incident can be reconstructed.",
     sensitivity: "none",
     incident: "optional",
@@ -247,27 +291,110 @@ export const EVENT_CATALOG = {
     payload: v.object({
       window_start: v.timestamp(),
       window_end: v.timestamp(),
-      sample_count: v.number({ min: 0, integer: true }),
-      expected_sample_count: v.number({ min: 0, integer: true }),
-      /** Below 1 means samples went missing: low movement may then be missing data, not stillness. */
+      sample_count: v.number({ min: 1, integer: true }),
+      /** Samples dropped by input validation (malformed, late, duplicate, ...). */
+      rejected_sample_count: v.number({ min: 0, integer: true }),
+      effective_rate_hz: v.nullable(v.number({ min: 0 })),
+      /** Share of the window backed by data. Low coverage means low movement may be missing data. */
       coverage_ratio: v.number({ min: 0, max: 1 }),
-      /** Mean of |a| minus gravity: overall movement level. */
+      max_gap_ms: ms(),
+      clipped_sample_count: v.number({ min: 0, integer: true }),
+      /** Movement level: mean |a| beyond gravity. */
       dynamic_mean_m_s2: v.number({ min: 0 }),
-      /** Variability: rhythmic activity (walking, dancing) versus steady states. */
       dynamic_std_m_s2: v.number({ min: 0 }),
-      /** Largest single deviation: sharp jolts such as a drop or impact. */
       dynamic_peak_m_s2: v.number({ min: 0 }),
-      /** Share of samples below still_threshold: sustained motionlessness. */
       stillness_ratio: v.number({ min: 0, max: 1 }),
-      still_threshold_m_s2: v.number({ min: 0 }),
-      /** Mean raw vector in the device frame: orientation (upright in a pocket, flat face-up, ...). */
-      gravity_vector_m_s2: v.array(v.number(), { minLength: 3, maxLength: 3 }),
+      /** Longest continuous motionless stretch within the window. */
+      longest_still_ms: ms(),
+      /** Dominant movement rhythm (steps, dance beat); null when there is none. */
+      cadence_hz: v.nullable(v.number({ min: 0 })),
+      /** 0 = irregular, 1 = perfectly periodic. Unsteady gait or flailing reads low. */
+      rhythm_regularity: v.nullable(v.number({ min: 0, max: 1 })),
+      impact_count: v.number({ min: 0, integer: true }),
+      impacts: v.array(
+        v.object({
+          at: v.timestamp(),
+          peak_m_s2: v.number({ min: 0 }),
+          /** The sensor saturated, so the true peak was higher. */
+          clipped: v.boolean(),
+        }),
+        { maxLength: 5 },
+      ),
+      /** Device orientation; null for gravity-removed sensors. */
+      gravity_vector_m_s2: v.nullable(v.array(v.number(), { minLength: 3, maxLength: 3 })),
+      /** Rotation since the previous window (e.g. pocket -> flat on the ground). */
+      tilt_change_deg: v.nullable(v.number({ min: 0, max: 180 })),
+      activity_level: v.enum(["still", "light", "moderate", "vigorous"] as const),
     }),
-    summarize: (d, ctx) =>
-      `Motion window for ${who(ctx)} ${d.window_start}–${d.window_end}: movement ` +
-      `${num(d.dynamic_mean_m_s2)} ± ${num(d.dynamic_std_m_s2)} m/s^2, peak ${num(d.dynamic_peak_m_s2)} m/s^2, ` +
-      `still ${Math.round(d.stillness_ratio * 100)}% of the window; ` +
-      `${d.sample_count}/${d.expected_sample_count} samples (${Math.round(d.coverage_ratio * 100)}% coverage).`,
+    summarize: (d, ctx) => {
+      const rhythm =
+        d.cadence_hz === null ? "no rhythm" : `rhythm ${num(d.cadence_hz)} Hz (regularity ${num(d.rhythm_regularity ?? 0)})`;
+      const peakImpact = d.impacts.reduce<(typeof d.impacts)[number] | null>(
+        (m, i) => (m === null || i.peak_m_s2 > m.peak_m_s2 ? i : m),
+        null,
+      );
+      const impacts =
+        d.impact_count === 0 || !peakImpact
+          ? "no impacts"
+          : `${d.impact_count} impact(s), strongest ${num(peakImpact!.peak_m_s2)} m/s^2 at ${peakImpact!.at}` +
+            (peakImpact!.clipped ? " (sensor saturated; true peak higher)" : "");
+      return (
+        `Motion ${d.window_start}–${d.window_end} for ${who(ctx)}: ${d.activity_level}; movement ` +
+        `${num(d.dynamic_mean_m_s2)} ± ${num(d.dynamic_std_m_s2)} m/s^2, peak ${num(d.dynamic_peak_m_s2)}; ` +
+        `still ${Math.round(d.stillness_ratio * 100)}% (longest ${duration(d.longest_still_ms)}); ${rhythm}; ${impacts}` +
+        (d.tilt_change_deg === null ? "" : `; rotated ${Math.round(d.tilt_change_deg)}°`) +
+        `; data covers ${Math.round(d.coverage_ratio * 100)}% of the window.`
+      );
+    },
+  }),
+
+  "sensor.motion_pattern_observed": defineEvent({
+    description:
+      "A sequence across windows worth a check-in, such as an impact followed by stillness. " +
+      "An observation of movement, not a medical conclusion.",
+    sensitivity: "none",
+    incident: "optional",
+    participant: "required",
+    requiresConsent: ["monitoring"],
+    payload: v.object({
+      pattern: v.enum([
+        "impact_then_stillness",
+        "abrupt_stop",
+        "orientation_change_with_stillness",
+        "prolonged_stillness",
+      ] as const),
+      observed_from: v.timestamp(),
+      observed_to: v.timestamp(),
+      rule: v.object({ id: shortText(), threshold_validated: v.literal(false) }),
+      impact_at: v.optional(v.timestamp()),
+      impact_peak_m_s2: v.optional(v.number({ min: 0 })),
+      impact_peak_clipped: v.optional(v.boolean()),
+      still_duration_ms: v.optional(ms()),
+      preceding_activity: v.optional(v.enum(["still", "light", "moderate", "vigorous"] as const)),
+      preceding_cadence_hz: v.optional(v.nullable(v.number({ min: 0 }))),
+      tilt_change_deg: v.optional(v.number({ min: 0, max: 180 })),
+    }),
+    summarize: (d, ctx) => {
+      const subject = cap(who(ctx));
+      switch (d.pattern) {
+        case "impact_then_stillness":
+          return (
+            `${subject}: impact of ${num(d.impact_peak_m_s2 ?? 0)} m/s^2 at ${d.impact_at}` +
+            `${d.impact_peak_clipped ? " (sensor saturated; true peak higher)" : ""}, followed by ` +
+            `${duration(d.still_duration_ms ?? 0)} of stillness. Movement observation only.`
+          );
+        case "abrupt_stop":
+          return (
+            `${subject}: ${d.preceding_activity} movement` +
+            `${d.preceding_cadence_hz ? ` at ${num(d.preceding_cadence_hz)} Hz` : ""} stopped abruptly; still from ` +
+            `${d.observed_from}. Movement observation only.`
+          );
+        case "orientation_change_with_stillness":
+          return `${subject}: phone rotated ${Math.round(d.tilt_change_deg ?? 0)}° and then stayed still. Movement observation only.`;
+        case "prolonged_stillness":
+          return `${subject}: continuously still for ${duration(d.still_duration_ms ?? 0)} since ${d.observed_from}. Movement observation only.`;
+      }
+    },
   }),
 
   "sensor.baseline_calibrated": defineEvent({
@@ -387,7 +514,7 @@ export const EVENT_CATALOG = {
     participant: "required",
     payload: v.object({
       checkin_id: v.id("chk"),
-      trigger: v.enum(["motion_anomaly", "scheduled", "manual"] as const),
+      trigger: v.enum(["motion_anomaly", "motion_pattern", "scheduled", "manual"] as const),
       delivery: v.enum(["haptic", "notification", "in_app"] as const),
       response_deadline_at: v.timestamp(),
     }),
