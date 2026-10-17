@@ -7,8 +7,9 @@ type PermissionState = 'prompt' | 'granted' | 'denied' | 'unsupported';
 
 /**
  * Listens to devicemotion while the participant is in an active session with
- * motion monitoring enabled. Samples are batched and dispatched to the store
- * every ~200 ms to avoid per-event overhead.
+ * motion monitoring enabled. Samples are buffered in memory and dispatched to
+ * the store every 15 seconds (~4 writes/min) to keep localStorage churn low.
+ * Anomaly detection latency is at most 15 s.
  */
 export function useMotionTracking(
   store: Store,
@@ -41,7 +42,7 @@ export function useMotionTracking(
     };
 
     window.addEventListener('devicemotion', handler);
-    flushRef.current = setInterval(flush, 200);
+    flushRef.current = setInterval(flush, 15_000);
     setPermissionState('granted');
 
     return () => {
