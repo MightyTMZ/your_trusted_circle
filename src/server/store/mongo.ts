@@ -56,12 +56,19 @@ export class MongoStore implements Store {
    * because ensureIndexes runs immediately after and is idempotent.
    */
   private async dropStaleIndexes(): Promise<void> {
+    const db = this.client.db();
     const collections = [this.users, this.authSessions, this.sessions, this.checkIns, this.incidents, this.jobs, this.traces];
     for (const col of collections) {
       try {
         await col.dropIndexes();
       } catch {
         // Collection may not exist yet on first run.
+      }
+      // Remove any collection-level JSON Schema validators from earlier migrations.
+      try {
+        await db.command({ collMod: col.collectionName, validator: {}, validationLevel: "off" });
+      } catch {
+        // Collection may not exist yet.
       }
     }
   }
