@@ -46,12 +46,21 @@ async function main(): Promise<void> {
   });
 
   for (const e of timeline.events.filter((x) => x.type === "voice.utterance")) console.log(`  ${e.summary}`);
-  print(await agent.answerLatest());
+  // Prints the reply, how long it took, and any model errors logged while producing it.
+  const timed = async (work: () => Promise<AgentReply | null>) => {
+    const seen = timeline.events.length;
+    const started = performance.now();
+    const reply = await work();
+    print(reply);
+    for (const e of timeline.events.slice(seen)) if (e.type === "voice.agent_error") console.log(`  error: ${e.summary}`);
+    console.log(`  took ${((performance.now() - started) / 1000).toFixed(1)} s`);
+  };
+  await timed(() => agent.answerLatest());
 
   const ask = async (line: string) => {
     clock.advance(4000);
     console.log(`\nOperator: ${line}`);
-    print(await agent.respond(line));
+    await timed(() => agent.respond(line));
   };
   if (argv.includes("--interactive")) {
     const rl = createInterface({ input: stdin, output: stdout });
@@ -59,7 +68,7 @@ async function main(): Promise<void> {
       const line = (await rl.question("\nOperator> ")).trim();
       if (!line || line === "/quit") break;
       clock.advance(4000);
-      print(await agent.respond(line));
+      await timed(() => agent.respond(line));
     }
     rl.close();
   } else {

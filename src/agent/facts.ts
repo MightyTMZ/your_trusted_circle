@@ -190,7 +190,7 @@ export function buildFactSheet(
     add(
       "location",
       "observed",
-      `Last-known location, not live: ${place}coordinates ${l.latitude}, ${l.longitude}, accurate to about ${Math.round(l.accuracy_m)} metres, recorded at ${time(l.fix_at)}, ${ago(l.fix_at)} ago.${movement} Their current location is unknown.`,
+      `Last-known location, not live: ${place}coordinates ${l.latitude}, ${l.longitude}, accurate to about ${Math.round(l.accuracy_m)} metres, recorded at ${time(l.fix_at)}, ${ago(l.fix_at)} ago.${movement} No street address is recorded, only coordinates and a place name. Their current location is unknown.`,
       [l.source_event_id],
     );
     const trail = evidence
@@ -222,7 +222,7 @@ export function buildFactSheet(
   add(
     "condition",
     "unknown",
-    "Their condition is unknown. The app only records phone movement and app activity; it has no information about consciousness, breathing, injuries, intoxication, drugs, or what caused any of this, and it cannot tell anything about their safety.",
+    "Their condition is unknown. The app only records phone movement and app activity; it has no information about consciousness, breathing, injuries, medical history, intoxication, drugs, or what caused any of this, and it cannot tell what they were doing or anything about their safety.",
     [incidentRef],
   );
 

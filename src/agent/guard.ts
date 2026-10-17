@@ -127,10 +127,12 @@ export function checkSentence(text: string, factIds: string[], byId: ReadonlyMap
       violations.push(`uses "${p}", but the participant has not shared those pronouns (say "they")`);
     }
   }
-  // A detail that exists elsewhere on the sheet but not in the cited facts was
-  // borrowed from the wrong fact ("near the bar" citing a later fix).
+  // A place or personal detail that exists elsewhere on the sheet but not in the
+  // cited facts was borrowed from the wrong fact ("near the bar" citing a later fix).
   const citedWords = new Set(contentWords(sourceLower));
-  const elsewhere = new Set([...byId.values()].filter((f) => !cited.includes(f)).flatMap((f) => contentWords(normalize(f.text).toLowerCase())));
+  const elsewhere = new Set(
+    [...byId.values()].filter((f) => !cited.includes(f) && DETAIL_TOPICS.has(f.topic)).flatMap((f) => contentWords(normalize(f.text).toLowerCase())),
+  );
   for (const w of new Set(contentWords(t.toLowerCase()))) {
     if (!citedWords.has(w) && elsewhere.has(w) && !GENERIC_WORDS.has(w)) {
       violations.push(`"${w}" comes from a fact this sentence does not cite`);
@@ -154,16 +156,22 @@ export function checkSentence(text: string, factIds: string[], byId: ReadonlyMap
   return { text, fact_ids: factIds, violations };
 }
 
+/** Facts whose words are specific details (places, notes, names), not ordinary narration. */
+const DETAIL_TOPICS = new Set(["location", "location_history", "notes", "identity"]);
+
 /** Words common to many facts; using one without citing a fact that contains it says nothing new. */
 const GENERIC_WORDS = new Set(
-  "app phone participant alert record recorded information share shared know unknown time about their they them there this that with from have been were what when which while also whether since until after before because between during later only just more most then than into over under each every other some such does doesn't didn't don't isn't could would should will might must being like same sure even ever including include seen the and are was not has had for but its who how why can may yet all any one two out per via did get got let own you new now off way see saw yes our".split(
+  "app phone participant alert record recorded information share shared know unknown time about their they them there this that with from have been were what when which while also whether since until after before because between during later only just more most then than into over under each every other some such does doesn't didn't don't isn't could would should will might must being like same sure even ever including include seen the and are was not has had for but its who how why can may yet all any one two out per via did get got let own you new now off way see saw yes our earlier later location last known live".split(
     " ",
   ),
 );
 
-/** Lowercase words of three or more letters ("bar" counts). Hyphens split words: "last-known" is "last", "known". */
+/**
+ * Lowercase words of three or more letters ("bar" counts). Hyphens split words:
+ * "last-known" is "last", "known". Possessives drop: "participant's" is "participant".
+ */
 function contentWords(lower: string): string[] {
-  return lower.match(/[a-z][a-z']{2,}/g) ?? [];
+  return (lower.match(/[a-z][a-z']{2,}/g) ?? []).map((w) => w.replace(/'s?$/, ""));
 }
 
 /** Pronoun words the participant shared, e.g. ["she", "her"], from the identity fact anywhere on the sheet. */
@@ -198,7 +206,7 @@ function hasWord(haystack: string, w: string): boolean {
 
 /** Ordinary words that start a sentence; any other sentence-initial word is checked like a name. */
 const SENTENCE_STARTERS = new Set(
-  "a an the they their them it its this that these those there here i i'm i've i'll we our you your yes no nobody none not at in on from between after before since as by for to of with without about around when while if whether and but so also however unfortunately sorry hello hi please okay currently recorded last earlier my she he her his".split(
+  "a an the they their them it its this that these those there here i i'm i've i'll we our you your yes no nobody none not at in on from between after before since as by for to of with without about around when while if whether and but so also however unfortunately sorry hello hi please okay currently recorded last earlier later then next finally afterwards meanwhile both each my she he her his".split(
     " ",
   ),
 );

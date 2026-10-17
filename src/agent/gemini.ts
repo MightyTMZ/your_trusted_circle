@@ -83,23 +83,34 @@ export interface GeminiAgentModels {
 }
 
 /**
- * The production wiring: Argon with high thinking for answers (Flash as
- * failover), Flash for the per-sentence entailment judge, Gemini embeddings
- * for retrieval.
+ * The production wiring: Argon for answers (Flash as failover), Flash for the
+ * per-sentence entailment judge, Gemini embeddings for retrieval.
+ *
+ * Thinking stays low. Measured on the demo prompt, low thinking answers in
+ * 2.5-6 s on either model; medium and high took 11-31 s, too slow for a live
+ * call. Grounding comes from the guard and judge, not from longer thinking.
+ * Flash does not accept "minimal". Provider latency varies call to call, so
+ * the backup is hedged: it starts if the primary has not answered in time.
  */
 export function createGeminiModels(apiKey: string): GeminiAgentModels {
   const ai = new GoogleGenAI({ apiKey });
   const reasoning = new GeminiModel(ai, GEMINI_REASONING_MODEL);
   const fast = new GeminiModel(ai, GEMINI_FAST_MODEL);
   return {
-    model: new FailoverModel([
-      { model: reasoning, thinking: "high", timeoutMs: 15_000 },
-      { model: fast, thinking: "medium", timeoutMs: 8_000 },
-    ]),
-    judge: new FailoverModel([
-      { model: fast, thinking: "low", timeoutMs: 8_000 },
-      { model: reasoning, thinking: "low", timeoutMs: 12_000 },
-    ]),
+    model: new FailoverModel(
+      [
+        { model: reasoning, thinking: "low", timeoutMs: 10_000 },
+        { model: fast, thinking: "low", timeoutMs: 8_000 },
+      ],
+      { hedgeAfterMs: 5_000 },
+    ),
+    judge: new FailoverModel(
+      [
+        { model: fast, thinking: "low", timeoutMs: 7_000 },
+        { model: reasoning, thinking: "low", timeoutMs: 9_000 },
+      ],
+      { hedgeAfterMs: 3_500 },
+    ),
     embedder: new GeminiEmbedder(ai),
   };
 }

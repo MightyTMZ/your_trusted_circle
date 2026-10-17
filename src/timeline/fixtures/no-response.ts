@@ -335,7 +335,7 @@ export function buildNoResponseScenario() {
       provenance: prov("voice_agent", true),
       data: { call_id: "call_0001", turn_index: turn, speaker, text, grounding_event_ids: grounding, interrupted: false },
     });
-  say(0, "voice_agent", "This is an automated assistant from the YPC safety system. This is a simulated call.", [call.event_id]);
+  say(0, "voice_agent", "This is an automated assistant from the YTC safety system. This is a simulated call.", [call.event_id]);
   advanceTo(at(244, 10));
   say(1, "mock_operator", "Go ahead. What is the situation?", []);
 

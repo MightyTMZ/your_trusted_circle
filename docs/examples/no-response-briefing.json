@@ -5,7 +5,7 @@
   "session_id": "ses_0001",
   "incident_id": "inc_0001",
   "participant_id": "par_0002",
-  "timeline_head_hash": "sha256:23e5ffb7fb01199249e0bae334d29ac610c8ee1db0ca39c7bd2fad830272576e",
+  "timeline_head_hash": "sha256:a37d44cac30ad476b9580bedc14b44281e2a53b7483c299874ede1ea50818020",
   "incident": {
     "state": "open",
     "trigger": "checkin_missed",

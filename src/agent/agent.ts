@@ -227,7 +227,7 @@ export class OperatorCallAgent {
             system: ANSWER_SYSTEM_INSTRUCTION,
             prompt: buildAnswerPrompt({ sheet, focus, transcript: this.transcript(), operatorText, repair }),
             schema: ANSWER_RESPONSE_SCHEMA,
-            thinking: this.opts.thinking ?? "high",
+            thinking: this.opts.thinking ?? "low",
             timeoutMs: this.opts.answerTimeoutMs ?? 15_000,
           });
         } catch (err) {

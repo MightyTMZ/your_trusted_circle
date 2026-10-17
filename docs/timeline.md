@@ -287,7 +287,7 @@ briefing. No path in it can place a call. Each operator turn:
    ▼
  FactRetriever                                         retrieval.ts  BM25 + Gemini embeddings, reciprocal rank fusion
    ▼
- reasoning model ─► { intent, sentences[{text, fact_ids}] }   gemini.ts   gemini-4-argon (high thinking) → gemini-3.8-flash
+ reasoning model ─► { intent, sentences[{text, fact_ids}] }   gemini.ts   gemini-4-argon → gemini-3.8-flash, low thinking
    ▼
  parseDraft ─► checkDraft ─► judgeSentences            guard.ts, judge.ts
    │ pass                              │ fail

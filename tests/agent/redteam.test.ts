@@ -58,6 +58,12 @@ describe("guard red team", () => {
     ["notes", "They wrote that they carry an inhaler in their left jacket pocket.", t("notes")],
     ["offline", "The phone has been offline since 11:52:40 PM UTC.", t("device")],
     ["no description", "No description or clothing is recorded.", t("description")],
+    ["no address", "No street address is recorded; I have coordinates 43.6629, -79.3957.", t("location")],
+    ["sequencing starter", "Later, the phone showed light movement.", t("motion_history")],
+    ["activity unknown", "The app cannot tell what they were doing.", t("condition")],
+    ["timeline words", "Earlier, the phone showed light movement.", t("motion_history")],
+    ["possessive", "The participant's condition is unknown.", t("condition")],
+    ["medical unknown", "Their medical history is unknown.", t("condition")],
   ];
 
   it.each(cases)("rejects %s", (_name, text, id) => {
