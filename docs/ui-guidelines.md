@@ -42,12 +42,13 @@ class on the app root (`.ytc.theme-<name>`) that overrides tokens.
 | Theme | Base | Accent | Use |
 | --- | --- | --- | --- |
 | Ember (default) | `#0B0B0C` charcoal | `#FF6A1F` orange | The reference look |
-| Onyx | `#000000` true black | `#FF6A1F` orange | Night / OLED: dimmer glass and lighting |
-| Mono | `#0C0C0D` charcoal | `#F2F2F2` white | No colour at all; white marks what's active |
+| Mono | `#0C0C0D` charcoal | `#F2F2F2` white | Dark, no colour; white marks what's active |
 | Porcelain | `#ECEAE5` warm light | `#E2601F` orange | Daylight / light mode |
+| Onyx | `#F5F5F4` white | `#111111` black | Light, no colour; black marks what's active |
 
-Themes change surfaces and lighting, not the brand. Orange is the accent
-everywhere except Mono, which drops colour entirely. Don't add themes that
+Themes change surfaces and lighting, not the brand. Ember and Porcelain
+are the orange pair (dark and light); Mono and Onyx are the colourless
+pair (dark and light). Don't add themes that
 re-tint the whole UI with a new hue (gold, ice blue, purple). They read as
 generic and dilute the brand.
 
