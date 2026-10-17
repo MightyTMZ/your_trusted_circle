@@ -96,8 +96,16 @@ export const EVENT_CATALOG = {
     }),
     summarize: (d, ctx) =>
       `Session created by host ${ctx.participant_id}; expires ${d.expires_at}. ` +
-      `Check-in response window ${duration(d.checkin_response_window_ms)}; escalation path ` +
-      d.escalation_steps.map((s) => `${s.step}:${s.target_role} after ${duration(s.ack_window_ms)}`).join(", ") +
+      `Check-in response window ${duration(d.checkin_response_window_ms)}. Escalation path: ` +
+      d.escalation_steps
+        .map(
+          (s, i) =>
+            `step ${s.step} ${s.target_role}` +
+            (i === d.escalation_steps.length - 1
+              ? " (final step)"
+              : ` (escalates if unacknowledged for ${duration(s.ack_window_ms)})`),
+        )
+        .join(", then ") +
       ". Intervals and thresholds are unvalidated prototype settings.",
   }),
 
@@ -211,7 +219,8 @@ export const EVENT_CATALOG = {
       place_label: v.optional(shortText(120)),
     }),
     summarize: (d, ctx) =>
-      `Location fix for ${who(ctx)} at ${d.fix_at}: ${num(d.latitude)}, ${num(d.longitude)} ` +
+      // Coordinates are printed exactly; rounding would make the summary disagree with the data.
+      `Location fix for ${who(ctx)} at ${d.fix_at}: ${d.latitude}, ${d.longitude} ` +
       `(±${num(d.accuracy_m)} m, ${d.source}${d.place_label ? `, "${d.place_label}"` : ""}).`,
   }),
 
@@ -645,7 +654,7 @@ export function specFor<T extends EventType>(type: T): EventSpec<PayloadOf<T>> {
   return EVENT_CATALOG[type] as unknown as EventSpec<PayloadOf<T>>;
 }
 
-interface EnvelopeFields {
+export interface EnvelopeFields {
   schema_version: typeof SCHEMA_VERSION;
   event_id: string;
   /** Gap-free position within the session timeline, starting at 1. */
@@ -671,10 +680,15 @@ interface EnvelopeFields {
   hash: string;
 }
 
-/** A timeline event, discriminated on `type` so `data` narrows automatically. */
-export type TimelineEvent<T extends EventType = EventType> = {
-  [K in T]: EnvelopeFields & { type: K; data: PayloadOf<K> };
-}[T];
+type EventUnion = {
+  [K in EventType]: EnvelopeFields & { type: K; data: PayloadOf<K> };
+}[EventType];
+
+/**
+ * A timeline event, discriminated on `type` so `data` narrows automatically.
+ * Defined via Extract so TimelineEvent<T> is always assignable to TimelineEvent.
+ */
+export type TimelineEvent<T extends EventType = EventType> = Extract<EventUnion, { type: T }>;
 
 const envelopeSchema = v.object({
   schema_version: v.literal(SCHEMA_VERSION),
