@@ -1,7 +1,7 @@
-# Your Personal Companion (YPC)
+# Your Trusted Companion (YTC)
 
 ## Project purpose
-YPC is an opt-in buddy system for nights out, built for the
+YTC is an opt-in buddy system for nights out, built for the
 Project KAZE challenge at HTV XI.
 
 It aims to initiate assistance when someone may be unable to
