@@ -219,9 +219,7 @@ export function SessionHomeScreen() {
   return (
     <div className="screen">
       <header className="header">
-        <span className="logo fill phone-only" role="img" aria-label="YTC">
-          YTC
-        </span>
+        <span className="logo phone-only" role="img" aria-label="YTC" />
         <h1 className="t-title grow">{session.name}</h1>
         {isHost && (
           <button type="button" className="btn ibtn fill" aria-label="Show QR code" onClick={() => go({ name: 'invite' })}>

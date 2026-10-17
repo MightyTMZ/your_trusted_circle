@@ -21,9 +21,7 @@ export function StartScreen() {
     <div className="screen">
       <div className="narrow">
         <div className="spread">
-          <div className="logo fill" role="img" aria-label="YTC" style={{ width: 56, height: 56, fontSize: 12 }}>
-            YTC
-          </div>
+          <div className="logo" role="img" aria-label="YTC" style={{ width: 56, height: 56 }} />
           <span className="inline">
             {account ? (
               <button type="button" className="btn chip fill" onClick={() => go({ name: 'settings' })} style={{ gap: 8 }}>

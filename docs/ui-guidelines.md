@@ -71,6 +71,15 @@ Themes change surfaces, not the layout. YTC has no colour accent: don't
 add tinted themes (orange, gold, ice blue, purple). Orange was tried and
 removed.
 
+**Logo.** The app icon is an image, not a token: `public/logo-dark.png`
+(night scene) for Mono and `public/logo-light.png` (day scene) for Onyx,
+switched by `data-theme` in the `.logo` class in `src/styles.css`. Use
+`<div className="logo" role="img" aria-label="YTC" />` and set only its size.
+The browser tab icon follows the device's light/dark setting through
+`public/favicon-dark.png` and `public/favicon-light.png` (see `index.html`),
+not the in-app theme. A new theme needs its own logo image and a matching
+`[data-theme]` rule.
+
 Adding a theme: override the same tokens as the existing ones
 (backgrounds, fills, material, labels, accent set, switch, track, map),
 check every label token against `--bg-base`, `--surface` and `--fill` for
