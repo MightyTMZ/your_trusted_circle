@@ -28,6 +28,9 @@ interface Ctx {
   refreshAccount(): Promise<void>;
   route: Route;
   go(r: Route): void;
+  /** Join code saved when the user tried to join but wasn't signed in. */
+  pendingJoinCode: string | null;
+  setPendingJoinCode(code: string | null): void;
 }
 
 const AppCtx = createContext<Ctx | null>(null);
@@ -39,6 +42,7 @@ export function AppProvider({ children, initialRoute }: { children: ReactNode; i
   const [viewer, setViewerState] = useState<Viewer>(() => loadViewer());
   const [route, setRoute] = useState<Route>(initialRoute);
   const [account, setAccount] = useState<Account | null | undefined>(undefined);
+  const [pendingJoinCode, setPendingJoinCode] = useState<string | null>(null);
 
   const refreshAccount = async () => {
     const a = await fetchAccount();
@@ -62,7 +66,7 @@ export function AppProvider({ children, initialRoute }: { children: ReactNode; i
   const meRecipient = viewer?.kind === 'recipient' ? (state.recipients[viewer.id] ?? null) : null;
 
   return (
-    <AppCtx.Provider value={{ store, state, viewer, setViewer, me, meRecipient, account, refreshAccount, route, go: setRoute }}>
+    <AppCtx.Provider value={{ store, state, viewer, setViewer, me, meRecipient, account, refreshAccount, route, go: setRoute, pendingJoinCode, setPendingJoinCode }}>
       {children}
     </AppCtx.Provider>
   );

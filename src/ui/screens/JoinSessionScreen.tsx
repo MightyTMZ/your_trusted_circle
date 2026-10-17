@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { joinSession, type ParticipantInput } from '../../domain/session';
 import { useApp } from '../context';
 import { ScreenHeader, StepBar, initials } from '../components/Controls';
@@ -6,11 +6,24 @@ import { Icon } from '../components/Icon';
 import { ParticipantConsentFields, defaultParticipantInput } from '../components/ParticipantConsentFields';
 
 export function JoinSessionScreen({ code }: { code: string }) {
-  const { state, store, setViewer, go } = useApp();
+  const { state, store, setViewer, go, account, setPendingJoinCode } = useApp();
   const [step, setStep] = useState(1);
   const [input, setInput] = useState<ParticipantInput>(defaultParticipantInput);
   const [error, setError] = useState<string | null>(null);
   const session = state.session;
+
+  // If the user isn't signed in, save the code and redirect to sign-in.
+  useEffect(() => {
+    if (account === null) {
+      setPendingJoinCode(code);
+      go({ name: 'signin' });
+    }
+  }, [account, code, setPendingJoinCode, go]);
+
+  // While account is loading or redirecting, show nothing.
+  if (account === undefined || account === null) {
+    return null;
+  }
 
   if (!session || session.code !== code || session.status === 'ended') {
     return (

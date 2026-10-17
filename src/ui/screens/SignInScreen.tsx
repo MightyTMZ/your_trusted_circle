@@ -9,9 +9,10 @@ import { Icon } from '../components/Icon';
  * first sign-in with a provider. Shows only providers the server has configured.
  */
 export function SignInScreen() {
-  const { go } = useApp();
+  const { go, pendingJoinCode, setPendingJoinCode } = useApp();
   const [providers, setProviders] = useState<Provider[] | null | undefined>(undefined);
   const [error] = useState(takeLoginError);
+  const returnTo = pendingJoinCode ? `/#join=${pendingJoinCode}` : '/';
 
   useEffect(() => {
     let alive = true;
@@ -27,13 +28,17 @@ export function SignInScreen() {
   return (
     <div className="screen">
       <div className="narrow">
-        <ScreenHeader title="Sign in" onBack={() => go({ name: 'home' })} />
+        <ScreenHeader title="Sign in" onBack={() => { setPendingJoinCode(null); go({ name: 'home' }); }} />
         <div className="stack rise" style={{ gap: 8 }}>
           <div className="logo glass" role="img" aria-label="YTC" style={{ width: 56, height: 56, fontSize: 12, marginBottom: 16 }}>
             YTC
           </div>
           <h2 className="t-display">Sign in or create an account</h2>
-          <p className="t-lead">New to YTC? Your account is created the first time you sign in.</p>
+          <p className="t-lead">
+            {pendingJoinCode
+              ? 'Sign in to join the session. Your account is created the first time you sign in.'
+              : 'New to YTC? Your account is created the first time you sign in.'}
+          </p>
         </div>
         <div className="screen-footer rise rise-2">
           {error && (
@@ -54,7 +59,7 @@ export function SignInScreen() {
             <a
               key={p}
               className="btn pbtn glass"
-              href={unavailable || providers === undefined ? undefined : signInUrl(p)}
+              href={unavailable || providers === undefined ? undefined : signInUrl(p, returnTo)}
               aria-disabled={unavailable || providers === undefined}
               style={unavailable || providers === undefined ? { opacity: 0.4, pointerEvents: 'none' } : { textDecoration: 'none' }}
             >
