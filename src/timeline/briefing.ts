@@ -16,6 +16,7 @@
 import { parseIso, toIso } from "../shared/clock.js";
 import { serializeEvent } from "./canonical.js";
 import { ConsentLedger } from "./consent.js";
+import { summarizeMotionHistory, type MotionHistory } from "./motion-history.js";
 import { RESPONDER_SCOPE_FOR } from "./schema/envelope.js";
 import { specFor, type EventType, type PayloadOf, type TimelineEvent } from "./schema/catalog.js";
 
@@ -40,6 +41,8 @@ export interface BriefingOptions {
    * the timeline keeps them all. Default 10 min.
    */
   motionLookbackMs?: number;
+  /** How far back motion.history reaches. Default 4 h. */
+  historyMs?: number;
 }
 
 type Ref = { source_event_id: string };
@@ -85,17 +88,28 @@ export interface OperatorBriefing {
     last_known: null | (Ref & PayloadOf<"location.reported"> & { age_ms: number });
   };
   motion: {
+    /** sensor.stream_started: which sensor, and every threshold in force. */
+    config_source_event_id: string | null;
     baseline: null | (Ref & { features: PayloadOf<"sensor.baseline_calibrated">["features"] });
-    /** The most recent anomaly, i.e. why a check-in was sent. */
+    /** The most recent anomaly. */
     observation: null | (Ref & Omit<PayloadOf<"sensor.motion_anomaly_observed">, "rule"> & { rule_id: string });
+    /** The most recent movement patterns (newest last), e.g. impact then stillness. */
+    patterns: (Ref & Omit<PayloadOf<"sensor.motion_pattern_observed">, "rule"> & { rule_id: string })[];
     latest_window: null | (Ref & {
       window_end: string;
       age_ms: number;
+      activity_level: PayloadOf<"sensor.motion_window">["activity_level"];
       dynamic_mean_m_s2: number;
       dynamic_peak_m_s2: number;
       stillness_ratio: number;
+      longest_still_ms: number;
+      cadence_hz: number | null;
+      impact_count: number;
+      tilt_change_deg: number | null;
       coverage_ratio: number;
     });
+    /** The whole recent period compressed into activity segments. */
+    history: MotionHistory;
   };
   device: { status: "online" | "offline" | "unknown"; since: string | null; source_event_id: string | null };
   escalation: {
@@ -119,6 +133,8 @@ export class BriefingError extends Error {
 }
 
 const DEFAULT_MOTION_LOOKBACK_MS = 10 * 60_000;
+const DEFAULT_HISTORY_MS = 4 * 60 * 60_000;
+const MAX_PATTERNS = 5;
 /** A motion window older than this means data stopped arriving. */
 const MOTION_STALE_MS = 2 * 60_000;
 /** Below this share of expected samples, low movement may just be missing data. */
@@ -215,21 +231,39 @@ export function buildOperatorBriefing(events: readonly TimelineEvent[], opts: Br
       last_known: fix ? { ...fix.data, age_ms: ageOf(fix.data.fix_at), source_event_id: fix.event_id } : null,
     },
     motion: {
+      config_source_event_id: last("sensor.stream_started")?.event_id ?? null,
       baseline: baseline ? { features: baseline.data.features, source_event_id: baseline.event_id } : null,
       observation: anomaly
         ? (({ rule, ...rest }) => ({ ...rest, rule_id: rule.id, source_event_id: anomaly.event_id }))(anomaly.data)
         : null,
+      patterns: evidence
+        .filter((e): e is TimelineEvent<"sensor.motion_pattern_observed"> => e.type === "sensor.motion_pattern_observed")
+        .slice(-MAX_PATTERNS)
+        .map((e) => (({ rule, ...rest }) => ({ ...rest, rule_id: rule.id, source_event_id: e.event_id }))(e.data)),
       latest_window: window
         ? {
             window_end: window.data.window_end,
             age_ms: ageOf(window.data.window_end),
+            activity_level: window.data.activity_level,
             dynamic_mean_m_s2: window.data.dynamic_mean_m_s2,
             dynamic_peak_m_s2: window.data.dynamic_peak_m_s2,
             stillness_ratio: window.data.stillness_ratio,
+            longest_still_ms: window.data.longest_still_ms,
+            cadence_hz: window.data.cadence_hz,
+            impact_count: window.data.impact_count,
+            tilt_change_deg: window.data.tilt_change_deg,
             coverage_ratio: window.data.coverage_ratio,
             source_event_id: window.event_id,
           }
         : null,
+      // History reads all of the subject's windows, not just the evidence lookback.
+      history: summarizeMotionHistory(
+        events.filter(
+          (e): e is TimelineEvent<"sensor.motion_window"> =>
+            e.type === "sensor.motion_window" && e.participant_id === subject && parseIso(e.recorded_at)! <= now,
+        ),
+        { from: now - (opts.historyMs ?? DEFAULT_HISTORY_MS), to: now },
+      ),
     },
     device: {
       status: !device ? "unknown" : device.type === "connectivity.device_offline" ? "offline" : "online",
@@ -337,8 +371,20 @@ function listUnknowns(b: OperatorBriefing, evidence: readonly TimelineEvent[]): 
     unknowns.push(`The latest motion window has only ${Math.round(w.coverage_ratio * 100)}% of expected samples; low movement may be missing data.`);
   }
 
+  const saturated = b.motion.patterns.findLast((p) => p.impact_peak_clipped);
+  if (saturated) {
+    unknowns.push(
+      `The impact at ${saturated.impact_at} saturated the sensor; its true strength is unknown (at least ${saturated.impact_peak_m_s2} m/s^2).`,
+    );
+  }
+
   if (b.device.status === "offline") unknowns.push(`The device has been offline since ${b.device.since}.`);
-  if (!evidence.some((e) => e.type === "checkin.responded")) unknowns.push("The participant has not answered a check-in.");
+  // Only the latest check-in matters: answering an earlier false alarm says nothing about now.
+  const lastPrompt = evidence.findLast((e): e is TimelineEvent<"checkin.prompted"> => e.type === "checkin.prompted");
+  const answered =
+    lastPrompt &&
+    evidence.some((e) => e.type === "checkin.responded" && e.data.checkin_id === lastPrompt.data.checkin_id);
+  if (lastPrompt && !answered) unknowns.push(`The participant has not answered the check-in sent at ${lastPrompt.occurred_at}.`);
   if (b.incident.state === "open") unknowns.push("No responder has acknowledged the alert.");
   return unknowns;
 }
