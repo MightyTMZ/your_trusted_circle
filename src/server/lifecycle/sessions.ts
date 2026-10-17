@@ -44,6 +44,15 @@ const rulesPatchSchema = v.object({
   heartbeatTimeoutSec: v.optional(v.number({ min: 30, max: 1800, integer: true })),
   maxParticipants: v.optional(v.number({ min: 2, max: 50, integer: true })),
   allowLocationSharing: v.optional(v.boolean()),
+  demoVenue: v.optional(
+    v.nullable(
+      v.object({
+        label: v.string({ minLength: 1, maxLength: 120 }),
+        lat: v.number({ min: -90, max: 90 }),
+        lng: v.number({ min: -180, max: 180 }),
+      }),
+    ),
+  ),
 });
 
 const createSchema = v.object({
@@ -254,6 +263,8 @@ export function sessionRoutes(deps: Deps) {
       for (const p of s.participants) await deps.store.setParticipantConsent(s._id, p.participantId, capConsent(p.consent, rules));
       deps.relay.clearSession(s._id);
     }
+    // Clearing the demo venue ends the "teleport" at once, rather than when the last fake fix expires.
+    if ((body as RulesPatch).demoVenue === null) deps.relay.clearSimulated(s._id);
     return c.json({ session: sessionView((await deps.store.getSession(s._id))!, c.var.user, deps.now()) });
   });
 

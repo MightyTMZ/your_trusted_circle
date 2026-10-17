@@ -180,6 +180,8 @@ export interface SessionPreview {
     heartbeatTimeoutSec: number;
     maxParticipants: number;
     allowLocationSharing: boolean;
+    /** Demo only: the public place the host picked for the session. */
+    demoVenue?: { label: string; lat: number; lng: number } | null;
   };
 }
 
@@ -283,6 +285,8 @@ export interface LiveFix {
   latitude: number;
   longitude: number;
   accuracyM: number;
+  /** A made-up position around the demo venue, not the phone's GPS. */
+  simulated?: boolean;
   fixAt: string;
   ageSec: number;
   status: 'live' | 'stale';
@@ -295,8 +299,16 @@ export async function fetchLiveLocations(serverId: string): Promise<LiveFix[] | 
 }
 
 /** Relays one device fix. The server keeps it in memory only, unless an incident about you is active. */
-export function sendLiveLocation(serverId: string, fix: { latitude: number; longitude: number; accuracyM: number; fixAt: string }): Promise<boolean> {
+export function sendLiveLocation(
+  serverId: string,
+  fix: { latitude: number; longitude: number; accuracyM: number; fixAt: string; simulated?: boolean },
+): Promise<boolean> {
   return sendJson('POST', `/sessions/${encodeURIComponent(serverId)}/location`, fix);
+}
+
+/** Host only: sets (or with null, clears) the demo venue for the whole session. */
+export function setSessionVenueOnServer(serverId: string, venue: { label: string; lat: number; lng: number } | null): Promise<boolean> {
+  return sendJson('PATCH', `/sessions/${encodeURIComponent(serverId)}/rules`, { demoVenue: venue });
 }
 
 // ---------------------------------------------------------------------------

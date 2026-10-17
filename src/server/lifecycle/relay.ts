@@ -31,6 +31,8 @@ export interface LiveFix {
   latitude: number;
   longitude: number;
   accuracyM: number;
+  /** Demo "teleport": a made-up position around the demo venue, not the phone's GPS. */
+  simulated: boolean;
   fixAt: Date;
   receivedAt: Date;
   /** Forgotten after this. */
@@ -64,6 +66,14 @@ export class LocationRelay {
     if (fixes?.size === 0) this.bySession.delete(sessionId);
   }
 
+  /** Drops demo "teleport" positions, e.g. when the host clears the demo venue. */
+  clearSimulated(sessionId: string): void {
+    const fixes = this.bySession.get(sessionId);
+    if (!fixes) return;
+    for (const [id, f] of fixes) if (f.simulated) fixes.delete(id);
+    if (fixes.size === 0) this.bySession.delete(sessionId);
+  }
+
   clearSession(sessionId: string): void {
     this.bySession.delete(sessionId);
   }
@@ -86,6 +96,7 @@ const fixSchema = v.object({
   longitude: v.number({ min: -180, max: 180 }),
   accuracyM: v.number({ min: 0, max: 100_000 }),
   fixAt: v.timestamp(),
+  simulated: v.optional(v.boolean()),
 });
 
 /** Does this person currently allow anyone to see their live position? */
@@ -141,6 +152,7 @@ export function relayRoutes(deps: Deps) {
       latitude: input.latitude,
       longitude: input.longitude,
       accuracyM: input.accuracyM,
+      simulated: input.simulated === true,
       fixAt,
       receivedAt: now,
       expiresAt: new Date(fixAt.getTime() + keepMs),
@@ -160,7 +172,13 @@ export function relayRoutes(deps: Deps) {
           type: "location.fix",
           occurredAt: fixAt,
           receivedAt: now,
-          data: { latitude: input.latitude, longitude: input.longitude, accuracyM: input.accuracyM, incidentId: incident._id },
+          data: {
+            latitude: input.latitude,
+            longitude: input.longitude,
+            accuracyM: input.accuracyM,
+            simulated: input.simulated === true,
+            incidentId: incident._id,
+          },
           locationRedacted: false,
         },
       ]);
@@ -192,6 +210,7 @@ export function relayRoutes(deps: Deps) {
         latitude: fix.latitude,
         longitude: fix.longitude,
         accuracyM: fix.accuracyM,
+        simulated: fix.simulated,
         fixAt: fix.fixAt,
         ageSec: Math.round(ageMs / 1000),
         // CLAUDE.md: distinguish last-known from current location.

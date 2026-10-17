@@ -14,6 +14,12 @@ export function JoinSessionScreen({ code }: { code: string }) {
   const [preview, setPreview] = useState<SessionPreview | null | undefined>(undefined);
   const [joining, setJoining] = useState(false);
 
+  // The account may arrive after the screen opens; use its name if none was typed yet.
+  const accountName = account?.displayName;
+  useEffect(() => {
+    if (accountName) setInput((v) => (v.displayName ? v : { ...v, displayName: accountName }));
+  }, [accountName]);
+
   // If the user isn't signed in, save the code and redirect to sign-in.
   useEffect(() => {
     if (account === null) {

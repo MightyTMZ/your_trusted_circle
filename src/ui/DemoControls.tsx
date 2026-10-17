@@ -5,7 +5,8 @@ import { useApp, useNow } from './context';
 import { fmtTime } from './format';
 import { Icon } from './components/Icon';
 import { joinUrl } from './screens/SessionInviteScreen';
-import { DEFAULT_VENUE, resolveVenue, setDemoVenue, useDemoVenue } from './venue';
+import { setSessionVenueOnServer } from './api';
+import { applySessionVenue, resolveVenue, setLocalVenue, useDemoVenue, type Venue } from './venue';
 
 const POS_KEY = 'ytc.demoFab';
 const GAP = 16;
@@ -284,54 +285,87 @@ function DemoPanel({ style }: { style: CSSProperties }) {
   );
 }
 
-/** Where simulated people appear on the map. Real phone fixes are unaffected. */
+/**
+ * The demo venue. In a server session the host sets it for everyone, and while
+ * it is set every phone reports a simulated position there instead of its GPS.
+ * Sessions only on this device keep a venue for this browser.
+ */
 function VenuePicker() {
-  const venue = useDemoVenue();
+  const { state, me } = useApp();
+  const { venue, shared, local } = useDemoVenue();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const isDefault = venue.lat === DEFAULT_VENUE.lat && venue.lng === DEFAULT_VENUE.lng;
+  const serverId = state.session?.serverId;
+  const isHost = !!me && me.id === state.session?.hostId;
+  const canEdit = !serverId || isHost;
+
+  const save = async (v: Venue | null) => {
+    if (!serverId) return setLocalVenue(v);
+    const ok = await setSessionVenueOnServer(serverId, v);
+    if (!ok) return setError("Couldn't save the venue on the server. Try again.");
+    applySessionVenue(v);
+  };
   const apply = async () => {
     setBusy(true);
     setError(null);
     const v = await resolveVenue(text);
+    if (typeof v === 'string') {
+      setBusy(false);
+      return setError(v);
+    }
+    await save(v);
     setBusy(false);
-    if (typeof v === 'string') return setError(v);
-    setDemoVenue(v);
     setText('');
   };
+  const active = shared || local;
+
   return (
     <div>
       <h3>Demo venue</h3>
       <p className="t-cap" style={{ marginBottom: 8 }}>
-        Simulated people appear around {venue.label}. Real phone locations are unaffected. Use a public place.
+        {shared
+          ? `Everyone in this session appears around ${venue.label}, labelled simulated. Real GPS is paused until the venue is cleared.`
+          : serverId
+            ? 'Not set. Set a public place, like a club, and everyone in this session appears there, labelled simulated.'
+            : `Simulated people appear around ${venue.label}. Use a public place.`}
       </p>
-      <label className="sr-only" htmlFor="demo-venue">
-        Venue address or coordinates
-      </label>
-      <input
-        id="demo-venue"
-        className="field"
-        value={text}
-        placeholder="Club address, or 43.6532, -79.3832"
-        autoComplete="off"
-        onChange={(e) => {
-          setText(e.target.value);
-          setError(null);
-        }}
-        onKeyDown={(e) => e.key === 'Enter' && text.trim() && !busy && apply()}
-      />
-      {error && <p className="t-cap" role="alert" style={{ marginTop: 6 }}>{error}</p>}
-      <div className="btns" style={{ marginTop: 8 }}>
-        <button className="btn chip fill" disabled={!text.trim() || busy} onClick={apply}>
-          {busy ? 'Finding…' : 'Set venue'}
-        </button>
-        {!isDefault && (
-          <button className="btn chip fill" onClick={() => setDemoVenue(null)}>
-            Back to {DEFAULT_VENUE.label}
-          </button>
-        )}
-      </div>
+      {canEdit ? (
+        <>
+          <label className="sr-only" htmlFor="demo-venue">
+            Venue address or coordinates
+          </label>
+          <input
+            id="demo-venue"
+            className="field"
+            value={text}
+            placeholder="Club address, or 43.6532, -79.3832"
+            autoComplete="off"
+            onChange={(e) => {
+              setText(e.target.value);
+              setError(null);
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && text.trim() && !busy && apply()}
+          />
+          {error && (
+            <p className="t-cap" role="alert" style={{ marginTop: 6 }}>
+              {error}
+            </p>
+          )}
+          <div className="btns" style={{ marginTop: 8 }}>
+            <button className="btn chip fill" disabled={!text.trim() || busy} onClick={apply}>
+              {busy ? 'Finding…' : shared || !serverId ? 'Change venue' : 'Set venue for everyone'}
+            </button>
+            {active && (
+              <button className="btn chip fill" onClick={() => save(null)}>
+                {serverId ? 'Clear venue, back to real GPS' : 'Back to the default venue'}
+              </button>
+            )}
+          </div>
+        </>
+      ) : (
+        <p className="t-cap">Only the host can change it.</p>
+      )}
     </div>
   );
 }

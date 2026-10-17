@@ -97,6 +97,7 @@ live call".
   - Consent is checked again on every read.
 - **Live, stale, gone.** A fix is shown as `live` for `locationStaleAfterSec` (90 s by default), then as `stale` (last known) until twice that, and after that it's forgotten.
 - **Cleared at once** when someone turns sharing off, leaves, deletes their account, when the host ends the session or turns location off for it, and when the session expires.
+- **Demo venue ("teleport").** The host may set `rules.demoVenue`, a public place such as a club, through `PATCH /api/sessions/:id/rules`. While it is set, every phone in the session relays a made-up position around it instead of its GPS, sent with `simulated: true` and returned that way to everyone, so it is never shown as a real location. Clearing it (`demoVenue: null`) drops those positions at once. The venue is the host's chosen public place, not anyone's position.
 - **The only stored positions** are the person's fixes during an active incident, which are kept for responders and the incident record.
 - **Limitation:** the relay lives in one process's memory. Running more than one API instance would need a shared in-memory cache with expiry (for example Redis TTL keys) instead.
 - **Accounts are not merged by email**, because that would let an unverified address at one provider take over another account.

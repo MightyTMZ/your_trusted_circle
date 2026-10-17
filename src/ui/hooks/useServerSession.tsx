@@ -14,8 +14,10 @@ import {
   type LiveFix,
 } from '../api';
 import { useApp } from '../context';
+import { applySessionVenue, useDemoVenue } from '../venue';
 
-export type GeoState = 'idle' | 'waiting' | 'on' | 'denied' | 'unavailable';
+/** `demo`: a demo venue is set, so this phone reports a simulated position there instead of GPS. */
+export type GeoState = 'idle' | 'waiting' | 'on' | 'denied' | 'unavailable' | 'demo';
 
 interface Live {
   /** Positions the server lets this viewer see. Held in memory only, never written to storage. */
@@ -65,6 +67,7 @@ export function LiveLocationProvider({ children }: { children: ReactNode }) {
       if (!alive || !view) return;
       setConnected(true);
       store.dispatch((d, now) => syncServerParticipants(d, view, now));
+      applySessionVenue(view.rules.demoVenue ?? null);
     };
     poll();
     const id = setInterval(poll, SESSION_POLL_MS);
@@ -73,6 +76,11 @@ export function LiveLocationProvider({ children }: { children: ReactNode }) {
       clearInterval(id);
     };
   }, [active, serverId, store]);
+
+  // Leaving the session leaves its demo venue behind.
+  useEffect(() => {
+    if (!active) applySessionVenue(null);
+  }, [active]);
 
   // Positions this viewer may see.
   useEffect(() => {
@@ -93,11 +101,37 @@ export function LiveLocationProvider({ children }: { children: ReactNode }) {
     };
   }, [active, serverId]);
 
-  // This device's position. Stops as soon as sharing stops.
+  // Demo venue set for the session: every phone that shares location reports a
+  // simulated position near it instead of its GPS, labelled simulated for everyone.
+  const { venue, shared: demoOn } = useDemoVenue();
+  const offset = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!sharing || !demoOn) return;
+    setGeo('demo');
+    const M_PER_DEG = 111_320;
+    const send = () => {
+      const prev = offset.current ?? { x: (Math.random() - 0.5) * 30, y: (Math.random() - 0.5) * 30 };
+      const clamp = (m: number) => Math.max(-25, Math.min(25, m));
+      const next = { x: clamp(prev.x + (Math.random() - 0.5) * 6), y: clamp(prev.y + (Math.random() - 0.5) * 6) };
+      offset.current = next;
+      sendLiveLocation(serverId!, {
+        latitude: venue.lat + next.y / M_PER_DEG,
+        longitude: venue.lng + next.x / (M_PER_DEG * Math.cos((venue.lat * Math.PI) / 180)),
+        accuracyM: 10,
+        fixAt: new Date().toISOString(),
+        simulated: true,
+      });
+    };
+    send();
+    const id = setInterval(send, SEND_EVERY_MS);
+    return () => clearInterval(id);
+  }, [sharing, demoOn, venue.lat, venue.lng, serverId]);
+
+  // This device's position. Stops as soon as sharing stops, and pauses while a demo venue is set.
   const lastSent = useRef(0);
   useEffect(() => {
-    if (!sharing) {
-      setGeo('idle');
+    if (!sharing || demoOn) {
+      if (!sharing) setGeo('idle');
       return;
     }
     if (!('geolocation' in navigator)) {
@@ -124,7 +158,7 @@ export function LiveLocationProvider({ children }: { children: ReactNode }) {
       { enableHighAccuracy: true, maximumAge: 10_000, timeout: 30_000 },
     );
     return () => navigator.geolocation.clearWatch(watch);
-  }, [sharing, serverId]);
+  }, [sharing, demoOn, serverId]);
 
   useEffect(() => setConnected(false), [serverId]);
 

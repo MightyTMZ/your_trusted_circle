@@ -27,6 +27,11 @@ export function HostSetupScreen() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
+  const accountName = account?.displayName;
+  useEffect(() => {
+    if (accountName) setHost((v) => (v.displayName ? v : { ...v, displayName: accountName }));
+  }, [accountName]);
+
   // Sessions live on the server so others can join from their own phones, which needs an account.
   useEffect(() => {
     if (account === null) go({ name: 'signin' });

@@ -40,7 +40,7 @@ export function useGroupPoints(viewer: Participant, now: number): { points: Grou
   const { state } = useApp();
   const { fixes } = useLive();
   const session = state.session!;
-  const venue = useDemoVenue();
+  const { venue } = useDemoVenue();
   return useMemo(() => {
     // Simulated people are drawn around the demo venue; real fixes show where they really are.
     const anchor = { lat: venue.lat, lng: venue.lng };
@@ -59,7 +59,7 @@ export function useGroupPoints(viewer: Participant, now: number): { points: Grou
           lat: fix.latitude,
           lng: fix.longitude,
           live: fix.status === 'live',
-          source: 'device',
+          source: fix.simulated ? 'simulated' : 'device',
           at: new Date(fix.fixAt).getTime(),
         });
         continue;

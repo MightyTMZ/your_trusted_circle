@@ -44,40 +44,70 @@ export function parseCoordinates(text: string): { lat: number; lng: number } | n
   return { lat, lng };
 }
 
-function read(): Venue {
+function readLocal(): Venue | null {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Venue | null;
     if (v && typeof v.lat === 'number' && typeof v.lng === 'number' && typeof v.label === 'string') return v;
   } catch {
-    // A missing or unreadable setting means the default venue.
+    // A missing or unreadable setting means no local venue.
   }
-  return DEFAULT_VENUE;
+  return null;
 }
 
-/** Saved in this browser only, as a presenter convenience. `null` goes back to the default. */
-export function setDemoVenue(v: Venue | null): void {
+/** The venue the host set for the whole session, from the server. Wins over this browser's choice. */
+let sessionVenue: Venue | null = null;
+
+const emit = () => window.dispatchEvent(new Event(CHANGED));
+
+/** Called by the server sync whenever the session view arrives. */
+export function applySessionVenue(v: Venue | null): void {
+  const same = v === sessionVenue || (v && sessionVenue && v.lat === sessionVenue.lat && v.lng === sessionVenue.lng && v.label === sessionVenue.label);
+  if (same) return;
+  sessionVenue = v;
+  emit();
+}
+
+export interface DemoVenueState {
+  venue: Venue;
+  /**
+   * Set by the host for the whole session. While it is, every phone in the
+   * session reports a simulated position around it instead of its GPS.
+   */
+  shared: boolean;
+  /** Chosen in this browser only (sessions that aren't on the server). */
+  local: boolean;
+}
+
+export function currentVenue(): DemoVenueState {
+  if (sessionVenue) return { venue: sessionVenue, shared: true, local: false };
+  const local = readLocal();
+  return { venue: local ?? DEFAULT_VENUE, shared: false, local: !!local };
+}
+
+/** This browser's own choice, for sessions that aren't on the server. `null` goes back to the default. */
+export function setLocalVenue(v: Venue | null): void {
   try {
     if (v) localStorage.setItem(KEY, JSON.stringify(v));
     else localStorage.removeItem(KEY);
   } catch {
     // Storage blocked: the change lasts until the page reloads.
   }
-  window.dispatchEvent(new CustomEvent(CHANGED, { detail: v ?? DEFAULT_VENUE }));
+  emit();
 }
 
-export function useDemoVenue(): Venue {
-  const [venue, setVenue] = useState(read);
+export function useDemoVenue(): DemoVenueState {
+  const [state, setState] = useState(currentVenue);
   useEffect(() => {
-    const onChange = (e: Event) => setVenue((e as CustomEvent<Venue>).detail ?? read());
-    const onStorage = (e: StorageEvent) => e.key === KEY && setVenue(read());
-    window.addEventListener(CHANGED, onChange);
+    const update = () => setState(currentVenue());
+    const onStorage = (e: StorageEvent) => e.key === KEY && update();
+    window.addEventListener(CHANGED, update);
     window.addEventListener('storage', onStorage);
     return () => {
-      window.removeEventListener(CHANGED, onChange);
+      window.removeEventListener(CHANGED, update);
       window.removeEventListener('storage', onStorage);
     };
   }, []);
-  return venue;
+  return state;
 }
 
 /**

@@ -59,7 +59,7 @@ function LiveFixStamp({ fix, now }: { fix: LiveFix; now: number }) {
       <span className={`dot ${fix.status === 'live' ? 'live' : 'hollow'}`} aria-hidden="true" />
       {fix.status === 'live' ? (
         <span>
-          <span className="t-name" style={{ fontSize: 12 }}>Live</span> · GPS ±{fix.accuracyM} m · {fmtTime(at)}
+          <span className="t-name" style={{ fontSize: 12 }}>Live</span> · {fix.simulated ? 'Simulated' : `GPS ±${fix.accuracyM} m`} · {fmtTime(at)}
         </span>
       ) : (
         <span>

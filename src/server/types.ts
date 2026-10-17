@@ -83,6 +83,11 @@ export interface SessionRules {
   maxParticipants: number;
   /** When false, nobody in the session may share location, whatever they choose. */
   allowLocationSharing: boolean;
+  /**
+   * Demo only: a public place (a club, a hall) the host picks so simulated and
+   * "teleported" people appear there. Never a participant's own position.
+   */
+  demoVenue?: { label: string; lat: number; lng: number } | null;
 }
 
 export type EndedReason = "host_ended" | "expired" | "host_deleted_account";

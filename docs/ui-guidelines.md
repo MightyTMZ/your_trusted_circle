@@ -274,9 +274,11 @@ group or the host only, and the host always shares with the group.
 
 The sign-in screen shows a "Test sign-in" card only when the server
 reports `testSignIn: true` (local development). Simulated people on the
-group map are drawn around the demo venue, which presenters set in the Demo
-panel (an address or coordinates, saved in that browser) or the build sets
-with `DEMO_VENUE`. Google requires its logo, map data, Terms and
+group map are drawn around the demo venue. In a server session the host
+sets it for everyone in the Demo panel (an address or coordinates); while it
+is set, every phone reports a simulated position there instead of its GPS,
+and the map and People list label those positions "Simulated". Sessions only
+on one device keep a per-browser venue, or the build's `DEMO_VENUE`. Google requires its logo, map data, Terms and
 "Report a map error" links on the map; never hide them.
 
 Profile pictures are stored by the server (`avatar` on `GET`/`PATCH
