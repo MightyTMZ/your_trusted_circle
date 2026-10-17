@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { emptyState } from '../../domain/session';
 import type { AppState } from '../../domain/types';
-import { EXPORT_URL, PROVIDER_LABEL, deleteAccount, fetchAccount, signOut, toAvatarDataUrl, updateProfile, type Account } from '../api';
+import { EXPORT_URL, PROVIDER_LABEL, deleteAccount, signOut, toAvatarDataUrl, updateProfile } from '../api';
 import { COPY } from '../copy';
 import { useApp } from '../context';
 import { Avatar, ScreenHeader } from '../components/Controls';
@@ -62,9 +62,8 @@ function Row({ icon, label, sub, onClick, href }: { icon: IconName; label: strin
 type SheetKind = 'clear' | 'signout' | 'delete' | null;
 
 export function SettingsScreen() {
-  const { state, me, store, setViewer, go } = useApp();
+  const { state, me, store, setViewer, go, account, refreshAccount } = useApp();
   const [theme, setTheme] = useState<ThemeId>(loadTheme);
-  const [account, setAccount] = useState<Account | null | undefined>(undefined);
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [confirmText, setConfirmText] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +78,7 @@ export function SettingsScreen() {
     const result = await updateProfile({ avatar });
     setSaving(false);
     if (typeof result === 'string') setPhotoError(result);
-    else setAccount(result);
+    else void refreshAccount();
   };
   const changePhoto = async (file: File) => {
     try {
@@ -88,14 +87,6 @@ export function SettingsScreen() {
       setPhotoError("That picture couldn't be used. Try a PNG, JPEG or WebP image.");
     }
   };
-
-  useEffect(() => {
-    let alive = true;
-    fetchAccount().then((a) => alive && setAccount(a));
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   const pick = (id: ThemeId) => {
     setTheme(id);
@@ -278,7 +269,7 @@ export function SettingsScreen() {
             className="btn pbtn on-accent"
             onClick={async () => {
               if (await signOut()) {
-                setAccount(null);
+                void refreshAccount();
                 close();
               } else setError("Couldn't reach the server. Try again.");
             }}
@@ -320,7 +311,7 @@ export function SettingsScreen() {
             disabled={confirmText !== 'DELETE'}
             onClick={async () => {
               if (await deleteAccount()) {
-                setAccount(null);
+                void refreshAccount();
                 setViewer(null);
                 close();
               } else setError("Couldn't delete the account. Try again.");

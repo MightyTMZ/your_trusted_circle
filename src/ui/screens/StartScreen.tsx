@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { COPY } from '../copy';
 import { useApp } from '../context';
+import { Avatar } from '../components/Controls';
 import { Icon } from '../components/Icon';
 
 export function StartScreen() {
-  const { go, state } = useApp();
+  const { go, state, account } = useApp();
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const ready = code.trim().length === 6;
@@ -24,9 +25,16 @@ export function StartScreen() {
             YTC
           </div>
           <span className="inline">
-            <button type="button" className="btn chip glass" onClick={() => go({ name: 'signin' })}>
-              Sign in
-            </button>
+            {account ? (
+              <button type="button" className="btn chip glass" onClick={() => go({ name: 'settings' })} style={{ gap: 8 }}>
+                <Avatar name={account.displayName} src={account.avatar} size={24} />
+                {account.displayName}
+              </button>
+            ) : (
+              <button type="button" className="btn chip glass" onClick={() => go({ name: 'signin' })}>
+                Sign in
+              </button>
+            )}
             <button type="button" className="btn ibtn glass" aria-label="Settings" onClick={() => go({ name: 'settings' })}>
               <Icon name="settings" />
             </button>
