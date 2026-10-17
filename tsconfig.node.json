@@ -26,6 +26,7 @@
     "src/detector/**/*.ts",
     "src/timeline/**/*.ts",
     "src/agent/**/*.ts",
+    "src/server/**/*.ts",
     "test/**/*.ts"
   ]
 }
