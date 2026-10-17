@@ -26,7 +26,14 @@ const calls = new CallService({ models, speech });
 const reasoning = models ? `${GEMINI_REASONING_MODEL} -> ${GEMINI_FAST_MODEL}` : null;
 const handler = createApiHandler(calls, { reasoning });
 
-createServer((req, res) => void handler(req, res)).listen(port, "127.0.0.1", () => {
+const server = createServer((req, res) => void handler(req, res));
+server.on("error", (err: NodeJS.ErrnoException) => {
+  if (err.code !== "EADDRINUSE") throw err;
+  console.error(`Port ${port} is already in use; another YTC backend is probably running.`);
+  console.error(`Stop it (lsof -nP -iTCP:${port} -sTCP:LISTEN shows its PID), or set YTC_SERVER_PORT.`);
+  process.exit(1);
+});
+server.listen(port, "127.0.0.1", () => {
   console.log(`YTC backend on http://127.0.0.1:${port} (simulation only; no real calls are possible)`);
   console.log(`  reasoning:      ${reasoning ?? "off (no GEMINI_API_KEY): the agent speaks facts verbatim"}`);
   console.log(`  speech in/out:  ${speech ? `${speech.sttId} / ${speech.ttsId}` : "off (no ELEVENLABS_API_KEY): text only"}`);
