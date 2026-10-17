@@ -10,6 +10,16 @@ export function ParticipantCheckInScreen({ checkIn }: { checkIn: CheckIn }) {
   const now = useNow();
   const remaining = checkIn.dueAt - now;
   const isHost = me!.id === state.session?.hostId;
+  const hostName = state.session ? state.participants[state.session.hostId]?.displayName : undefined;
+  const backups = me!.backupContacts.map((c) => c.name).join(', ');
+  // Name the person who will be alerted, so the deadline has a face.
+  const whoIsAlerted = isHost
+    ? backups
+      ? `your backup contacts (${backups}) are`
+      : 'your backup contacts are'
+    : hostName
+      ? `${hostName} (your host) is`
+      : 'your host is';
   const respond = (r: 'ok' | 'help') => store.dispatch((d, t) => respondToCheckIn(d, me!.id, checkIn.id, r, t));
 
   return (
@@ -29,7 +39,7 @@ export function ParticipantCheckInScreen({ checkIn }: { checkIn: CheckIn }) {
             {fmtCountdown(remaining)}
           </span>
           <span className="small">
-            If you don't answer, {isHost ? 'your backup contacts are' : 'your host is'} alerted at {fmtTime(checkIn.dueAt)}.
+            If you don't answer, {whoIsAlerted} alerted at <span className="mono">{fmtTime(checkIn.dueAt)}</span>.
           </span>
         </div>
       </div>
