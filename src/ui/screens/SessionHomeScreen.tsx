@@ -121,7 +121,7 @@ function CheckInStatus({ me }: { me: Participant }) {
 }
 
 export function SessionHomeScreen() {
-  const { state, me, store, go } = useApp();
+  const { state, me, store, go, setViewer } = useApp();
   const now = useNow();
   const [sheet, setSheet] = useState<null | 'end'>(null);
   const [error, setError] = useState<string | null>(null);
@@ -171,6 +171,11 @@ export function SessionHomeScreen() {
               ))}
             </section>
           )}
+          <div className="screen-footer">
+            <button type="button" className="btn pbtn on-accent" onClick={() => setViewer(null)}>
+              Done
+            </button>
+          </div>
         </div>
       </div>
     );

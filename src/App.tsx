@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { AppProvider, store, useApp } from './ui/context';
-import { ActiveSessionBar } from './ui/components/ActiveSessionBar';
 import { AppNav, useNavItems } from './ui/components/AppNav';
 import { SettingsScreen } from './ui/screens/SettingsScreen';
 import { SignInScreen } from './ui/screens/SignInScreen';
@@ -88,14 +87,13 @@ export function App() {
   );
 }
 
-/** Rail on tablet and desktop, floating pill on phones, session bar on top. */
+/** Sidebar on tablet and desktop, tab bar on phones; both carry the session indicator. */
 function Shell() {
   const withNav = useNavItems() !== null;
   return (
     <div className={`app ${withNav ? 'with-nav' : ''}`}>
       <AppNav variant="rail" />
       <main className="app-main">
-        <ActiveSessionBar />
         <CurrentScreen />
       </main>
       <AppNav variant="bottom" />

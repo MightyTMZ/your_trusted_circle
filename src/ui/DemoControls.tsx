@@ -51,11 +51,11 @@ export function DemoControls() {
     return { w: r?.width ?? 0, h: r?.height ?? 0 };
   };
 
-  // Default spot: bottom right, above the phone nav pill. Re-clamp on resize.
+  // Default spot: bottom right, above the phone tab bar and session pill. Re-clamp on resize.
   useLayoutEffect(() => {
     const fit = () => {
       const { w, h } = size();
-      setPos((p) => clamp(p ?? { x: window.innerWidth, y: window.innerHeight - h - 96 }, w, h));
+      setPos((p) => clamp(p ?? { x: window.innerWidth, y: window.innerHeight - h - 168 }, w, h));
     };
     fit();
     window.addEventListener('resize', fit);

@@ -126,7 +126,7 @@ ul { padding: 0; list-style: none; }
 .app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; container-type: inline-size; }
 .app-rail { display: none; }
 .screen { flex: 1; width: 100%; padding: 16px 16px 32px; display: flex; flex-direction: column; gap: 24px; }
-.app.with-nav .screen { padding-bottom: 120px; }
+.app.with-nav .screen { padding-bottom: 176px; }
 .narrow { width: 100%; max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; flex: 1; }
 .screen-footer { margin-top: auto; display: flex; flex-direction: column; gap: 12px; }
 .cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
@@ -240,8 +240,9 @@ ul { padding: 0; list-style: none; }
 /* Phone: floating tab bar, help as a separate round button beside it. */
 .tabbar-dock {
   position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 10;
-  display: flex; align-items: center; gap: 10px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 8px; width: max-content; max-width: calc(100vw - 32px);
 }
+.tabbar-row { display: flex; align-items: center; gap: 10px; }
 .tabbar { display: flex; gap: 2px; padding: 4px; border-radius: var(--r-pill); }
 .tab {
   min-width: 72px; height: 54px; padding: 0 12px; border-radius: var(--r-pill); background: transparent; color: var(--text-primary);
@@ -424,15 +425,21 @@ textarea.field { height: 100px; padding: 13px 16px; resize: none; line-height: 1
 .hscroll { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
 .hscroll::-webkit-scrollbar { display: none; }
 
-/* ---------- Session bar (functional layer) ---------- */
-.session-bar {
-  position: sticky; top: 8px; z-index: 6; margin: 8px 12px 0; padding: 8px 8px 8px 16px; border-radius: var(--r-card);
-  display: flex; align-items: center; gap: 12px;
+/* ---------- Session indicator (in the navigation) ---------- */
+/* Phone: a pill above the tab bar, like a tab bar accessory. Sidebar: a block under the app name. */
+.session-accessory, .session-side {
+  display: flex; align-items: center; gap: 10px; text-align: left; color: var(--text-primary);
 }
-.session-bar .meta { flex: 1; min-width: 0; }
-.session-bar .line1 { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.session-bar .line2 { font-size: 13px; color: var(--text-secondary); }
-@media (min-width: 768px) { .session-bar { margin: 16px 32px 0; } }
+.session-accessory { width: 100%; min-height: 44px; padding: 0 12px 0 16px; border-radius: var(--r-pill); }
+.session-side { width: 100%; min-height: 44px; padding: 8px 12px; margin-bottom: 12px; border-radius: 12px; background: var(--fill); flex-wrap: wrap; row-gap: 0; }
+.session-name { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session-meta { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
+.session-accessory .chev, .session-side .chev { display: inline-flex; color: var(--text-tertiary); }
+.session-accessory .chev .ic, .session-side .chev .ic { width: 16px; height: 16px; }
+/* In the narrow sidebar the time wraps under the name. */
+.session-side .session-meta { order: 3; flex-basis: 100%; padding-left: 18px; }
+.session-side:hover { background: var(--fill-strong); }
+.session-facts { margin: 0; }
 
 /* ---------- Sheet (functional layer) ---------- */
 .sheet-backdrop {

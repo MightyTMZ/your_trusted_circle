@@ -22,7 +22,7 @@ Guidelines (`page.md › Heading`).
    custom property. No hex values inside components.
 2. **Two layers.** Content (cards, rows, fields, chips) is opaque: `surface`
    or `fill`. Only the functional layer that floats above content (tab bar,
-   sidebar, session bar, sheets, map chip, demo button) uses `material`.
+   sidebar, session pill, sheets, map chip, demo button) uses `material`.
    Never put material on a card or row (`materials.md › Liquid Glass`:
    "Don't use Liquid Glass in the content layer").
 3. **One accent, with meaning.** The accent means *active, on, in progress,
@@ -144,7 +144,7 @@ Don't add explanatory filler under every heading.
   inside a card, the segmented track). `.fill-2` is the stronger fill
   (operator bubbles in the transcript).
 - **Functional layer.** `.material`: translucent background, backdrop blur,
-  0.5px edge and a soft shadow. Only for the tab bar, sidebar, session bar,
+  0.5px edge and a soft shadow. Only for the tab bar, sidebar, session pill,
   sheets, the map chip, the theme preview bar and the demo button.
   `prefers-reduced-transparency: reduce` and missing backdrop-filter
   support swap it for `--material-solid`.
@@ -237,9 +237,21 @@ buttons". The Alert tab appears only while the host has an unresolved
 alert, because an empty Alert section has nothing to show yet. Revisit if
 the tab bar starts to feel unstable in testing.
 
-The active-session bar (`ActiveSessionBar`) stays on every in-session
-screen as a material bar pinned to the top. It is the visible session
-indicator CLAUDE.md requires; don't remove it to save space.
+The active-session indicator (`SessionStatus`) is the visible session
+indicator CLAUDE.md requires; don't remove it to save space. It lives in
+the navigation, not as a banner, so it never reads like a notification:
+
+- **Phone:** a material pill directly above the tab bar, like a tab bar
+  accessory (`tab-bars.md`): live dot, session name, time left.
+- **Tablet and desktop:** a grey-fill block under the app name in the
+  sidebar, with the time left on a second line.
+- **Tap** opens a sheet with the session facts (status, host, your
+  location sharing, your check-ins) and Leave session / End session, which
+  steps to a confirmation inside the same sheet.
+- **Ended or left:** the indicator disappears; the session home shows the
+  ended state with a Done button that returns to the start screen.
+- Screens without navigation (the private check-in, setup and join flows)
+  show no indicator; the check-in only exists during an active session.
 
 ## 8a. Backend features
 

@@ -4,6 +4,7 @@ import { COPY } from '../copy';
 import { useApp } from '../context';
 import { HelpSheet } from './HelpSheet';
 import { Icon, type IconName } from './Icon';
+import { SessionStatus } from './SessionStatus';
 
 interface NavItem {
   key: string;
@@ -91,7 +92,8 @@ function Slot({ item, variant }: { item: NavItem; variant: 'rail' | 'bottom' }) 
 /**
  * Tab bar on phones (with the help button beside it, not inside it: tabs
  * navigate, help acts), a labelled sidebar on tablet and desktop. Help stays
- * one tap away on every in-session screen.
+ * one tap away on every in-session screen. The session indicator sits above
+ * the tab bar, or near the top of the sidebar.
  */
 export function AppNav({ variant }: { variant: 'rail' | 'bottom' }) {
   const nav = useNav();
@@ -105,19 +107,22 @@ export function AppNav({ variant }: { variant: 'rail' | 'bottom' }) {
     return (
       <>
         <div className="tabbar-dock">
-          {canAskForHelp && (
-            <button type="button" className="btn material help-fab" aria-label={COPY.checkInHelp} title={COPY.checkInHelp} onClick={open}>
-              <Icon name="lifeBuoy" />
-            </button>
-          )}
-          <nav aria-label="Main" className="material tabbar">
-            {/* Settings is a gear in the screen header on phones (SettingsButton). */}
-            {items
-              .filter((i) => i.key !== 'settings')
-              .map((i) => (
-                <Slot key={i.key} item={i} variant="bottom" />
-              ))}
-          </nav>
+          <SessionStatus variant="accessory" />
+          <div className="tabbar-row">
+            {canAskForHelp && (
+              <button type="button" className="btn material help-fab" aria-label={COPY.checkInHelp} title={COPY.checkInHelp} onClick={open}>
+                <Icon name="lifeBuoy" />
+              </button>
+            )}
+            <nav aria-label="Main" className="material tabbar">
+              {/* Settings is a gear in the screen header on phones (SettingsButton). */}
+              {items
+                .filter((i) => i.key !== 'settings')
+                .map((i) => (
+                  <Slot key={i.key} item={i} variant="bottom" />
+                ))}
+            </nav>
+          </div>
         </div>
         {sheet}
       </>
@@ -129,6 +134,7 @@ export function AppNav({ variant }: { variant: 'rail' | 'bottom' }) {
     <div className="app-rail">
       <nav aria-label="Main" className="material sidebar">
         <div className="side-brand t-card">Your Trusted Companion</div>
+        <SessionStatus variant="sidebar" />
         {canAskForHelp && (
           <button type="button" className="btn side-help" onClick={open}>
             <Icon name="lifeBuoy" />
