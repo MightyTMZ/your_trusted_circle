@@ -782,6 +782,26 @@ export const EVENT_CATALOG = {
     summarize: (d) => `Silence on call ${d.call_id} for ${duration(d.duration_ms)}.`,
   }),
 
+  "voice.draft_rejected": defineEvent({
+    description: "A model-written reply that failed a grounding check and was not spoken.",
+    sensitivity: "none",
+    incident: "required",
+    participant: "optional",
+    mustBeSimulated: true,
+    payload: v.object({
+      call_id: v.id("call"),
+      /** The operator turn the draft was answering. */
+      turn_index: v.number({ min: 0, integer: true }),
+      attempt: v.number({ min: 1, integer: true }),
+      stage: v.enum(["schema", "guard", "judge", "judge_unavailable", "superseded"] as const),
+      reasons: v.array(shortText(300), { minLength: 1, maxLength: 12 }),
+      draft_text: v.optional(v.string({ minLength: 1, maxLength: 2000 })),
+      model_id: v.optional(shortText()),
+    }),
+    summarize: (d) =>
+      `[call ${d.call_id} turn ${d.turn_index}] Draft ${d.attempt} rejected at ${d.stage} check and not spoken: ${d.reasons.join("; ")}.`,
+  }),
+
   "voice.agent_error": defineEvent({
     description: "The voice agent failed while on a call.",
     sensitivity: "none",

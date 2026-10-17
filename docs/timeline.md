@@ -256,6 +256,7 @@ Must be `simulated: true`; the only endpoint is `mock-operator-local`.
 | `voice.call_started` | The mock call began. | `call_id`, `mock_endpoint_id` |
 | `voice.utterance` | Every turn, both directions; agent turns cite `grounding_event_ids`. | `turn_index`, `speaker`, `text`, `grounding_event_ids[]` |
 | `voice.silence_detected` | Silence on the line. | `duration_ms` |
+| `voice.draft_rejected` | A model-written reply failed a grounding check and was never spoken; the audit trail for "the agent does not make things up". | `turn_index` (operator turn answered), `attempt`, `stage` (`schema`/`guard`/`judge`/`judge_unavailable`/`superseded`), `reasons[]`, `draft_text` |
 | `voice.agent_error` | The agent failed mid-call. | `error_code`, `recoverable` |
 | `voice.call_ended` | How and when the call ended. | `reason`, `duration_ms` |
 
@@ -274,6 +275,40 @@ agent may read (`evidenceToJsonl`).
 | `unknowns` | What must be said as unknown: condition, current location, stale motion data, a saturated impact's true strength, an unanswered check-in (the latest one, not an earlier false alarm). |
 | `evidence` | Permitted lines and redactions (consent applied as of now; other participants never appear). |
 
+## The voice agent
+
+`OperatorCallAgent` (`src/agent/`) talks to the mock operator from the
+briefing. No path in it can place a call. Each operator turn:
+
+```
+ operator text (sanitized, JSON-quoted, never in the system prompt)
+   ▼
+ buildOperatorBriefing(now) ─► buildFactSheet()        facts.ts      pre-worded facts F1..Fn, each citing events
+   ▼
+ FactRetriever                                         retrieval.ts  BM25 + Gemini embeddings, reciprocal rank fusion
+   ▼
+ reasoning model ─► { intent, sentences[{text, fact_ids}] }   gemini.ts   gemini-4-argon (high thinking) → gemini-3.8-flash
+   ▼
+ parseDraft ─► checkDraft ─► judgeSentences            guard.ts, judge.ts
+   │ pass                              │ fail
+   ▼                                   ▼
+ voice.utterance                  voice.draft_rejected, one repair attempt, then
+ (grounding_event_ids)            the fallback: the most relevant facts, verbatim
+```
+
+| Layer | What it stops |
+| --- | --- |
+| Fact sheet | The model never sees raw data it would have to phrase itself. Every number, time, name and place it may say was written by code from a cited event; unknowns (condition, current location, contact details, description) are facts too. |
+| Full sheet in every prompt | Retrieval decides focus only, so a retrieval miss cannot hide a fact. Google Search grounding and all other tools are off. |
+| Guard (deterministic) | Numbers, times, number words, names and places not in the *cited* facts; condition, cause and safety terms (`unconscious`, `drugged`, `fell`, `safe`…) not in the cited facts; internal IDs, URIs, emails, phone-like digits; uncited sentences. |
+| Judge (second model call) | Sentences the cited facts do not fully entail (e.g. "they are breathing" citing the fact that breathing is unknown). Partial support fails; a missing verdict fails; a judge outage fails closed. |
+| Fallback | If no draft passes, or the model times out or errors, the agent speaks fact text verbatim, or the scope fact for out-of-scope requests. |
+| Timeline | Every spoken line cites events that exist; every rejected draft and model error is logged. |
+
+`npm run agent:demo` continues the example call (`--offline` for the
+deterministic path, `--interactive` to play the operator). It reads
+`GEMINI_API_KEY` from the environment or `.env`.
+
 ## Adding an event type
 
 1. Add an entry to `EVENT_CATALOG` in `src/timeline/schema/catalog.ts`.
@@ -284,8 +319,8 @@ agent may read (`evidenceToJsonl`).
 
 | | |
 | --- | --- |
-| Implemented | phyphox adapter, streaming windowing, window features, raw store, baseline and pattern detectors, sensor pipeline, timeline with consent enforcement, briefing with activity history. |
+| Implemented | phyphox adapter, streaming windowing, window features, raw store, baseline and pattern detectors, sensor pipeline, timeline with consent enforcement, briefing with activity history, voice-agent reasoning pipeline (fact sheet, retrieval, guard, judge, fallback). |
 | Recorded vs. synthetic | `examples/accelerometer/` holds real Pixel 9 recordings; everything in `docs/examples/` is synthetic. |
-| Simulated | Notification transport, emergency dispatch, voice calls (mock operator only). |
-| Needs validation | Every threshold and rule; cadence and impact detection on real night-out data; the briefing's usefulness to real operators. |
-| Not built | Live in-browser sensor capture, gyroscope fusion, the scheduler and state machines (escalation is scripted in the scenario), the voice agent, the UI, the telephony build guard. Single process; the hash chain is tamper-evident, not signed. |
+| Simulated | Notification transport, emergency dispatch, voice calls (mock operator only, text in and out). |
+| Needs validation | Every threshold and rule; cadence and impact detection on real night-out data; the briefing's usefulness to real operators; the guard's and judge's false-accept and false-reject rates on a labelled set of drafts; answer latency with the chosen models. |
+| Not built | Live in-browser sensor capture, gyroscope fusion, the scheduler and state machines (escalation is scripted in the scenario), speech in and out for the agent, a server endpoint connecting the agent to the UI. Single process; the hash chain is tamper-evident, not signed. |
