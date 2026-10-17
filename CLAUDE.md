@@ -135,6 +135,10 @@ Apply these guardrails to every voice-model prompt and response:
 - Never run git push --force, git reset --hard, or rm -rf
   without asking.
 - Never commit secrets or make real external notifications.
+- Commit as `Tim Kachynskyy <38844841+tkachyn@users.noreply.github.com>`
+  (GitHub `tkachyn`), as both author and committer. Do not add Claude
+  as an author or co-author, and omit `Co-Authored-By: Claude` and
+  `Claude-Session:` trailers from commit messages.
 
 
 ## Reference documents
