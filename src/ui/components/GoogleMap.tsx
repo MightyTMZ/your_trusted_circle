@@ -20,8 +20,8 @@ export interface MapPin {
   simulated: boolean;
 }
 
-const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? '';
-const MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID?.trim() || 'DEMO_MAP_ID';
+const API_KEY = import.meta.env.GOOGLE_MAPS_API_KEY?.trim() ?? '';
+const MAP_ID = import.meta.env.GOOGLE_MAPS_MAP_ID?.trim() || 'DEMO_MAP_ID';
 
 export const googleMapsConfigured = API_KEY.length > 0;
 
