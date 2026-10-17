@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG, MAX_BACKUP_CONTACTS } from './config';
+import { DEFAULT_CONFIG, MAX_BACKUP_CONTACTS, MAX_DURATION_MIN, MIN_DURATION_MIN } from './config';
 import { emptyBaseline, ingestSample, startCalibration } from './detector';
 import { makeId, makeJoinCode } from './ids';
 import {
@@ -273,6 +273,9 @@ export interface CreateSessionInput {
 /** Only a host can initialise a session, and only after accepting the host commitment. */
 export function createSession(state: AppState, input: CreateSessionInput, now: Millis): { session: Session; host: Participant } {
   if (!input.hostCommitment) throw new SessionError('The host must accept the host commitment to start a session.');
+  if (!Number.isInteger(input.durationMin) || input.durationMin < MIN_DURATION_MIN || input.durationMin > MAX_DURATION_MIN) {
+    throw new SessionError(`A session must last between ${MIN_DURATION_MIN} minutes and ${MAX_DURATION_MIN / 60} hours.`);
+  }
   const offset = state.clockOffsetMs;
   Object.assign(state, emptyState(), { clockOffsetMs: offset });
 

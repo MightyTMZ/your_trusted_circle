@@ -25,8 +25,9 @@ export interface ServerConfig {
   authSessionTtlMs: number;
   providers: ProviderCredentials;
   defaultRules: SessionRules;
-  /** Session lengths a host may pick, in minutes. */
-  allowedDurationsMin: readonly number[];
+  /** Shortest and longest session a host may start, in minutes. Mirrors src/domain/config.ts. */
+  minDurationMin: number;
+  maxDurationMin: number;
   /** Alert delivery: attempts before giving up, and the wait before each retry. */
   alertMaxAttempts: number;
   alertRetryDelaysMs: readonly number[];
@@ -111,7 +112,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     authSessionTtlMs: 30 * 24 * 60 * 60 * 1000,
     providers,
     defaultRules: DEFAULT_RULES,
-    allowedDurationsMin: [120, 240, 360],
+    minDurationMin: 30,
+    maxDurationMin: 24 * 60,
     alertMaxAttempts: 5,
     alertRetryDelaysMs: [5_000, 15_000, 45_000, 120_000],
     alertLeaseMs: 30_000,

@@ -62,6 +62,17 @@ describe('session and consent', () => {
     ).toThrow();
   });
 
+  it('accepts any whole number of minutes from 30 minutes to 24 hours, and sets the end time from it', () => {
+    const start = (durationMin: number) =>
+      createSession(emptyState(), { sessionName: 'x', durationMin, hostCommitment: true, host: input('A') }, 1_000_000);
+    expect(start(90).session.expiresAt).toBe(1_000_000 + 90 * 60_000);
+    expect(start(30).session.config.durationMin).toBe(30);
+    expect(start(24 * 60).session.config.durationMin).toBe(1440);
+    for (const bad of [0, 29, 24 * 60 + 1, 90.5, Number.NaN, -60]) {
+      expect(() => start(bad), `${bad}`).toThrow(/between 30 minutes and 24 hours/);
+    }
+  });
+
   it('the host cannot change another participant’s sharing', () => {
     const { s, host, sam } = setup();
     expect(() => updateConsent(s, host.id, sam.id, { motionMonitoring: true })).toThrow();
