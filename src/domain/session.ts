@@ -70,6 +70,7 @@ export function hydrateServerSession(state: AppState, input: ServerHydrateInput,
     createdAt: new Date(serverSession.createdAt).getTime(),
     expiresAt: new Date(serverSession.expiresAt).getTime(),
     status: (serverSession.status as 'active' | 'suspended' | 'ended') ?? 'active',
+    serverId: serverSession.id,
     hostCommitmentAcceptedAt: new Date(serverSession.createdAt).getTime(),
     config: {
       ...DEFAULT_CONFIG,
@@ -99,6 +100,8 @@ export function hydrateServerSession(state: AppState, input: ServerHydrateInput,
       locations: [],
       baseline: isMe && myInput.motionMonitoring ? startCalibration() : emptyBaseline(),
       motion: { consecutiveOutliers: 0 },
+      serverId: sp.participantId,
+      remote: !isMe,
     };
   }
 
@@ -116,6 +119,80 @@ export function hydrateServerSession(state: AppState, input: ServerHydrateInput,
   if (myParticipant) registerBackupRecipients(state, myParticipant);
 
   return myPid;
+}
+
+export interface ServerParticipantView {
+  participantId: string;
+  displayName: string;
+  role: string;
+  isYou: boolean;
+  deviceOnline: boolean;
+  /** Only the host receives other people's consent. */
+  consent?: { monitoring: boolean; locationSharing: string; shareLocationWithResponders: boolean };
+}
+
+/**
+ * Bring the local participant list in line with the server's session view:
+ * people who joined from other devices appear, people who left disappear.
+ * Participants created on this device are never removed here.
+ */
+export function syncServerParticipants(
+  state: AppState,
+  view: { status: string; participants: ServerParticipantView[] },
+  now: Millis,
+): void {
+  const s = state.session;
+  if (!s?.serverId) return;
+  if (view.status !== 'active' && s.status !== 'ended') {
+    s.status = 'ended';
+    s.endedAt = now;
+    s.endedReason = view.status === 'expired' ? 'expired' : 'host_ended';
+  }
+  const local = Object.values(state.participants);
+  const seen = new Set<string>();
+  for (const sp of view.participants) {
+    seen.add(sp.participantId);
+    const p = local.find((x) => x.serverId === sp.participantId || x.id === sp.participantId);
+    if (p) {
+      if (!p.remote) continue;
+      p.displayName = sp.displayName;
+      p.status = 'active';
+      if (p.device.online !== sp.deviceOnline) p.device = { online: sp.deviceOnline, changedAt: now };
+      if (sp.consent) applyServerConsent(p, sp.consent);
+      continue;
+    }
+    const role: Participant['role'] = sp.role === 'host' ? 'host' : 'participant';
+    const p2: Participant = {
+      id: sp.participantId,
+      sessionId: s.id,
+      displayName: sp.displayName,
+      role,
+      status: 'active',
+      consent: { joinedAt: now, locationSharing: 'host', motionMonitoring: false, shareLocationWithResponders: false, shareNoteWithResponders: false },
+      emergencyNote: '',
+      backupContacts: [],
+      device: { online: sp.deviceOnline, changedAt: now },
+      locations: [],
+      baseline: emptyBaseline(),
+      motion: { consecutiveOutliers: 0 },
+      serverId: sp.participantId,
+      remote: true,
+    };
+    if (sp.consent) applyServerConsent(p2, sp.consent);
+    state.participants[p2.id] = p2;
+  }
+  for (const p of local) {
+    if (p.remote && p.status === 'active' && !seen.has(p.serverId ?? p.id)) {
+      p.status = 'left';
+      p.leftAt = now;
+    }
+  }
+}
+
+function applyServerConsent(p: Participant, c: NonNullable<ServerParticipantView['consent']>): void {
+  if (c.locationSharing === 'group' || c.locationSharing === 'host' || c.locationSharing === 'off') p.consent.locationSharing = c.locationSharing;
+  p.consent.motionMonitoring = c.monitoring;
+  p.consent.shareLocationWithResponders = c.shareLocationWithResponders;
 }
 
 export function emptyState(): AppState {
@@ -394,6 +471,8 @@ export function respondToCheckIn(
     return;
   }
   ci.status = 'requested_help';
+  // Server-backed: the answer is sent to the server, which opens the incident everyone sees.
+  if (state.session?.serverId) return;
   openIncident(state, actorId, 'help_requested', now, { observationId: ci.observationId, checkInId: ci.id });
 }
 

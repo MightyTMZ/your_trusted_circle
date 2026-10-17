@@ -62,6 +62,7 @@ serve({ fetch: app.fetch, port: config.port }, (info) => {
   const list = enabledProviders(config);
   console.log(`[api] listening on http://localhost:${info.port}`);
   console.log(`[api] sign-in providers: ${list.length > 0 ? list.join(", ") : "none configured (see .env.example)"}`);
+  if (config.testSignIn) console.warn("[api] TEST_SIGN_IN is on: anyone on this computer can sign in as any made-up name.");
   const voice = deps.calls!.capabilities();
   console.log(`[calls] reasoning: ${voice.reasoning ?? "off (no GEMINI_API_KEY): facts read verbatim"}`);
   console.log(`[calls] speech: ${voice.speech_to_text ? `${voice.speech_to_text} / ${voice.text_to_speech}` : "off (no ELEVENLABS_API_KEY): text only"}`);

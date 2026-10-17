@@ -23,6 +23,8 @@ export function tick(state: AppState, now: Millis): void {
   for (const ci of state.checkIns) {
     if (ci.status !== 'pending' || now < ci.dueAt) continue;
     ci.status = 'missed';
+    // Server-backed: the server holds this deadline and opens the incident everyone sees.
+    if (session.serverId) continue;
     openIncident(state, ci.participantId, 'checkin_missed', ci.dueAt, {
       observationId: ci.observationId,
       checkInId: ci.id,
@@ -31,6 +33,8 @@ export function tick(state: AppState, now: Millis): void {
 
   // Escalate unacknowledged incidents, one step per elapsed deadline.
   for (const incident of state.incidents) {
+    // A copy of the server's incident: the server escalates it, never this device.
+    if (incident.server) continue;
     while (incident.status === 'open') {
       const nextIndex = incident.currentStep + 1;
       const next = incident.steps[nextIndex];
@@ -51,7 +55,7 @@ export function tick(state: AppState, now: Millis): void {
   if (session.status === 'active') {
     const every = session.config.locationUpdateEverySec * 1000;
     for (const p of Object.values(state.participants)) {
-      if (p.status !== 'active' || !p.device.online || p.consent.locationSharing === 'off') continue;
+      if (p.remote || p.status !== 'active' || !p.device.online || p.consent.locationSharing === 'off') continue;
       const last = latestReading(p);
       if (last && now - last.recordedAt < every) continue;
       p.locations.push(nextSimulatedReading(last, now));

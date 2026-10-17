@@ -43,7 +43,7 @@ export function StartScreen() {
         <div className="stack rise rise-2" style={{ gap: 12 }}>
           <span className="t-sub">{COPY.appTagline}</span>
           <h1 className="t-display">A buddy system for nights out that can ask for help when you can't.</h1>
-          <p className="t-lead">One sober host keeps watch. Everyone else joins on their own phone and chooses what they share.</p>
+          <p className="t-lead">One sober host keeps watch. Everyone else joins on their own phone and shares their location with the group or just the host.</p>
         </div>
         <div className="screen-footer rise rise-3">
           <button type="button" className="btn pbtn on-accent" onClick={() => go({ name: 'host-setup' })}>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DEFAULT_CONFIG, UNVALIDATED_LABEL } from '../../domain/config';
 import { createSession, type ParticipantInput } from '../../domain/session';
 import { COPY } from '../copy';
@@ -12,12 +12,12 @@ const DURATIONS = [120, 240, 360];
 const STEPS = 4;
 
 export function HostSetupScreen() {
-  const { store, setViewer, go } = useApp();
+  const { store, setViewer, go, account } = useApp();
   const [step, setStep] = useState(1);
   const [sessionName, setSessionName] = useState('');
   const [durationMin, setDurationMin] = useState(240);
   const [commitment, setCommitment] = useState(false);
-  const [host, setHost] = useState<ParticipantInput>(() => ({ ...defaultParticipantInput(), motionMonitoring: false }));
+  const [host, setHost] = useState<ParticipantInput>(() => ({ ...defaultParticipantInput(), motionMonitoring: false, displayName: account?.displayName ?? '' }));
   const [cfg, setCfg] = useState({
     checkInWindowSec: DEFAULT_CONFIG.checkInWindowSec,
     hostAckWindowSec: DEFAULT_CONFIG.hostAckWindowSec,
@@ -26,6 +26,16 @@ export function HostSetupScreen() {
   const [showTiming, setShowTiming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+
+  const accountName = account?.displayName;
+  useEffect(() => {
+    if (accountName) setHost((v) => (v.displayName ? v : { ...v, displayName: accountName }));
+  }, [accountName]);
+
+  // Sessions live on the server so others can join from their own phones, which needs an account.
+  useEffect(() => {
+    if (account === null) go({ name: 'signin' });
+  }, [account, go]);
 
   const create = async () => {
     setCreating(true);
@@ -55,12 +65,16 @@ export function HostSetupScreen() {
       hostId = createSession(d, { sessionName, durationMin, hostCommitment: commitment, host, config: cfg }, now).host.id;
       // Overwrite the client code with the server's so the QR works cross-device.
       d.session!.code = serverResult.session.code!;
+      d.session!.serverId = serverResult.session.id;
+      if (serverResult.session.me) d.participants[hostId].serverId = serverResult.session.me.participantId;
     });
     setCreating(false);
     if (err) return setError(err);
     setViewer({ kind: 'participant', id: hostId });
     go({ name: 'invite' });
   };
+
+  if (!account) return null;
 
   const blocked = creating || (step === 2 && !commitment) || (step === 3 && !host.displayName.trim());
   const next = () => (step < STEPS ? setStep(step + 1) : create());

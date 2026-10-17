@@ -32,6 +32,13 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export function createApp(deps: Deps) {
   const app = new Hono<AppEnv>();
   const allowedOrigins = new Set([deps.config.appOrigin, deps.config.apiOrigin]);
+  // Test sign-in: localhost and 127.0.0.1 keep separate cookies, so each acts as its own phone.
+  if (deps.config.testSignIn) {
+    for (const o of [deps.config.appOrigin, deps.config.apiOrigin]) {
+      const u = new URL(o);
+      for (const host of ["localhost", "127.0.0.1"]) allowedOrigins.add(`${u.protocol}//${host}${u.port ? `:${u.port}` : ""}`);
+    }
+  }
 
   app.use("*", secureHeaders());
   app.use("/api/*", cors({ origin: deps.config.appOrigin, credentials: true, allowMethods: ["GET", "POST", "PATCH", "DELETE"] }));

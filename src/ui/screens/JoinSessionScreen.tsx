@@ -9,10 +9,16 @@ import { ParticipantConsentFields, defaultParticipantInput } from '../components
 export function JoinSessionScreen({ code }: { code: string }) {
   const { state, store, setViewer, go, account, setPendingJoinCode } = useApp();
   const [step, setStep] = useState(1);
-  const [input, setInput] = useState<ParticipantInput>(defaultParticipantInput);
+  const [input, setInput] = useState<ParticipantInput>(() => ({ ...defaultParticipantInput(), displayName: account?.displayName ?? '' }));
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<SessionPreview | null | undefined>(undefined);
   const [joining, setJoining] = useState(false);
+
+  // The account may arrive after the screen opens; use its name if none was typed yet.
+  const accountName = account?.displayName;
+  useEffect(() => {
+    if (accountName) setInput((v) => (v.displayName ? v : { ...v, displayName: accountName }));
+  }, [accountName]);
 
   // If the user isn't signed in, save the code and redirect to sign-in.
   useEffect(() => {
@@ -91,6 +97,9 @@ export function JoinSessionScreen({ code }: { code: string }) {
       let id = '';
       const err = store.dispatch((d, now) => {
         id = joinSession(d, code, input, now).id;
+        // In the same browser the server sees the same account, so only link an id nobody here has yet.
+        const sid = result.me?.participantId;
+        if (sid && !Object.values(d.participants).some((x) => x.serverId === sid)) d.participants[id].serverId = sid;
       });
       if (err) { setJoining(false); return setError(err); }
       setViewer({ kind: 'participant', id });

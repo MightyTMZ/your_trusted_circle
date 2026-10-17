@@ -9,9 +9,11 @@
 
 export const PROVIDER_IDS = ["google", "github", "apple", "microsoft"] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
+/** "test" is the localhost-only test sign-in (config.testSignIn); never an OAuth provider. */
+export type IdentityProvider = ProviderId | "test";
 
 export interface Identity {
-  provider: ProviderId;
+  provider: IdentityProvider;
   /** The provider's stable user id (OIDC `sub`, or GitHub's numeric id). */
   subject: string;
   linkedAt: Date;
@@ -81,6 +83,11 @@ export interface SessionRules {
   maxParticipants: number;
   /** When false, nobody in the session may share location, whatever they choose. */
   allowLocationSharing: boolean;
+  /**
+   * Demo only: a public place (a club, a hall) the host picks so simulated and
+   * "teleported" people appear there. Never a participant's own position.
+   */
+  demoVenue?: { label: string; lat: number; lng: number } | null;
 }
 
 export type EndedReason = "host_ended" | "expired" | "host_deleted_account";

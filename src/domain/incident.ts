@@ -196,6 +196,14 @@ export function resolve(
   });
 }
 
+/** Who has been sent this alert so far, by name, as a readable list. */
+export function alertedNames(state: AppState, incident: Incident): string {
+  const names = alertedRecipientIds(incident).map((id) =>
+    id === EMERGENCY_SIM_RECIPIENT_ID ? 'simulated emergency services' : (state.recipients[id]?.name ?? 'unknown'),
+  );
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? 'nobody yet');
+}
+
 /** Everyone who has been sent this alert so far, in the order they were alerted. */
 export function alertedRecipientIds(incident: Incident): string[] {
   return incident.steps.filter((s) => s.notifiedAt !== undefined).flatMap((s) => s.recipientIds);

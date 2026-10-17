@@ -44,6 +44,29 @@ export async function fetchProviders(): Promise<Provider[] | null> {
   return PROVIDERS.filter((p) => body.providers.includes(p));
 }
 
+/** Whether the server offers the localhost-only test sign-in (TEST_SIGN_IN=true in development). */
+export async function fetchTestSignInEnabled(): Promise<boolean> {
+  const body = await getJson<{ testSignIn?: boolean }>('/auth/providers');
+  return body?.testSignIn === true;
+}
+
+/** Signs in as a made-up test person. Only works against a local development server. Returns an error message on failure. */
+export async function testSignIn(name: string): Promise<string | null> {
+  try {
+    const res = await fetch('/api/auth/test/signin', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (res.ok) return null;
+    const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+    return body?.error?.message ?? "Couldn't sign in. Try again.";
+  } catch {
+    return "Couldn't reach the server. Try again.";
+  }
+}
+
 /** The signed-in account, or null when signed out or the server can't be reached. */
 export async function fetchAccount(): Promise<Account | null> {
   const body = await getJson<{ user: Account }>('/me');
@@ -157,6 +180,8 @@ export interface SessionPreview {
     heartbeatTimeoutSec: number;
     maxParticipants: number;
     allowLocationSharing: boolean;
+    /** Demo only: the public place the host picked for the session. */
+    demoVenue?: { label: string; lat: number; lng: number } | null;
   };
 }
 
@@ -213,63 +238,179 @@ export async function joinSessionOnServer(input: {
   return result.ok ? result.data.session : result.message;
 }
 
+async function sendJson(method: 'POST' | 'PATCH', path: string, body?: unknown): Promise<boolean> {
+  try {
+    const res = await fetch(`/api${path}`, {
+      method,
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export interface ServerSessionPoll extends Omit<ServerSessionView, 'participants'> {
+  participants: (ServerParticipant & { consent?: { monitoring: boolean; locationSharing: string; shareLocationWithResponders: boolean } })[];
+}
+
+/** The server's current view of a session, or null when it can't be reached. */
+export async function fetchServerSession(serverId: string): Promise<ServerSessionPoll | null> {
+  const body = await getJson<{ session: ServerSessionPoll }>(`/sessions/${encodeURIComponent(serverId)}`);
+  return body?.session ?? null;
+}
+
+export function updateConsentOnServer(
+  serverId: string,
+  consent: { monitoring: boolean; locationSharing: string; shareLocationWithResponders: boolean },
+): Promise<boolean> {
+  return sendJson('PATCH', `/sessions/${encodeURIComponent(serverId)}/me/consent`, consent);
+}
+
+export function leaveSessionOnServer(serverId: string): Promise<boolean> {
+  return sendJson('POST', `/sessions/${encodeURIComponent(serverId)}/leave`);
+}
+
+export function endSessionOnServer(serverId: string): Promise<boolean> {
+  return sendJson('POST', `/sessions/${encodeURIComponent(serverId)}/end`);
+}
+
+/** A live position from the server's in-memory relay (docs/backend.md, "Live group location"). */
+export interface LiveFix {
+  participantId: string;
+  displayName: string;
+  isYou: boolean;
+  latitude: number;
+  longitude: number;
+  accuracyM: number;
+  /** A made-up position around the demo venue, not the phone's GPS. */
+  simulated?: boolean;
+  fixAt: string;
+  ageSec: number;
+  status: 'live' | 'stale';
+}
+
+/** Positions this viewer may see, or null when the server can't be reached. */
+export async function fetchLiveLocations(serverId: string): Promise<LiveFix[] | null> {
+  const body = await getJson<{ locations: LiveFix[] }>(`/sessions/${encodeURIComponent(serverId)}/locations`);
+  return body?.locations ?? null;
+}
+
+/** Relays one device fix. The server keeps it in memory only, unless an incident about you is active. */
+export function sendLiveLocation(
+  serverId: string,
+  fix: { latitude: number; longitude: number; accuracyM: number; fixAt: string; simulated?: boolean },
+): Promise<boolean> {
+  return sendJson('POST', `/sessions/${encodeURIComponent(serverId)}/location`, fix);
+}
+
+/** Host only: sets (or with null, clears) the demo venue for the whole session. */
+export function setSessionVenueOnServer(serverId: string, venue: { label: string; lat: number; lng: number } | null): Promise<boolean> {
+  return sendJson('PATCH', `/sessions/${encodeURIComponent(serverId)}/rules`, { demoVenue: venue });
+}
+
 // ---------------------------------------------------------------------------
-// Check-in / safety API
+// Check-ins and alerts (server-backed sessions). The server owns every
+// deadline; these calls only report what this device saw and fetch the result.
 // ---------------------------------------------------------------------------
+
+/** GET /api/incidents/:id and the timeline's incidents (src/server/alerts/routes.ts, incidentView). */
+export interface ServerIncidentView {
+  id: string;
+  sessionId: string;
+  participant: { participantId: string; displayName: string };
+  trigger: 'checkin_missed' | 'help_requested';
+  openedAt: string;
+  status: 'open' | 'acknowledged' | 'resolved';
+  nextEscalationAt: string | null;
+  acknowledged: { by: string; at: string; note: string } | null;
+  resolved: { by: string; at: string; outcome: 'false_alarm' | 'assistance_reached' | 'other'; bySubject?: boolean } | null;
+  steps: { level: 'host' | 'backup' | 'emergency_simulated'; recipients: string[]; notifiedAt: string | null; dueAt: string | null }[];
+  log: { at: string; kind: string; text: string; simulated?: boolean }[];
+}
 
 export interface ServerCheckInView {
   id: string;
-  sessionId: string;
-  reason: string;
-  promptedAt: string;
+  status: 'pending' | 'responded_ok' | 'requested_help' | 'missed' | 'cancelled';
   dueAt: string;
-  status: string;
-  respondedAt: string | null;
   incidentId: string | null;
 }
 
-/** Tell the server a movement change was detected and a check-in should start. */
-export async function createCheckInOnServer(
-  sessionId: string,
-  reason: 'movement_changed' | 'manual',
-): Promise<ServerCheckInView | null> {
-  const result = await postJson<{ checkIn: ServerCheckInView }>(`/sessions/${sessionId}/checkins`, { reason });
-  return result.ok ? result.data.checkIn : null;
+/** GET /api/alerts: alerts delivered to the signed-in user. */
+export interface ServerAlertView {
+  id: string;
+  incidentId: string;
+  about: string;
+  trigger: 'checkin_missed' | 'help_requested';
+  deliveredAt: string | null;
+  incidentStatus: string;
 }
 
-/** Respond to a server-side check-in. */
-export async function respondToCheckInOnServer(
-  checkInId: string,
-  response: 'ok' | 'help',
-): Promise<{ checkIn: ServerCheckInView; incidentId?: string } | null> {
-  const result = await postJson<{ checkIn: ServerCheckInView; incidentId?: string }>(`/checkins/${checkInId}/respond`, { response });
-  return result.ok ? result.data : null;
+export interface ServerTimeline {
+  incidents: ServerIncidentView[];
+  checkIns: ServerCheckInView[];
 }
 
-/** Ask for help directly (no preceding check-in). */
-export async function requestHelpOnServer(
-  sessionId: string,
-): Promise<{ incidentId: string } | null> {
-  const result = await postJson<{ incidentId: string }>(`/sessions/${sessionId}/help`, {});
-  return result.ok ? result.data : null;
+/** Incidents and your own check-ins in a session, or null when the server can't be reached. */
+export async function fetchServerTimeline(serverId: string): Promise<ServerTimeline | null> {
+  const body = await getJson<ServerTimeline>(`/sessions/${encodeURIComponent(serverId)}/timeline`);
+  return body ? { incidents: body.incidents ?? [], checkIns: body.checkIns ?? [] } : null;
 }
 
-/** Send a heartbeat so the server knows the device is alive. */
-export async function sendHeartbeat(sessionId: string): Promise<boolean> {
-  const result = await postJson<void>(`/sessions/${sessionId}/heartbeat`, {});
-  return result.ok;
+export async function fetchServerAlerts(): Promise<ServerAlertView[] | null> {
+  const body = await getJson<{ alerts: ServerAlertView[] }>('/alerts');
+  return body?.alerts ?? null;
 }
 
-/** Tell responders "I'm OK" (logged only, does not close the alert). */
-export async function sendParticipantUpdate(sessionId: string): Promise<boolean> {
-  const result = await postJson<void>(`/sessions/${sessionId}/update`, {});
-  return result.ok;
+type Result<T> = { ok: true; data: T } | { ok: false; message: string; code?: string };
+
+async function postResult<T>(path: string, body: unknown): Promise<Result<T>> {
+  try {
+    const res = await fetch(`/api${path}`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+    if (res.ok) return { ok: true, data: (json ?? {}) as T };
+    const err = json?.error as { code?: string; message?: string } | undefined;
+    return { ok: false, message: err?.message ?? 'Request failed.', code: err?.code };
+  } catch {
+    return { ok: false, message: "Couldn't reach the server." };
+  }
+}
+
+/** Your device saw a movement change: the server starts your private check-in and its deadline. */
+export function startCheckInOnServer(serverId: string): Promise<Result<{ checkIn: ServerCheckInView }>> {
+  return postResult(`/sessions/${encodeURIComponent(serverId)}/checkins`, { reason: 'movement_changed' });
+}
+
+export function respondCheckInOnServer(checkInId: string, response: 'ok' | 'help'): Promise<Result<{ checkIn: ServerCheckInView; incidentId?: string }>> {
+  return postResult(`/checkins/${encodeURIComponent(checkInId)}/respond`, { response });
+}
+
+export function requestHelpOnServer(serverId: string): Promise<Result<{ incidentId: string }>> {
+  return postResult(`/sessions/${encodeURIComponent(serverId)}/help`, {});
+}
+
+export function sendImOkOnServer(serverId: string): Promise<Result<unknown>> {
+  return postResult(`/sessions/${encodeURIComponent(serverId)}/update`, {});
+}
+
+export function acknowledgeOnServer(alertId: string): Promise<Result<{ incident: ServerIncidentView }>> {
+  return postResult(`/alerts/${encodeURIComponent(alertId)}/acknowledge`, {});
+}
+
+export function resolveOnServer(incidentId: string, outcome: 'false_alarm' | 'assistance_reached' | 'other'): Promise<Result<{ incident: ServerIncidentView }>> {
+  return postResult(`/incidents/${encodeURIComponent(incidentId)}/resolve`, { outcome });
 }
 
 /** Cancel my own open alert as a false alarm. Only works for an alert about me. */
-export async function cancelOwnAlertOnServer(sessionId: string): Promise<boolean> {
-  const result = await postJson<void>(`/sessions/${sessionId}/cancel-alert`, {});
-  return result.ok;
+export function cancelOwnAlertOnServer(sessionId: string): Promise<Result<{ incident: ServerIncidentView }>> {
+  return postResult(`/sessions/${encodeURIComponent(sessionId)}/cancel-alert`, {});
 }
 
 // ---------------------------------------------------------------------------

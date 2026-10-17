@@ -109,11 +109,18 @@ export function AppNav({ variant }: { variant: 'rail' | 'bottom' }) {
         <div className="tabbar-dock">
           <SessionStatus variant="accessory" />
           <div className="tabbar-row">
-            {canAskForHelp && (
-              <button type="button" className="btn material help-fab" aria-label={COPY.checkInHelp} title={COPY.checkInHelp} onClick={open}>
-                <Icon name="lifeBuoy" />
-              </button>
-            )}
+            <button
+              type="button"
+              className="btn material help-fab"
+              aria-label={COPY.checkInHelp}
+              title={COPY.checkInHelp}
+              onClick={open}
+              style={canAskForHelp ? undefined : { visibility: 'hidden' }}
+              aria-hidden={!canAskForHelp}
+              tabIndex={canAskForHelp ? 0 : -1}
+            >
+              <Icon name="lifeBuoy" />
+            </button>
             <nav aria-label="Main" className="material tabbar">
               {/* Settings is a gear in the screen header on phones (SettingsButton). */}
               {items

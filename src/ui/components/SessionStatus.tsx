@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { leaveSession } from '../../domain/session';
+import { endSessionOnServer, leaveSessionOnServer } from '../api';
 import { COPY, SHARING_LABEL } from '../copy';
 import { useApp, useNow } from '../context';
 import { fmtRemaining } from '../format';
@@ -54,6 +55,7 @@ function SessionSheet({ onClose }: { onClose(): void }) {
   const onLeave = () => {
     const err = store.dispatch((d, t) => leaveSession(d, me!.id, t));
     if (err) return setError(err);
+    if (session.serverId) (isHost ? endSessionOnServer : leaveSessionOnServer)(session.serverId);
     onClose();
     setViewer(null);
   };

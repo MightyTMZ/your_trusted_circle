@@ -16,6 +16,7 @@ import { requireAuth } from "../auth/session.js";
 import { fail, type AppEnv, type Deps } from "../context.js";
 import { newId } from "../ids.js";
 import type { CheckInDoc } from "../types.js";
+import { incidentView } from "../alerts/routes.js";
 import { openIncident } from "./escalation.js";
 
 const checkInSchema = v.object({
@@ -164,7 +165,8 @@ export function safetyRoutes(deps: Deps) {
       kind: "resolution",
       text: `${found.me.displayName} cancelled the alert from their own device: false alarm. Pending escalation stopped. This is their own report; no one has checked on them in person.`,
     });
-    return c.json({ incidentId: incident._id, status: "resolved" });
+    const updated = (await deps.store.getIncident(incident._id))!;
+    return c.json({ incident: incidentView(updated, found.session, await deps.store.listJobsForIncident(updated._id)) });
   });
 
   return r;

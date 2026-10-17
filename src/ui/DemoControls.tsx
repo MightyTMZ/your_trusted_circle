@@ -1,32 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { suddenChange, typicalMovement } from '../domain/scenarios';
 import { emptyState, ingestMotion, setDeviceOnline } from '../domain/session';
-import type { Store } from '../domain/store';
-import type { MotionSample } from '../domain/types';
-import { createCheckInOnServer } from './api';
 import { useApp, useNow } from './context';
 import { fmtTime } from './format';
 import { Icon } from './components/Icon';
 import { joinUrl } from './screens/SessionInviteScreen';
-
-/** Dispatch ingestMotion and sync any newly created check-ins to the server. */
-function dispatchMotionAndSync(store: Store, targetId: string, samples: MotionSample[]) {
-  const before = new Set(store.getState().checkIns.map((c) => c.id));
-  store.dispatch((d) => ingestMotion(d, targetId, samples));
-  const after = store.getState();
-  const sessionId = after.session?.id;
-  if (!sessionId) return;
-  for (const ci of after.checkIns) {
-    if (before.has(ci.id) || ci.serverId || ci.status !== 'pending') continue;
-    createCheckInOnServer(sessionId, 'movement_changed').then((serverCi) => {
-      if (!serverCi) return;
-      store.dispatch((state) => {
-        const local = state.checkIns.find((c) => c.id === ci.id);
-        if (local) local.serverId = serverCi.id;
-      });
-    });
-  }
-}
+import { setSessionVenueOnServer } from './api';
+import { applySessionVenue, resolveVenue, setLocalVenue, useDemoVenue, type Venue } from './venue';
 
 const POS_KEY = 'ytc.demoFab';
 const GAP = 16;
@@ -160,7 +140,8 @@ function panelPlacement(pos: Pos, fab: { w: number; h: number }): CSSProperties 
 function DemoPanel({ style }: { style: CSSProperties }) {
   const { state, store, viewer, setViewer, go } = useApp();
   const now = useNow();
-  const participants = Object.values(state.participants).filter((p) => p.status === 'active');
+  // People who joined from other devices are driven by their own phones, not from here.
+  const participants = Object.values(state.participants).filter((p) => p.status === 'active' && !p.remote);
   const recipients = Object.values(state.recipients).filter((r) => r.kind !== 'host');
   const [targetId, setTargetId] = useState('');
   const target = state.participants[targetId] ?? participants.find((p) => p.role === 'participant') ?? participants[0];
@@ -250,11 +231,11 @@ function DemoPanel({ style }: { style: CSSProperties }) {
           <div className="btns">
             <button
               className="btn chip fill"
-              onClick={() => dispatchMotionAndSync(store, target.id, typicalMovement(30, Date.now() + state.clockOffsetMs))}
+              onClick={() => store.dispatch((d, t) => ingestMotion(d, target.id, typicalMovement(30, t)))}
             >
               Typical movement (30 s)
             </button>
-            <button className="btn chip fill" onClick={() => dispatchMotionAndSync(store, target.id, suddenChange(Date.now() + state.clockOffsetMs))}>
+            <button className="btn chip fill" onClick={() => store.dispatch((d, t) => ingestMotion(d, target.id, suddenChange(t)))}>
               Sudden change (15 s)
             </button>
             <button
@@ -266,6 +247,8 @@ function DemoPanel({ style }: { style: CSSProperties }) {
           </div>
         </div>
       )}
+
+      <VenuePicker />
 
       <div>
         <h3>Voice agent</h3>
@@ -294,9 +277,95 @@ function DemoPanel({ style }: { style: CSSProperties }) {
       </div>
 
       <p className="t-cap">
-        Prototype limits: tabs in this browser share state through local storage. Joining from another device needs a
-        backend, which is not built. Thresholds are unvalidated.
+        Prototype limits: tabs in this browser share state through local storage. People who join from other devices
+        appear through the backend, with their real location if they share it; their check-ins and alerts stay on their
+        own phone for now. Thresholds are unvalidated.
       </p>
     </aside>
+  );
+}
+
+/**
+ * The demo venue. In a server session the host sets it for everyone, and while
+ * it is set every phone reports a simulated position there instead of its GPS.
+ * Sessions only on this device keep a venue for this browser.
+ */
+function VenuePicker() {
+  const { state, me } = useApp();
+  const { venue, shared, local } = useDemoVenue();
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const serverId = state.session?.serverId;
+  const isHost = !!me && me.id === state.session?.hostId;
+  const canEdit = !serverId || isHost;
+
+  const save = async (v: Venue | null) => {
+    if (!serverId) return setLocalVenue(v);
+    const ok = await setSessionVenueOnServer(serverId, v);
+    if (!ok) return setError("Couldn't save the venue on the server. Try again.");
+    applySessionVenue(v);
+  };
+  const apply = async () => {
+    setBusy(true);
+    setError(null);
+    const v = await resolveVenue(text);
+    if (typeof v === 'string') {
+      setBusy(false);
+      return setError(v);
+    }
+    await save(v);
+    setBusy(false);
+    setText('');
+  };
+  const active = shared || local;
+
+  return (
+    <div>
+      <h3>Demo venue</h3>
+      <p className="t-cap" style={{ marginBottom: 8 }}>
+        {shared
+          ? `Everyone in this session appears around ${venue.label}, labelled simulated. Real GPS is paused until the venue is cleared.`
+          : serverId
+            ? 'Not set. Set a public place, like a club, and everyone in this session appears there, labelled simulated.'
+            : `Simulated people appear around ${venue.label}. Use a public place.`}
+      </p>
+      {canEdit ? (
+        <>
+          <label className="sr-only" htmlFor="demo-venue">
+            Venue address or coordinates
+          </label>
+          <input
+            id="demo-venue"
+            className="field"
+            value={text}
+            placeholder="Club address, or 43.6532, -79.3832"
+            autoComplete="off"
+            onChange={(e) => {
+              setText(e.target.value);
+              setError(null);
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && text.trim() && !busy && apply()}
+          />
+          {error && (
+            <p className="t-cap" role="alert" style={{ marginTop: 6 }}>
+              {error}
+            </p>
+          )}
+          <div className="btns" style={{ marginTop: 8 }}>
+            <button className="btn chip fill" disabled={!text.trim() || busy} onClick={apply}>
+              {busy ? 'Finding…' : shared || !serverId ? 'Change venue' : 'Set venue for everyone'}
+            </button>
+            {active && (
+              <button className="btn chip fill" onClick={() => save(null)}>
+                {serverId ? 'Clear venue, back to real GPS' : 'Back to the default venue'}
+              </button>
+            )}
+          </div>
+        </>
+      ) : (
+        <p className="t-cap">Only the host can change it.</p>
+      )}
+    </div>
   );
 }

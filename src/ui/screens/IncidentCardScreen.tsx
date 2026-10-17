@@ -67,7 +67,7 @@ export function IncidentCardScreen({ incidentId }: { incidentId: string }) {
                 <h2 className="t-card">{card.participantName}</h2>
                 <span className="t-sub num">{card.incidentId}</span>
               </span>
-              <span className={`tag ${card.status === 'open' ? 'on-accent' : ''}`}>{statusLabel}</span>
+              <span className={`tag ${card.status === 'open' ? 'on-danger' : ''}`}>{statusLabel}</span>
             </div>
             <TickDial
               progress={progress}

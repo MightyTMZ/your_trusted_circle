@@ -2,6 +2,7 @@
  * GET  /api/auth/providers            which sign-in buttons to show
  * GET  /api/auth/:provider/start      redirect to the provider
  * GET|POST /api/auth/:provider/callback  provider redirects back; signs the user in
+ * POST /api/auth/test/signin          localhost-only test sign-in (TEST_SIGN_IN=true)
  * POST /api/auth/logout               ends this browser's sign-in
  *
  * Accounts are keyed by provider + subject. Two providers with the same email
@@ -14,7 +15,8 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { generateCodeVerifier, generateState } from "arctic";
 import type { AppEnv, Deps } from "../context.js";
 import { newId } from "../ids.js";
-import { PROVIDER_IDS, type ProviderId, type UserDoc } from "../types.js";
+import { isLocalUrl } from "../config.js";
+import { PROVIDER_IDS, type IdentityProvider, type ProviderId, type UserDoc } from "../types.js";
 import { IdentityError, type ProviderIdentity } from "./providers.js";
 import { endAuthSession, startAuthSession } from "./session.js";
 
@@ -52,7 +54,7 @@ function readPending(raw: string | undefined): PendingLogin | null {
   }
 }
 
-export async function findOrCreateUser(deps: Deps, provider: ProviderId, identity: ProviderIdentity): Promise<UserDoc> {
+export async function findOrCreateUser(deps: Deps, provider: IdentityProvider, identity: ProviderIdentity): Promise<UserDoc> {
   const now = deps.now();
   const existing = await deps.store.findUserByIdentity(provider, identity.subject);
   if (existing) {
@@ -80,7 +82,34 @@ export function authRoutes(deps: Deps) {
   const appUrl = (path: string) => `${deps.config.appOrigin}${path}`;
   const failRedirect = (reason: string) => appUrl(`/#login_error=${encodeURIComponent(reason)}`);
 
-  r.get("/providers", (c) => c.json({ providers: PROVIDER_IDS.filter((p) => deps.providers[p]) }));
+  r.get("/providers", (c) =>
+    c.json({ providers: PROVIDER_IDS.filter((p) => deps.providers[p]), testSignIn: deps.config.testSignIn }),
+  );
+
+  /**
+   * Localhost-only test sign-in: a made-up name, no password. Off unless
+   * TEST_SIGN_IN=true with a localhost app origin outside production, and it
+   * still refuses any request not addressed to this computer.
+   */
+  r.post("/test/signin", async (c) => {
+    const host = c.req.header("Host") ?? "";
+    if (!deps.config.testSignIn || !isLocalUrl(`http://${host}`)) {
+      return c.json({ error: { code: "unknown_provider", message: "That sign-in option is not available." } }, 404);
+    }
+    const body = (await c.req.json().catch(() => null)) as { name?: unknown } | null;
+    const name = typeof body?.name === "string" ? body.name.trim().replace(/\s+/g, " ") : "";
+    if (name.length < 1 || name.length > 40) {
+      return c.json({ error: { code: "invalid_request", message: "Enter a test name of up to 40 characters." } }, 400);
+    }
+    const user = await findOrCreateUser(deps, "test", {
+      subject: name.toLowerCase(),
+      email: null,
+      emailVerified: false,
+      displayName: name,
+    });
+    await startAuthSession(c, deps, user._id);
+    return c.body(null, 204);
+  });
 
   r.get("/:provider/start", (c) => {
     const provider = deps.providers[c.req.param("provider") as ProviderId];
