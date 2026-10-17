@@ -87,7 +87,10 @@ export function OperatorConsole() {
     return () => window.clearInterval(id);
   }, [phase]);
 
-  useEffect(() => transcriptEnd.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }), [call?.transcript.length, phase]);
+  // Braces matter: Chrome's scrollIntoView now returns a Promise, which React would treat as a cleanup function.
+  useEffect(() => {
+    transcriptEnd.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  }, [call?.transcript.length, phase]);
 
   const clearSilence = () => window.clearTimeout(silenceTimer.current);
 

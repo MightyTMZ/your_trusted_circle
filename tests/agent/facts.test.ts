@@ -19,17 +19,29 @@ describe("fact sheet", () => {
     const loc = factOf(sheetOf(fixture), (f) => f.topic === "location");
     expect(loc.source_event_ids).toEqual([fixture.ids.lastFix.event_id]);
     expect(loc.text).toContain("Last-known location, not live");
-    expect(loc.text).toContain("11:50:30 PM UTC");
+    expect(loc.text).toContain("Synthetic Venue A, rear patio, recorded at 11:50 PM UTC");
     expect(loc.text).toMatch(/about \d+ minutes ago/);
     expect(loc.text).toContain("Their current location is unknown.");
+    // Coordinates and movement are a second fact, for when the operator asks.
+    const detail = sheetOf(fixture).facts.filter((f) => f.topic === "location")[1]!;
+    expect(detail.text).toBe(
+      "Last-known coordinates: 43.6629, -79.3957, accurate to about 12 metres. The phone was moving at 0.9 metres per second, heading east. No street address is recorded, only coordinates and a place name.",
+    );
+  });
+
+  it("leaves out an English language preference, which is assumed", () => {
+    expect(factOf(sheetOf(buildNoResponseScenario()), (f) => f.topic === "identity").text).toBe("The participant's name, as they entered it, is Sam (synthetic).");
   });
 
   it("states the saturated impact as a lower bound and never names a cause", () => {
     const sheet = sheetOf(buildNoResponseScenario());
     const impact = factOf(sheet, (f) => f.text.includes("sudden impact"));
-    expect(impact.text).toContain("at least 153.6 m/s²");
-    expect(impact.text).toContain("the true strength is unknown");
+    expect(impact.headline).toBe(true);
+    expect(impact.text).not.toContain("m/s²");
     expect(impact.text).toContain("cannot tell what caused");
+    const strength = factOf(sheet, (f) => f.text.startsWith("The impact at"));
+    expect(strength.text).toContain("at least 153.6 m/s²");
+    expect(strength.text).toContain("the true strength is unknown");
     const all = sheet.facts.map((f) => f.text).join(" ");
     expect(all).not.toMatch(/\b(fell|fainted|collapsed|drugged|spiked|drunk|unconscious)\b/i);
   });
@@ -45,7 +57,7 @@ describe("fact sheet", () => {
     const checkins = sheetOf(buildNoResponseScenario()).facts.filter((f) => f.topic === "checkin");
     expect(checkins).toHaveLength(2);
     expect(checkins[0]!.text).toContain("confirmed OK");
-    expect(checkins[1]!.text).toContain("no response by the 11:54:02 PM UTC deadline");
+    expect(checkins[1]!.text).toContain("no response by the 11:54 PM UTC deadline");
   });
 
   it("never exposes internal IDs or other participants", () => {

@@ -9,6 +9,7 @@ import { factOf, sheetOf } from "./helpers.js";
 const sheet = sheetOf(buildNoResponseScenario());
 const t = (topic: string) => factOf(sheet, (f) => f.topic === topic).id;
 const impact = factOf(sheet, (f) => f.text.includes("sudden impact")).id;
+const coords = factOf(sheet, (f) => f.text.startsWith("Last-known coordinates")).id;
 const unacked = factOf(sheet, (f) => f.text.startsWith("Nobody has acknowledged")).id;
 const check = (text: string, id: string) => checkDraft({ intent: "answer", sentences: [{ text, fact_ids: [id] }] }, sheet);
 
@@ -46,19 +47,19 @@ describe("guard red team", () => {
     ["wrong place lowercase", "They were last seen near the bar.", t("location")],
   ];
   const good: [string, string, string][] = [
-    ["location", "Their last-known location is Synthetic Venue A, rear patio, recorded at 11:50:30 PM UTC; their current location is unknown.", t("location")],
-    ["coords", "The coordinates were 43.6629, -79.3957, accurate to about 12 metres.", t("location")],
-    ["heading", "The phone was moving at 0.9 metres per second, heading east.", t("location")],
+    ["location", "Their last-known location is Synthetic Venue A, rear patio, recorded at 11:50 PM UTC; their current location is unknown.", t("location")],
+    ["coords", "The coordinates were 43.6629, -79.3957, accurate to about 12 metres.", coords],
+    ["heading", "The phone was moving at 0.9 metres per second, heading east.", coords],
     ["condition unknown", "I don't know whether they are conscious or breathing.", t("condition")],
     ["condition unknown 2", "Their condition is unknown, including whether they are safe.", t("condition")],
     ["nobody acked", "Nobody has acknowledged the alert yet.", unacked],
     ["contact unknown", "I can't give their phone number; it isn't part of the record.", t("contact_details")],
-    ["impact", "At 11:50:57 PM UTC the phone recorded a sudden impact, followed by 60 seconds with no movement.", impact],
+    ["impact", "At 11:50 PM UTC the phone recorded a sudden impact, followed by 60 seconds with no movement.", impact],
     ["name", "Their name, as they entered it, is Sam (synthetic).", t("identity")],
     ["notes", "They wrote that they carry an inhaler in their left jacket pocket.", t("notes")],
-    ["offline", "The phone has been offline since 11:52:40 PM UTC.", t("device")],
+    ["offline", "The phone has been offline since 11:52 PM UTC.", t("device")],
     ["no description", "No description or clothing is recorded.", t("description")],
-    ["no address", "No street address is recorded; I have coordinates 43.6629, -79.3957.", t("location")],
+    ["no address", "No street address is recorded; I have coordinates 43.6629, -79.3957.", coords],
     ["sequencing starter", "Later, the phone showed light movement.", t("motion_history")],
     ["activity unknown", "The app cannot tell what they were doing.", t("condition")],
     ["timeline words", "Earlier, the phone showed light movement.", t("motion_history")],

@@ -10,7 +10,7 @@ const voice = (events: readonly TimelineEvent[], type: string) => events.filter(
 const goodLocation = (req: Parameters<ConstructorParameters<typeof ScriptedModel>[1]>[0]) => ({
   intent: "answer",
   sentences: [
-    { text: "The last-known location is Synthetic Venue A, rear patio, recorded at 11:50:30 PM UTC.", fact_ids: [idInPrompt(req, "Last-known location")] },
+    { text: "The last-known location is Synthetic Venue A, rear patio, recorded at 11:50 PM UTC.", fact_ids: [idInPrompt(req, "Last-known location")] },
     { text: "Their current location is unknown.", fact_ids: [idInPrompt(req, "Last-known location")] },
   ],
 });
@@ -23,7 +23,7 @@ describe("operator call agent", () => {
 
     const reply = (await agent.respond("Where is the person?"))!;
     expect(reply.path).toBe("model");
-    expect(reply.text).toBe("The last-known location is Synthetic Venue A, rear patio, recorded at 11:50:30 PM UTC. Their current location is unknown.");
+    expect(reply.text).toBe("The last-known location is Synthetic Venue A, rear patio, recorded at 11:50 PM UTC. Their current location is unknown.");
     const utterances = voice(timeline.events, "voice.utterance") as TimelineEvent<"voice.utterance">[];
     expect(utterances.at(-2)!.data).toMatchObject({ speaker: "mock_operator", text: "Where is the person?", turn_index: 2 });
     expect(utterances.at(-1)!.data).toMatchObject({ speaker: "voice_agent", turn_index: 3 });

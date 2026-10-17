@@ -154,7 +154,8 @@ export function buildFactSheet(
     const d = person.details;
     const parts = [d.display_name ? `The participant's name, as they entered it, is ${d.display_name}.` : "The participant did not provide a name."];
     if (d.pronouns) parts.push(`Their pronouns are ${d.pronouns}.`);
-    if (d.preferred_language) parts.push(`Their preferred language is ${d.preferred_language}.`);
+    // English is assumed on the call; only another language is worth saying.
+    if (d.preferred_language && !/^en(glish)?\b/i.test(d.preferred_language.trim())) parts.push(`Their preferred language is ${d.preferred_language}.`);
     add("identity", "observed", parts.join(" "), [d.source_event_id]);
     if (d.emergency_notes) {
       add("notes", "observed", `They wrote this note for responders (self-reported, not verified): "${d.emergency_notes}"`, [d.source_event_id]);
@@ -183,17 +184,25 @@ export function buildFactSheet(
   const loc = briefing.location;
   if (loc.last_known) {
     const l = loc.last_known;
-    const place = l.place_label ? `${l.place_label}, ` : "";
+    const coords = `coordinates ${l.latitude}, ${l.longitude}, accurate to about ${Math.round(l.accuracy_m)} metres`;
     const movement =
       l.speed_m_s === null
         ? ""
         : l.speed_m_s < 0.2
           ? " The phone was not moving at that fix."
           : ` The phone was moving at ${round(l.speed_m_s, 1)} metres per second${l.heading_deg === null ? "" : `, heading ${compass(l.heading_deg)}`}.`;
+    // Spoken first: the place and how old it is. Coordinates and movement follow on request,
+    // unless there is no place name, when the coordinates are the location.
     add(
       "location",
       "observed",
-      `Last-known location, not live: ${place}coordinates ${l.latitude}, ${l.longitude}, accurate to about ${Math.round(l.accuracy_m)} metres, recorded at ${time(l.fix_at)}, ${ago(l.fix_at)} ago.${movement} No street address is recorded, only coordinates and a place name. Their current location is unknown.`,
+      `Last-known location, not live: ${l.place_label ?? coords}, recorded at ${time(l.fix_at)}, ${ago(l.fix_at)} ago. Their current location is unknown.`,
+      [l.source_event_id],
+    );
+    add(
+      "location",
+      "observed",
+      `${l.place_label ? `Last-known coordinates: ${coords.slice("coordinates ".length)}.` : "No place name was recorded with the last-known location."}${movement} No street address is recorded, only coordinates and a place name.`,
       [l.source_event_id],
     );
     const trail = evidence
@@ -271,13 +280,19 @@ export function buildFactSheet(
     const from = time(p.observed_from);
     const to = time(p.observed_to);
     if (p.pattern === "impact_then_stillness" && p.impact_at && p.impact_peak_m_s2 !== undefined) {
-      const strength = p.impact_peak_clipped
-        ? `that exceeded the phone sensor's measuring range (at least ${round(p.impact_peak_m_s2, 1)} m/s², about ${round(p.impact_peak_m_s2 / G, 1)} g; the true strength is unknown)`
-        : `of ${round(p.impact_peak_m_s2, 1)} m/s² (about ${round(p.impact_peak_m_s2 / G, 1)} g)`;
       impactFact = add(
         "motion",
         "observed",
-        `At ${time(p.impact_at)} the phone recorded a sudden impact ${strength}, followed by ${speakDuration(p.still_duration_ms ?? 0)} with no movement. The app cannot tell what caused the impact.`,
+        `At ${time(p.impact_at)} the phone recorded a sudden impact, followed by ${speakDuration(p.still_duration_ms ?? 0)} with no movement. The app cannot tell what caused it.`,
+        [p.source_event_id],
+      );
+      // The strength, for an operator who asks: kept out of the headline to keep it short.
+      add(
+        "motion",
+        "observed",
+        p.impact_peak_clipped
+          ? `The impact at ${time(p.impact_at)} exceeded the phone sensor's measuring range: at least ${round(p.impact_peak_m_s2, 1)} m/s², about ${round(p.impact_peak_m_s2 / G, 1)} g; the true strength is unknown.`
+          : `The impact at ${time(p.impact_at)} measured ${round(p.impact_peak_m_s2, 1)} m/s², about ${round(p.impact_peak_m_s2 / G, 1)} g.`,
         [p.source_event_id],
       );
     } else if (p.pattern === "abrupt_stop") {
@@ -368,7 +383,7 @@ export function buildFactSheet(
       [inc.acknowledged.source_event_id],
     );
   } else {
-    add("alerts", "unknown", "Nobody has acknowledged the alert, so whether anyone is on their way to the participant is unknown.", [incidentRef, ...briefing.alerts.flatMap((a) => notificationEvents(a.notification_id))]);
+    add("alerts", "unknown", "Nobody has acknowledged the alert, so it is unknown whether anyone is on the way to them.", [incidentRef, ...briefing.alerts.flatMap((a) => notificationEvents(a.notification_id))]);
   }
   if (inc.resolved) {
     add(
@@ -395,9 +410,9 @@ export function buildFactSheet(
   };
 }
 
-/** "11:50:30 PM EDT". Narrow and no-break spaces from ICU are normalized so the guard can match text exactly. */
+/** "11:50 PM EDT" (minutes are precise enough to speak). Narrow and no-break spaces from ICU are normalized so the guard can match text exactly. */
 export function speakTime(iso: string, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true, timeZoneName: "short" })
+  return new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", hour12: true, timeZoneName: "short" })
     .format(parseIso(iso)!)
     .replace(/[  ]/g, " ");
 }
@@ -415,7 +430,7 @@ export function speakDuration(msValue: number): string {
 
 function compass(deg: number): string {
   const names = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"];
-  return `${Math.round(deg)} degrees (${names[Math.round(deg / 45) % 8]})`;
+  return names[Math.round(deg / 45) % 8]!;
 }
 
 function round(n: number, digits: number): number {

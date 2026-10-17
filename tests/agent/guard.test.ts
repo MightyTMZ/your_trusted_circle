@@ -5,6 +5,7 @@ import { factOf, sheetOf } from "./helpers.js";
 
 const sheet = sheetOf(buildNoResponseScenario());
 const loc = factOf(sheet, (f) => f.topic === "location");
+const coords = factOf(sheet, (f) => f.text.startsWith("Last-known coordinates"));
 const identity = factOf(sheet, (f) => f.topic === "identity");
 const condition = factOf(sheet, (f) => f.topic === "condition");
 const incident = factOf(sheet, (f) => f.topic === "incident");
@@ -14,7 +15,9 @@ const violations = (d: Draft) => checkDraft(d, sheet).violations;
 
 describe("grounding guard", () => {
   it("accepts a faithful paraphrase of the cited fact", () => {
-    expect(violations(one("Their last-known location is Synthetic Venue A, rear patio, at 43.6629, -79.3957, recorded at 11:50 PM UTC.", loc.id))).toEqual([]);
+    expect(violations(one("Their last-known location is Synthetic Venue A, rear patio, at 43.6629, -79.3957, recorded at 11:50 PM UTC.", loc.id, coords.id))).toEqual([]);
+    // The coordinates are in the second location fact, so citing only the first is a borrowed value.
+    expect(violations(one("Their last-known location is at 43.6629, -79.3957.", loc.id)).join()).toContain('number "43.6629"');
   });
 
   it("accepts saying something is unknown when the cited fact says so", () => {
@@ -28,8 +31,8 @@ describe("grounding guard", () => {
   });
 
   it("rejects a value that exists elsewhere on the sheet but is not cited", () => {
-    expect(violations(one("The alert was opened at 11:54:02 PM UTC.", loc.id)).join()).toContain('number "11:54:02"');
-    expect(violations(one("The alert was opened at 11:54:02 PM UTC.", incident.id))).toEqual([]);
+    expect(violations(one("The alert was opened at 11:54 PM UTC.", loc.id)).join()).toContain('number "11:54"');
+    expect(violations(one("The alert was opened at 11:54 PM UTC.", incident.id))).toEqual([]);
   });
 
   it("rejects condition and cause claims", () => {
