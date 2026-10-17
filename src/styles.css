@@ -3,7 +3,7 @@
    sidebar, session bar, sheets and other floating controls. Components use tokens only; a theme overrides
    tokens, never layout. */
 
-/* Base block = Ember (dark, orange tint). */
+/* Base block = Mono (dark, no colour). White marks what's active. */
 :root,
 .tp {
   /* Backgrounds: grouped (page), surface (cards), elevated (raised inside a card, segmented thumb). */
@@ -26,17 +26,18 @@
   --text-tertiary: rgba(235, 235, 245, 0.45);
   --icon: rgba(255, 255, 255, 0.92);
   --icon-muted: rgba(235, 235, 245, 0.6);
-  /* The one tint: primary actions, selection, on, in progress. */
-  --accent: #ff6a1f;
+  /* The accent: primary actions, selection, on, in progress. */
+  --accent: #ffffff;
   --accent-ink: #000000;
   --accent-icon: #000000;
-  --accent-ring: rgba(255, 106, 31, 0.6);
-  --accent-soft: rgba(255, 106, 31, 0.16);
+  --accent-ring: rgba(255, 255, 255, 0.55);
+  --accent-soft: rgba(255, 255, 255, 0.14);
   --accent-glow: none;
   /* Switch. */
   --switch-off: #39393d;
   --switch-knob: #ffffff;
-  --switch-knob-on: #ffffff;
+  /* The track is white when on, so the knob turns dark. */
+  --switch-knob-on: #1c1c1e;
   --segment-thumb: #636366;
   /* Data. */
   --track-inactive: #3a3a3c;
@@ -55,50 +56,6 @@
   --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   color-scheme: dark;
-}
-
-/* Mono: dark, no colour. White marks what's active. */
-[data-theme='mono'] {
-  --accent: #ffffff;
-  --accent-ink: #000000;
-  --accent-icon: #000000;
-  --accent-ring: rgba(255, 255, 255, 0.55);
-  --accent-soft: rgba(255, 255, 255, 0.14);
-  --switch-knob-on: #1c1c1e;
-}
-
-/* Porcelain: warm light, orange tint. Accent darkened to #c2410c so white labels pass 5:1. */
-[data-theme='porcelain'] {
-  --bg-base: #efede8;
-  --bg-elevated: #ffffff;
-  --surface: #fbfaf7;
-  --fill: rgba(120, 110, 95, 0.12);
-  --fill-strong: rgba(120, 110, 95, 0.2);
-  --material: rgba(251, 250, 247, 0.76);
-  --material-solid: #fbfaf7;
-  --material-shadow: 0 8px 28px rgba(60, 45, 30, 0.12);
-  --border-hairline: rgba(60, 50, 40, 0.16);
-  --border-highlight: rgba(255, 255, 255, 0.7);
-  --text-primary: #15130f;
-  --text-secondary: #6b655c;
-  --text-tertiary: #857e72;
-  --icon: rgba(21, 19, 15, 0.86);
-  --icon-muted: #6b655c;
-  --accent: #c2410c;
-  --accent-ink: #ffffff;
-  --accent-icon: #ffffff;
-  --accent-ring: rgba(194, 65, 12, 0.5);
-  --accent-soft: rgba(194, 65, 12, 0.1);
-  --switch-off: #e3dfd7;
-  --switch-knob-on: #ffffff;
-  --segment-thumb: #ffffff;
-  --track-inactive: #ddd8cf;
-  --tick-inactive: rgba(21, 19, 15, 0.18);
-  --map-bg: #e6e3dc;
-  --map-street: rgba(255, 255, 255, 0.85);
-  --map-block: rgba(21, 19, 15, 0.045);
-  --scrim: rgba(30, 25, 20, 0.28);
-  color-scheme: light;
 }
 
 /* Onyx: white, no colour. Black marks what's active. */
@@ -488,7 +445,7 @@ textarea.field { height: 100px; padding: 13px 16px; resize: none; line-height: 1
 @media (prefers-reduced-transparency: reduce) { .sheet-backdrop { -webkit-backdrop-filter: none; backdrop-filter: none; } }
 
 /* ---------- Theme picker ---------- */
-/* Always 2×2: the colourless pair on top, the orange pair below. */
+/* Dark and light side by side. */
 .theme-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .theme-opt {
   padding: 8px; border-radius: var(--r-tile); text-align: left; color: var(--text-primary);

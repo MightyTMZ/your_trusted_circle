@@ -144,8 +144,8 @@ or changed screen:
   primary action or the current selection.
 - One focal point and one primary action per screen. Prefer steps or
   expandable sections over long forms.
-- Every screen must work on phone, tablet and desktop layouts and in all
-  four themes (Mono, Onyx, Ember, Porcelain).
+- Every screen must work on phone, tablet and desktop layouts and in
+  both themes (Mono and Onyx).
 - Never let a screen assume a server feature that isn't there; see
   "Backend features" in the guidelines.
 - If you add a component or theme, document it in the guidelines in the

@@ -2,7 +2,7 @@
 
 The visual language for every YTC screen, after Apple's Human Interface
 Guidelines: opaque grouped content, a translucent material only on the
-floating controls, one tint, the system font at Apple's text-style sizes.
+floating controls, no colour (white or black marks what's active), the system font at Apple's text-style sizes.
 Follow this for any UI change so new screens match the rest of the app on
 iPhone, iPad and desktop.
 
@@ -49,7 +49,7 @@ Guidelines (`page.md › Heading`).
 
 ## 2. Themes
 
-Four themes share one structure. Only the token values change. A theme is
+Two themes share one structure: dark and light, both colourless. Only the token values change. A theme is
 `data-theme="<id>"` on `<html>` (set by `applyTheme` in `src/ui/theme.ts`,
 saved in local storage) that overrides tokens.
 
@@ -57,21 +57,19 @@ saved in local storage) that overrides tokens.
 | --- | --- | --- | --- |
 | Mono (default) | `#000000` / `#1C1C1E` | `#FFFFFF` white, black label | Dark, no colour; white marks what's active |
 | Onyx | `#F2F2F7` / `#FFFFFF` | `#000000` black, white label | Light, no colour; black marks what's active |
-| Ember | `#000000` / `#1C1C1E` | `#FF6A1F` orange, black label | Dark, orange tint |
-| Porcelain | `#EFEDE8` / `#FBFAF7` | `#C2410C` orange, white label | Light, orange tint (darker so white labels reach 5.2:1) |
 
-Settings → Theme shows them as a 2×2 grid in that order: the colourless
-pair (Mono, Onyx) on top, the orange pair (Ember, Porcelain) below, dark
-on the left and light on the right.
+Settings → Theme shows them side by side, dark on the left and light on
+the right. A saved theme that no longer exists (the retired orange themes,
+Ember and Porcelain) falls back to Mono.
 
 **Known HIG deviation.** `dark-mode.md › Best practices` says "Avoid
-offering an app-specific appearance setting." We keep the four-theme
-picker on purpose: the themes are the product's brand choice, not only a
-light/dark switch. Every theme must still pass contrast on its own.
+offering an app-specific appearance setting." We keep the Mono/Onyx
+picker on purpose: it is the product's brand choice, not only a light/dark
+switch. Every theme must still pass contrast on its own.
 
-Themes change surfaces and tint, not the layout. Don't add themes that
-re-tint the whole UI with a new hue (gold, ice blue, purple). They read as
-generic and dilute the brand.
+Themes change surfaces, not the layout. YTC has no colour accent: don't
+add tinted themes (orange, gold, ice blue, purple). Orange was tried and
+removed.
 
 Adding a theme: override the same tokens as the existing ones
 (backgrounds, fills, material, labels, accent set, switch, track, map),
@@ -82,7 +80,7 @@ add themes that change layout, radius or type.
 ## 3. Tokens
 
 Declared on `:root, .tp` (`.tp` is the theme preview tile; the base block
-is Ember). Theme blocks (`[data-theme='…']`) come after the base block and
+is Mono). Theme blocks (`[data-theme='…']`) come after the base block and
 override tokens on the same element.
 
 | Group | Tokens |
@@ -263,9 +261,9 @@ Photo controls appear only when signed in.
 
 - Body text ≥ 4.5:1, large text, icons and placeholders ≥ 3:1 against
   every surface they sit on, in every theme. Measured values: secondary
-  labels are 5.3–6.4:1 on dark surfaces, 5.4–6.0:1 on Onyx and 4.9–5.5:1
-  on Porcelain; accent labels are 7.3:1 (Ember, black on orange) and
-  5.2:1 (Porcelain, white on `#C2410C`).
+  labels are 5.3–6.4:1 on dark surfaces, 5.4–6.0:1 on Onyx;
+  accent labels are 21:1 (black on white in Mono, white on black in
+  Onyx).
 - Headings in order; every control labelled; icon-only buttons have `aria-label`.
 - `role="radio"`/`aria-checked` for options and segments, `role="switch"`
   for switches, `aria-current="page"` on the active tab or sidebar item.
@@ -292,7 +290,7 @@ press. No looping or bouncy decoration (`motion.md`).
    in progress or the primary action?
 5. One focal point, one primary action, no repeated facts.
 6. Check it at 360, 390 and 430px wide, on tablet and desktop, and in
-   all four themes, including the light ones (Onyx, Porcelain).
+   both themes, including the light one (Onyx).
 7. Text sizes: nothing below 11px; body text 17px.
 8. Keyboard: tab order, focus ring visible, every control reachable.
 9. Copy matches `src/ui/copy.ts`; simulated things say "Simulated".

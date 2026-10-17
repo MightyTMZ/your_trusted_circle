@@ -1,10 +1,8 @@
 /** Colour themes. A theme only overrides design tokens (see styles.css and docs/ui-guidelines.md). */
-// Picker order: the colourless pair (dark, light), then the orange pair (dark, light).
+// Picker order: dark, then light. Both are colourless; a saved theme that no longer exists falls back to Mono.
 export const THEMES = [
   { id: 'mono', name: 'Mono', base: '#000000' },
   { id: 'onyx', name: 'Onyx', base: '#f2f2f7' },
-  { id: 'ember', name: 'Ember', base: '#000000' },
-  { id: 'porcelain', name: 'Porcelain', base: '#efede8' },
 ] as const;
 
 export type ThemeId = (typeof THEMES)[number]['id'];
