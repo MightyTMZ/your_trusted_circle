@@ -5,7 +5,8 @@ import { join } from "node:path";
 import {
   BriefingError,
   buildOperatorBriefing,
-  factsToJsonl,
+  evidenceToJsonl,
+  selectEvidence,
   timelineFromJsonl,
   toJsonl,
 } from "../../src/timeline/index.js";
@@ -38,16 +39,16 @@ test("briefing reflects the open, unacknowledged incident", () => {
   assert.equal(briefing.incident.acknowledged, null);
   assert.equal(briefing.device.status, "offline");
   assert.equal(briefing.escalation.simulated_emergency_requested, true);
-  assert.deepEqual(briefing.escalation.pending_steps, []);
+  assert.deepEqual(briefing.escalation.pending, []);
   assert.deepEqual(
-    briefing.escalation.fired_steps.map((s) => s.target_role),
+    briefing.escalation.fired.map((s) => s.target_role),
     ["backup_contact", "emergency_service_sim"],
   );
 });
 
 test("notification status tracks repeats, delivery and failures", () => {
   const { briefing } = brief();
-  const [host, backup] = briefing.notifications;
+  const [host, backup] = briefing.alerts;
   assert.equal(host!.recipient_role, "host");
   assert.equal(host!.attempts, 2);
   assert.equal(host!.delivered, true);
@@ -65,18 +66,18 @@ test("location is last-known with its age, never current", () => {
   assert.ok(briefing.unknowns.some((u) => u.startsWith("Current location is unknown")));
 });
 
-test("every fact cites a real event and reuses its rendered summary", () => {
+test("evidence is the permitted timeline lines, not a copy of them", () => {
   const { briefing, timeline } = brief();
-  assert.ok(briefing.facts.length > 0);
-  for (const fact of briefing.facts) {
-    const source = timeline.getEvent(fact.event_id);
-    assert.ok(source, `${fact.event_id} should exist`);
-    assert.equal(fact.statement, source.summary);
-    assert.equal(fact.occurred_at, source.occurred_at);
-  }
-  const lines = factsToJsonl(briefing).trim().split("\n");
-  assert.equal(lines.length, briefing.facts.length);
-  assert.ok(lines.every((l) => typeof JSON.parse(l).event_id === "string"));
+  const evidence = selectEvidence(timeline.events, briefing);
+  assert.deepEqual(evidence.map((e) => e.event_id), briefing.evidence.event_ids);
+  const lines = evidenceToJsonl(timeline.events, briefing).trim().split("\n");
+  assert.equal(lines.length, evidence.length);
+  assert.deepEqual(JSON.parse(lines[0]!), JSON.parse(JSON.stringify(evidence[0])));
+  // Every source_event_id in the briefing points at permitted evidence.
+  const ids = new Set(briefing.evidence.event_ids);
+  const refs = JSON.stringify(briefing).match(/"source_event_id":"(evt_\d+)"/g) ?? [];
+  assert.ok(refs.length > 5);
+  for (const ref of refs) assert.ok(ids.has(ref.slice(19, -1)), `${ref} not in evidence`);
 });
 
 test("other participants' events never appear in the briefing", () => {
@@ -85,7 +86,7 @@ test("other participants' events never appear in the briefing", () => {
     (e) => e.participant_id !== null && e.participant_id !== SAM && e.type !== "session.created",
   );
   assert.ok(foreign.length > 0);
-  const cited = new Set(briefing.facts.map((f) => f.event_id));
+  const cited = new Set(briefing.evidence.event_ids);
   for (const e of foreign) assert.ok(!cited.has(e.event_id), `${e.type} for ${e.participant_id} leaked`);
 });
 
@@ -101,7 +102,7 @@ test("revoking responder location consent redacts every location detail", () => 
   const briefing = buildOperatorBriefing(timeline.events, { incidentId: FIXTURE_INCIDENT_ID, now: clock.now() });
   assert.equal(briefing.location.status, "not_consented");
   assert.equal(briefing.location.last_known, null);
-  assert.ok(briefing.redactions.some((r) => r.type === "location.reported"));
+  assert.ok(briefing.evidence.redacted.some((r) => r.type === "location.reported"));
   const text = JSON.stringify(briefing);
   assert.ok(!text.includes("43.6629"));
   assert.ok(!text.includes("Synthetic Venue A"));
@@ -117,8 +118,8 @@ test("leaving the session withdraws profile and location disclosure", () => {
     data: { reason: "voluntary" },
   });
   const briefing = buildOperatorBriefing(timeline.events, { incidentId: FIXTURE_INCIDENT_ID, now: clock.now() });
-  assert.equal(briefing.participant.profile_status, "not_consented");
-  assert.equal(briefing.participant.profile, null);
+  assert.equal(briefing.person.status, "not_consented");
+  assert.equal(briefing.person.details, null);
   assert.equal(briefing.location.status, "not_consented");
 });
 
@@ -136,10 +137,11 @@ test("acknowledgment changes state but is not reported as safety", () => {
   const briefing = buildOperatorBriefing(timeline.events, { incidentId: FIXTURE_INCIDENT_ID, now: clock.now() });
   assert.equal(briefing.incident.state, "acknowledged");
   assert.equal(briefing.incident.acknowledged!.by_id, "con_0001");
-  assert.equal(briefing.notifications[1]!.acknowledged, true);
+  assert.equal(briefing.alerts[1]!.acknowledged, true);
   assert.ok(!briefing.unknowns.some((u) => u.includes("No responder")));
-  assert.ok(briefing.unknowns.some((u) => u.includes("medical condition")));
-  assert.ok(briefing.facts.at(-1)!.statement.includes("does not indicate the participant's condition"));
+  assert.ok(briefing.unknowns.some((u) => u.includes("condition")));
+  const ackEvent = timeline.getEvent(briefing.incident.acknowledged!.source_event_id)!;
+  assert.ok(ackEvent.summary.includes("does not indicate the participant's condition"));
 });
 
 test("unknown incidents are rejected", () => {

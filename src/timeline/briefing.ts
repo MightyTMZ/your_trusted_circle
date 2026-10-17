@@ -1,44 +1,47 @@
 /**
- * Operator briefing: the read model the voice agent drafts its speech from.
+ * Operator briefing: what the voice agent knows about one incident.
  *
- * Built only from timeline events. Every fact cites its source event_id
- * and timestamp; location and profile data appear only under the
- * participant's current consent; gaps are listed in `unknowns` so the
- * agent states them instead of guessing.
+ * The agent receives two things:
+ *   1. this briefing: state *derived* from the timeline (is anyone
+ *      responding? where was the person last seen? how were they moving?)
+ *      plus what is unknown;
+ *   2. the evidence lines: the timeline events it may cite, as JSONL
+ *      (selectEvidence / evidenceToJsonl).
+ *
+ * Nothing is copied twice: the briefing holds conclusions with a
+ * source_event_id each, the evidence holds the events themselves.
+ * Consent filtering happens here, in code, so the model never sees data
+ * it would have to decide not to disclose.
  */
 import { parseIso, toIso } from "../shared/clock.js";
-import { RESPONDER_SCOPE_FOR, type ConsentScope } from "./schema/envelope.js";
-import { specFor, type Category, type EventType, type PayloadOf, type TimelineEvent } from "./schema/catalog.js";
+import { serializeEvent } from "./canonical.js";
+import { ConsentLedger } from "./consent.js";
+import { RESPONDER_SCOPE_FOR } from "./schema/envelope.js";
+import { specFor, type EventType, type PayloadOf, type TimelineEvent } from "./schema/catalog.js";
 
 export const BRIEFING_SCHEMA = "ypc.operator_briefing" as const;
-export const BRIEFING_VERSION = "1.0" as const;
+export const BRIEFING_VERSION = "2.0" as const;
+
+/** Fixed rules for the voice agent's system prompt; identical for every incident, so not repeated per briefing. */
+export const AGENT_DISCLAIMERS = [
+  "Identify yourself as an automated assistant. All emergency-service contact in this prototype is simulated.",
+  "Motion data are movement observations, not medical conclusions.",
+  "Acknowledgment means an alert was received; it does not mean the participant is safe.",
+  "Location is last-known only, never live. Say how old it is.",
+  "If a fact is not in the briefing or evidence, say it is unknown.",
+] as const;
 
 export interface BriefingOptions {
   incidentId: string;
   /** Briefing time in epoch ms, from the injected clock. */
   now: number;
+  /** Motion windows older than this are left out of the evidence; the timeline keeps them all. Default 10 min. */
+  motionLookbackMs?: number;
 }
 
-export interface GroundedFact {
-  event_id: string;
-  seq: number;
-  occurred_at: string;
-  /** How long before the briefing this happened. */
-  age_ms: number;
-  type: EventType;
-  category: Category;
-  /** Deterministic summary of the event; safe to paraphrase, never to embellish. */
-  statement: string;
-  simulated: boolean;
-}
+type Ref = { source_event_id: string };
 
-export interface Redaction {
-  event_id: string;
-  type: EventType;
-  reason: string;
-}
-
-export interface NotificationStatus {
+export interface AlertStatus {
   notification_id: string;
   recipient_id: string;
   recipient_role: PayloadOf<"notification.sent">["recipient_role"];
@@ -49,7 +52,6 @@ export interface NotificationStatus {
   viewed: boolean;
   delivery_failed: boolean;
   acknowledged: boolean;
-  source_event_ids: string[];
 }
 
 export interface OperatorBriefing {
@@ -59,54 +61,65 @@ export interface OperatorBriefing {
   session_id: string;
   incident_id: string;
   participant_id: string;
-  /** Head of the hash chain the briefing was built from, for audit. */
+  /** Head of the hash chain this was built from, so any statement can be audited later. */
   timeline_head_hash: string | null;
-  incident: {
+
+  incident: Ref & {
     state: "open" | "acknowledged" | "resolved";
-    opened_at: string;
     trigger: PayloadOf<"incident.opened">["trigger"];
-    acknowledged: null | { at: string; by_role: string; by_id: string; event_id: string };
-    resolved: null | { at: string; resolution: string; by_role: string; by_id: string; event_id: string };
-    source_event_id: string;
+    opened_at: string;
+    acknowledged: null | (Ref & { at: string; by_role: string; by_id: string });
+    resolved: null | (Ref & { at: string; resolution: string; by_role: string; by_id: string });
   };
-  participant: {
-    participant_id: string;
-    profile_status: "shared" | "not_consented" | "not_provided";
-    profile: null | (PayloadOf<"profile.shared"> & { source_event_id: string; shared_at: string });
+  /** Self-reported details, only under profile.responders consent. */
+  person: {
+    status: "shared" | "not_consented" | "not_provided";
+    details: null | (Ref & PayloadOf<"profile.shared">);
   };
   location: {
     status: "last_known" | "not_consented" | "not_reported";
-    /** Always false: the system never has a live location, only the most recent fix. */
     is_current: false;
-    last_known: null | (PayloadOf<"location.reported"> & { age_ms: number; source_event_id: string });
+    last_known: null | (Ref & PayloadOf<"location.reported"> & { age_ms: number });
   };
-  device: {
-    status: "online" | "offline" | "unknown";
-    since: string | null;
-    source_event_id: string | null;
+  motion: {
+    baseline: null | (Ref & { features: PayloadOf<"sensor.baseline_calibrated">["features"] });
+    /** The most recent anomaly, i.e. why a check-in was sent. */
+    observation: null | (Ref & Omit<PayloadOf<"sensor.motion_anomaly_observed">, "rule"> & { rule_id: string });
+    latest_window: null | (Ref & {
+      window_end: string;
+      age_ms: number;
+      dynamic_mean_m_s2: number;
+      dynamic_peak_m_s2: number;
+      stillness_ratio: number;
+      coverage_ratio: number;
+    });
   };
+  device: { status: "online" | "offline" | "unknown"; since: string | null; source_event_id: string | null };
   escalation: {
-    pending_steps: { escalation_id: string; step: number; target_role: string; due_at: string; source_event_id: string }[];
-    fired_steps: { step: number; target_role: string; fired_at: string; source_event_id: string }[];
+    pending: (Ref & { step: number; target_role: string; due_at: string })[];
+    fired: (Ref & { step: number; target_role: string; at: string })[];
     simulated_emergency_requested: boolean;
   };
-  notifications: NotificationStatus[];
-  facts: GroundedFact[];
-  redactions: Redaction[];
+  alerts: AlertStatus[];
+  /** What the agent must say it does not know. */
   unknowns: string[];
-  disclaimers: string[];
+  evidence: {
+    /** Timeline events the agent may read and cite, in order. */
+    event_ids: string[];
+    /** Events withheld for lack of consent; content omitted. */
+    redacted: { event_id: string; type: EventType; reason: string }[];
+  };
 }
-
-const DISCLAIMERS = [
-  "Automated assistant. All emergency-service contact in this prototype is simulated.",
-  "Motion anomalies are movement observations, not medical conclusions.",
-  "Acknowledgment confirms an alert was received; it does not indicate the participant is safe.",
-  "Location is last-known only, never live.",
-];
 
 export class BriefingError extends Error {
   override name = "BriefingError";
 }
+
+const DEFAULT_MOTION_LOOKBACK_MS = 10 * 60_000;
+/** A motion window older than this means data stopped arriving. */
+const MOTION_STALE_MS = 2 * 60_000;
+/** Below this share of expected samples, low movement may just be missing data. */
+const MIN_RELIABLE_COVERAGE = 0.8;
 
 export function buildOperatorBriefing(events: readonly TimelineEvent[], opts: BriefingOptions): OperatorBriefing {
   const opened = events.find(
@@ -114,71 +127,63 @@ export function buildOperatorBriefing(events: readonly TimelineEvent[], opts: Br
   );
   if (!opened) throw new BriefingError(`Incident ${opts.incidentId} not found in timeline`);
   const subject = opened.participant_id!;
-  const consent = consentAt(events, subject);
+  const now = opts.now;
+  const ageOf = (iso: string) => Math.max(0, now - parseIso(iso)!);
 
-  const relevant = events.filter(
-    (e) =>
-      parseIso(e.recorded_at)! <= opts.now &&
-      (e.incident_id === opts.incidentId ||
-        (e.incident_id === null && e.participant_id === subject) ||
-        e.type === "session.created"),
-  );
+  // Consent is evaluated as of now: revoking or leaving withdraws earlier data too.
+  const consent = ConsentLedger.from(events.filter((e) => parseIso(e.recorded_at)! <= now));
+  const lookbackStart = now - (opts.motionLookbackMs ?? DEFAULT_MOTION_LOOKBACK_MS);
 
-  const facts: GroundedFact[] = [];
-  const redactions: Redaction[] = [];
-  for (const e of relevant) {
+  const evidence: TimelineEvent[] = [];
+  const redacted: OperatorBriefing["evidence"]["redacted"] = [];
+  for (const e of events) {
+    if (parseIso(e.recorded_at)! > now) continue;
+    // Only this incident, the subject's own events, and the session's escalation policy. Never other participants.
+    const inScope =
+      e.incident_id === opts.incidentId ||
+      (e.incident_id === null && e.participant_id === subject) ||
+      e.type === "session.created";
+    if (!inScope) continue;
+    if (e.type === "sensor.motion_window" && parseIso(e.occurred_at)! < lookbackStart) continue;
     const sensitivity = specFor(e.type).sensitivity;
-    if (sensitivity !== "none" && !consent.has(RESPONDER_SCOPE_FOR[sensitivity])) {
-      redactions.push({
-        event_id: e.event_id,
-        type: e.type,
-        reason: `participant has not granted ${RESPONDER_SCOPE_FOR[sensitivity]}`,
-      });
+    if (sensitivity !== "none" && !consent.has(subject, RESPONDER_SCOPE_FOR[sensitivity])) {
+      redacted.push({ event_id: e.event_id, type: e.type, reason: `${RESPONDER_SCOPE_FOR[sensitivity]} not granted` });
       continue;
     }
-    facts.push({
-      event_id: e.event_id,
-      seq: e.seq,
-      occurred_at: e.occurred_at,
-      age_ms: Math.max(0, opts.now - parseIso(e.occurred_at)!),
-      type: e.type,
-      category: e.category,
-      statement: e.summary,
-      simulated: e.provenance.simulated,
-    });
+    evidence.push(e);
   }
 
-  const disclosed = new Set(facts.map((f) => f.event_id));
-  const visible = relevant.filter((e) => disclosed.has(e.event_id));
-  const lastOf = <T extends EventType>(type: T) =>
-    visible.findLast((e): e is TimelineEvent<T> => e.type === type);
+  const last = <T extends EventType>(type: T) => evidence.findLast((e): e is TimelineEvent<T> => e.type === type);
+  const wasRedacted = (type: EventType) => redacted.some((r) => r.type === type);
 
-  const ack = lastOf("incident.acknowledged");
-  const resolved = lastOf("incident.resolved");
-  const profileEvent = lastOf("profile.shared");
-  const fix = lastOf("location.reported");
-  const device = visible.findLast(
-    (e) => e.type === "connectivity.device_offline" || e.type === "connectivity.device_online",
-  );
+  const ack = last("incident.acknowledged");
+  const resolved = last("incident.resolved");
+  const profile = last("profile.shared");
+  const fix = last("location.reported");
+  const baseline = last("sensor.baseline_calibrated");
+  const anomaly = last("sensor.motion_anomaly_observed");
+  const window = last("sensor.motion_window");
+  const device = evidence.findLast((e) => e.category === "connectivity" && e.participant_id === subject);
 
   const briefing: OperatorBriefing = {
     schema: BRIEFING_SCHEMA,
     schema_version: BRIEFING_VERSION,
-    generated_at: toIso(opts.now),
+    generated_at: toIso(now),
     session_id: opened.session_id,
     incident_id: opts.incidentId,
     participant_id: subject,
     timeline_head_hash: events.at(-1)?.hash ?? null,
     incident: {
       state: resolved ? "resolved" : ack ? "acknowledged" : "open",
-      opened_at: opened.occurred_at,
       trigger: opened.data.trigger,
+      opened_at: opened.occurred_at,
+      source_event_id: opened.event_id,
       acknowledged: ack
         ? {
             at: ack.occurred_at,
             by_role: ack.data.acknowledged_by_role,
             by_id: ack.data.acknowledged_by_id,
-            event_id: ack.event_id,
+            source_event_id: ack.event_id,
           }
         : null,
       resolved: resolved
@@ -187,90 +192,94 @@ export function buildOperatorBriefing(events: readonly TimelineEvent[], opts: Br
             resolution: resolved.data.resolution,
             by_role: resolved.data.resolved_by_role,
             by_id: resolved.data.resolved_by_id,
-            event_id: resolved.event_id,
+            source_event_id: resolved.event_id,
           }
         : null,
-      source_event_id: opened.event_id,
     },
-    participant: {
-      participant_id: subject,
-      profile_status: profileEvent ? "shared" : redactions.some((r) => r.type === "profile.shared") ? "not_consented" : "not_provided",
-      profile: profileEvent ? { ...profileEvent.data, source_event_id: profileEvent.event_id, shared_at: profileEvent.occurred_at } : null,
+    person: {
+      status: profile ? "shared" : wasRedacted("profile.shared") ? "not_consented" : "not_provided",
+      details: profile ? { ...profile.data, source_event_id: profile.event_id } : null,
     },
     location: {
-      status: fix ? "last_known" : redactions.some((r) => r.type === "location.reported") ? "not_consented" : "not_reported",
+      status: fix ? "last_known" : wasRedacted("location.reported") ? "not_consented" : "not_reported",
       is_current: false,
-      last_known: fix
-        ? { ...fix.data, age_ms: Math.max(0, opts.now - parseIso(fix.data.fix_at)!), source_event_id: fix.event_id }
+      last_known: fix ? { ...fix.data, age_ms: ageOf(fix.data.fix_at), source_event_id: fix.event_id } : null,
+    },
+    motion: {
+      baseline: baseline ? { features: baseline.data.features, source_event_id: baseline.event_id } : null,
+      observation: anomaly
+        ? (({ rule, ...rest }) => ({ ...rest, rule_id: rule.id, source_event_id: anomaly.event_id }))(anomaly.data)
+        : null,
+      latest_window: window
+        ? {
+            window_end: window.data.window_end,
+            age_ms: ageOf(window.data.window_end),
+            dynamic_mean_m_s2: window.data.dynamic_mean_m_s2,
+            dynamic_peak_m_s2: window.data.dynamic_peak_m_s2,
+            stillness_ratio: window.data.stillness_ratio,
+            coverage_ratio: window.data.coverage_ratio,
+            source_event_id: window.event_id,
+          }
         : null,
     },
     device: {
       status: !device ? "unknown" : device.type === "connectivity.device_offline" ? "offline" : "online",
-      since: device ? device.occurred_at : null,
-      source_event_id: device ? device.event_id : null,
+      since: device?.occurred_at ?? null,
+      source_event_id: device?.event_id ?? null,
     },
-    escalation: summarizeEscalation(visible),
-    notifications: summarizeNotifications(visible),
-    facts,
-    redactions,
+    escalation: summarizeEscalation(evidence),
+    alerts: summarizeAlerts(evidence),
     unknowns: [],
-    disclaimers: [...DISCLAIMERS],
+    evidence: { event_ids: evidence.map((e) => e.event_id), redacted },
   };
-  briefing.unknowns = listUnknowns(briefing, visible);
+  briefing.unknowns = listUnknowns(briefing, evidence);
   return briefing;
 }
 
-/** Facts as JSONL, one cited statement per line, for feeding to the voice model. */
-export function factsToJsonl(briefing: OperatorBriefing): string {
-  return briefing.facts.map((f) => `${JSON.stringify(f)}\n`).join("");
+/** The events the briefing permits, in timeline order. */
+export function selectEvidence(events: readonly TimelineEvent[], briefing: OperatorBriefing): TimelineEvent[] {
+  const permitted = new Set(briefing.evidence.event_ids);
+  return events.filter((e) => permitted.has(e.event_id));
 }
 
-/** Scopes currently granted by the participant. Leaving the session withdraws all of them. */
-function consentAt(events: readonly TimelineEvent[], participantId: string): Set<ConsentScope> {
-  const scopes = new Set<ConsentScope>();
-  for (const e of events) {
-    if (e.participant_id !== participantId) continue;
-    if (e.type === "consent.granted") e.data.scopes.forEach((s) => scopes.add(s));
-    if (e.type === "consent.revoked") e.data.scopes.forEach((s) => scopes.delete(s));
-    if (e.type === "session.participant_left") scopes.clear();
-  }
-  return scopes;
+/** Evidence as JSONL, ready to hand to the voice model next to the briefing. */
+export function evidenceToJsonl(events: readonly TimelineEvent[], briefing: OperatorBriefing): string {
+  return selectEvidence(events, briefing)
+    .map((e) => `${serializeEvent(e)}\n`)
+    .join("");
 }
 
 function summarizeEscalation(events: readonly TimelineEvent[]): OperatorBriefing["escalation"] {
-  const pending = new Map<string, OperatorBriefing["escalation"]["pending_steps"][number]>();
-  const fired: OperatorBriefing["escalation"]["fired_steps"] = [];
+  const pending = new Map<string, OperatorBriefing["escalation"]["pending"][number]>();
+  const fired: OperatorBriefing["escalation"]["fired"] = [];
   let simulatedEmergency = false;
   for (const e of events) {
     if (e.type === "escalation.step_scheduled") {
       pending.set(`${e.data.escalation_id}:${e.data.step}`, {
-        escalation_id: e.data.escalation_id,
         step: e.data.step,
         target_role: e.data.target_role,
         due_at: e.data.due_at,
         source_event_id: e.event_id,
       });
-    } else if (e.type === "escalation.step_fired") {
+    } else if (e.type === "escalation.step_fired" || e.type === "escalation.step_cancelled") {
       pending.delete(`${e.data.escalation_id}:${e.data.step}`);
-      fired.push({ step: e.data.step, target_role: e.data.target_role, fired_at: e.occurred_at, source_event_id: e.event_id });
-    } else if (e.type === "escalation.step_cancelled") {
-      pending.delete(`${e.data.escalation_id}:${e.data.step}`);
+      if (e.type === "escalation.step_fired") {
+        fired.push({ step: e.data.step, target_role: e.data.target_role, at: e.occurred_at, source_event_id: e.event_id });
+      }
     } else if (e.type === "emergency.simulated_dispatch_requested") {
       simulatedEmergency = true;
     }
   }
-  return { pending_steps: [...pending.values()], fired_steps: fired, simulated_emergency_requested: simulatedEmergency };
+  return { pending: [...pending.values()], fired, simulated_emergency_requested: simulatedEmergency };
 }
 
-function summarizeNotifications(events: readonly TimelineEvent[]): NotificationStatus[] {
-  const byId = new Map<string, NotificationStatus>();
+function summarizeAlerts(events: readonly TimelineEvent[]): AlertStatus[] {
+  const byId = new Map<string, AlertStatus>();
   for (const e of events) {
     if (e.type === "notification.sent") {
       const existing = byId.get(e.data.notification_id);
-      if (existing) {
-        existing.attempts = Math.max(existing.attempts, e.data.attempt);
-        existing.source_event_ids.push(e.event_id);
-      } else {
+      if (existing) existing.attempts = Math.max(existing.attempts, e.data.attempt);
+      else
         byId.set(e.data.notification_id, {
           notification_id: e.data.notification_id,
           recipient_id: e.data.recipient_id,
@@ -282,21 +291,17 @@ function summarizeNotifications(events: readonly TimelineEvent[]): NotificationS
           viewed: false,
           delivery_failed: false,
           acknowledged: false,
-          source_event_ids: [e.event_id],
         });
-      }
       continue;
     }
-    const id =
+    const status =
       e.type === "notification.delivered" ||
       e.type === "notification.viewed" ||
       e.type === "notification.delivery_failed" ||
       e.type === "incident.acknowledged"
-        ? e.data.notification_id
-        : null;
-    const status = id ? byId.get(id) : undefined;
+        ? byId.get(e.data.notification_id)
+        : undefined;
     if (!status) continue;
-    status.source_event_ids.push(e.event_id);
     if (e.type === "notification.delivered") status.delivered = true;
     if (e.type === "notification.viewed") status.viewed = true;
     if (e.type === "notification.delivery_failed") status.delivery_failed = true;
@@ -305,31 +310,26 @@ function summarizeNotifications(events: readonly TimelineEvent[]): NotificationS
   return [...byId.values()];
 }
 
-function listUnknowns(b: OperatorBriefing, events: readonly TimelineEvent[]): string[] {
-  const unknowns = [
-    "The participant's medical condition and the cause of the observations are unknown; the system does not diagnose.",
-  ];
-  if (b.location.status === "last_known") {
-    unknowns.push(`Current location is unknown; the last-known fix is from ${b.location.last_known!.fix_at}.`);
-  } else if (b.location.status === "not_consented") {
-    unknowns.push("Location is not available: the participant has not consented to share it with responders.");
-  } else {
-    unknowns.push("No location has been reported.");
+function listUnknowns(b: OperatorBriefing, evidence: readonly TimelineEvent[]): string[] {
+  const unknowns = ["The participant's condition and the cause of the observations are unknown; the system does not diagnose."];
+
+  const loc = b.location;
+  if (loc.last_known) unknowns.push(`Current location is unknown; the last fix is from ${loc.last_known.fix_at}.`);
+  else if (loc.status === "not_consented") unknowns.push("Location is withheld: the participant has not consented to share it with responders.");
+  else unknowns.push("No location has been reported.");
+
+  if (b.person.status === "not_consented") unknowns.push("Name and personal details are withheld: the participant has not consented to share them.");
+  else if (!b.person.details?.display_name) unknowns.push("The participant's name has not been provided.");
+
+  const w = b.motion.latest_window;
+  if (!w) unknowns.push("No recent motion data is available.");
+  else if (w.age_ms > MOTION_STALE_MS) unknowns.push(`No motion data has arrived since ${w.window_end}.`);
+  else if (w.coverage_ratio < MIN_RELIABLE_COVERAGE) {
+    unknowns.push(`The latest motion window has only ${Math.round(w.coverage_ratio * 100)}% of expected samples; low movement may be missing data.`);
   }
-  if (b.participant.profile_status === "not_consented") {
-    unknowns.push("Profile details (such as name) are not available: the participant has not consented to share them.");
-  } else if (b.participant.profile_status === "not_provided") {
-    unknowns.push("The participant has not provided a name or emergency notes.");
-  } else if (!b.participant.profile?.display_name) {
-    unknowns.push("The participant's name has not been provided.");
-  }
-  if (b.device.status === "offline") {
-    unknowns.push(`The participant's device has been offline since ${b.device.since}; nothing after that is known from the device.`);
-  }
-  const lastResponse = events.findLast((e) => e.type === "checkin.responded");
-  if (!lastResponse) unknowns.push("The participant has not answered any check-in.");
-  if (b.incident.state !== "resolved" && !b.notifications.some((n) => n.acknowledged)) {
-    unknowns.push("No responder has acknowledged the alert yet.");
-  }
+
+  if (b.device.status === "offline") unknowns.push(`The device has been offline since ${b.device.since}.`);
+  if (!evidence.some((e) => e.type === "checkin.responded")) unknowns.push("The participant has not answered a check-in.");
+  if (b.incident.state === "open") unknowns.push("No responder has acknowledged the alert.");
   return unknowns;
 }
