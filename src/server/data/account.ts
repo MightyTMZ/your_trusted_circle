@@ -2,7 +2,7 @@
  * The signed-in user's own account. Every route acts only on that user.
  *
  * GET    /api/me          profile and linked sign-in providers
- * PATCH  /api/me          change display name
+ * PATCH  /api/me          change display name and/or profile picture (avatar: image data URL, or null to remove)
  * GET    /api/me/export   download a copy of everything stored about me (JSON)
  * DELETE /api/me          delete my account and all my data; body { "confirm": "DELETE" }
  *
@@ -17,8 +17,12 @@ import { v, validate } from "../../timeline/schema/validate.js";
 import { checkInView } from "../safety/routes.js";
 import { endAuthSession, requireAuth } from "../auth/session.js";
 import { fail, type AppEnv, type Deps } from "../context.js";
+import { avatarProblem } from "./avatar.js";
 
-const profileSchema = v.object({ displayName: v.string({ minLength: 1, maxLength: 40 }) });
+const profileSchema = v.object({
+  displayName: v.optional(v.string({ minLength: 1, maxLength: 40 })),
+  avatar: v.optional(v.nullable(v.string())),
+});
 const deleteSchema = v.object({ confirm: v.literal("DELETE") });
 
 export function accountRoutes(deps: Deps) {
@@ -28,6 +32,7 @@ export function accountRoutes(deps: Deps) {
   const profile = (u: AppEnv["Variables"]["user"]) => ({
     id: u._id,
     displayName: u.displayName,
+    avatar: u.avatar ?? null,
     email: u.email,
     emailVerified: u.emailVerified,
     providers: u.identities.map((i) => i.provider),
@@ -38,10 +43,22 @@ export function accountRoutes(deps: Deps) {
 
   r.patch("/", async (c) => {
     const body = await c.req.json().catch(() => undefined);
-    if (validate(profileSchema, body).length > 0) return fail(c, 400, "invalid_request", "Display name must be 1 to 40 characters.");
-    const displayName = (body as { displayName: string }).displayName.trim();
-    if (displayName.length === 0) return fail(c, 400, "invalid_request", "Display name cannot be blank.");
-    await deps.store.updateUser(c.var.user._id, { displayName }, deps.now());
+    if (validate(profileSchema, body).length > 0) {
+      return fail(c, 400, "invalid_request", "Send displayName (1 to 40 characters), avatar (an image or null), or both.");
+    }
+    const { displayName, avatar } = body as { displayName?: string; avatar?: string | null };
+    if (displayName === undefined && avatar === undefined) return fail(c, 400, "invalid_request", "Nothing to change.");
+    const patch: { displayName?: string; avatar?: string | null } = {};
+    if (displayName !== undefined) {
+      patch.displayName = displayName.trim();
+      if (patch.displayName.length === 0) return fail(c, 400, "invalid_request", "Display name cannot be blank.");
+    }
+    if (avatar !== undefined) {
+      const problem = avatar === null ? null : avatarProblem(avatar);
+      if (problem) return fail(c, 400, "invalid_avatar", problem);
+      patch.avatar = avatar;
+    }
+    await deps.store.updateUser(c.var.user._id, patch, deps.now());
     return c.json({ user: profile((await deps.store.getUser(c.var.user._id))!) });
   });
 

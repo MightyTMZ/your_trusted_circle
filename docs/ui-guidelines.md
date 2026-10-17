@@ -142,7 +142,7 @@ Minimum hit area 44×44.
 | Quick tile | `button.btn.qtile.glass` | 88px tall, 22px icon over 12px label, equal-width grid of 2–4. |
 | Text field | `input.field` / `textarea.field` | 52px pill / radius-20 box, always with a `<label>` (visible `.lbl` or `.sr-only`). |
 | Tag | `span.tag` | 24px status pill. `.tag.on-accent` only for an active alert state. |
-| Avatar | `.av` | 40px circle with initials. `.on-accent` only for the person with an open alert. |
+| Avatar | `.av` / `<Avatar name src>` | 40px circle. Profile picture when the account has one, initials otherwise. `.on-accent` only for the person with an open alert. |
 | Avatar stack | `.av-stack` > `.av` | 32px solid (not glass) avatars overlapping 10px, ringed in `--bg-base`. Leftmost on top: set `z-index` descending left to right. |
 | Step progress | `.seg` > `span` | Multi-step flows; done/current segments `.is-on`. |
 | Sheet | `<Sheet title onClose>` | Confirmations. Bottom sheet on phone, centered dialog on larger screens, Escape closes. Destructive confirms use a glass primary, not the accent; irreversible ones (delete account) also need typed confirmation. |
@@ -185,14 +185,19 @@ bottom nav switch at 768px viewport width. Two-column content uses
 | Navigation | Floating glass pill at the bottom | Floating vertical rail on the left |
 | Session home, Alert, Incident card | One column | Two columns (`.cols`) |
 | Forms and focused flows | Full width | `.narrow`, centered, max 540px |
-| Help button | Pinned above the nav | Pinned at the bottom, max 440px, centered |
+| "I need help" | First slot of the nav, far left, icon only | First slot of the rail, under the logo |
+| Settings | Gear in the header of Group and Your sharing | Last slot of the rail |
 | Sheets | Bottom sheet | Centered dialog |
 
-Nav slots (`AppNav.tsx`): Group, Alert (host only, while an alert is
-unresolved; also active on Incident card and Call), Your sharing,
-Settings. Welcome, Host setup, Join, Sign in, the private check-in and
-the recipient inbox have no nav. Keep primary actions in the lower part
-of phone screens.
+Nav slots (`AppNav.tsx`): Help, Group, Alert (host only, while an alert
+is unresolved; also active on Incident card and Call), Your sharing, and
+Settings on the rail only. Help is a ringed lifebuoy icon
+(`.slot-help`, labelled "I need help" for screen readers) that opens a
+confirmation sheet; it is hidden while an alert about you is open. Don't
+add floating buttons over the content: they cover cards and crowd the
+nav. Welcome, Host setup, Join, Sign in, the private check-in and the
+recipient inbox have no nav. Keep primary actions in the lower part of
+phone screens.
 
 The active-session bar (`ActiveSessionBar`) stays on every in-session
 screen. It is the visible session indicator CLAUDE.md requires; don't
@@ -207,6 +212,11 @@ screen says the feature needs the server, or falls back to the on-device
 equivalent (Download data on this device, Delete data on this device).
 Only show sign-in providers the server reports from
 `GET /api/auth/providers`. Sign in and sign up are one flow.
+
+Profile pictures are stored by the server (`avatar` on `GET`/`PATCH
+/api/me`) as a PNG, JPEG or WebP data URL of at most 100 KB. The app
+square-crops and resizes to 256×256 before upload (`toAvatarDataUrl`).
+Photo controls appear only when signed in.
 
 ## 9. Accessibility
 

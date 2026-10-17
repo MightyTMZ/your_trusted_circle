@@ -41,7 +41,7 @@ export interface Store {
   findUserByIdentity(provider: ProviderId, subject: string): Promise<UserDoc | null>;
   getUser(id: string): Promise<UserDoc | null>;
   insertUser(user: UserDoc): Promise<void>;
-  updateUser(id: string, patch: Partial<Pick<UserDoc, "displayName" | "email" | "emailVerified">>, now: Date): Promise<void>;
+  updateUser(id: string, patch: Partial<Pick<UserDoc, "displayName" | "avatar" | "email" | "emailVerified">>, now: Date): Promise<void>;
   insertAuthSession(session: AuthSessionDoc): Promise<void>;
   getAuthSession(tokenHash: string): Promise<AuthSessionDoc | null>;
   deleteAuthSession(tokenHash: string): Promise<void>;

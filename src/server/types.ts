@@ -20,6 +20,8 @@ export interface Identity {
 export interface UserDoc {
   _id: string; // usr_<uuid>
   displayName: string;
+  /** Profile picture as a small image data URL (PNG, JPEG or WebP); null or absent shows initials. */
+  avatar?: string | null;
   email: string | null;
   emailVerified: boolean;
   identities: Identity[];

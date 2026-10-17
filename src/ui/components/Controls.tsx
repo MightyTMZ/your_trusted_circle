@@ -227,6 +227,15 @@ export function ScreenHeader({
   );
 }
 
+/** Profile picture when there is one, initials otherwise. */
+export function Avatar({ name, src, size = 40, className = 'glass-2' }: { name: string; src?: string | null; size?: number; className?: string }) {
+  return (
+    <span className={`av ${className}`} style={{ width: size, height: size, fontSize: Math.round(size * 0.3), overflow: 'hidden' }}>
+      {src ? <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initials(name)}
+    </span>
+  );
+}
+
 export function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';

@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { emptyState } from '../../domain/session';
 import type { AppState } from '../../domain/types';
-import { EXPORT_URL, PROVIDER_LABEL, deleteAccount, fetchAccount, signOut, type Account } from '../api';
+import { EXPORT_URL, PROVIDER_LABEL, deleteAccount, fetchAccount, signOut, toAvatarDataUrl, updateProfile, type Account } from '../api';
 import { COPY } from '../copy';
 import { useApp } from '../context';
-import { ScreenHeader, initials } from '../components/Controls';
-import { useNavItems } from '../components/AppNav';
+import { Avatar, ScreenHeader } from '../components/Controls';
 import { Icon, type IconName } from '../components/Icon';
 import { Sheet } from '../components/Sheet';
 import { THEMES, loadTheme, saveTheme, type ThemeId } from '../theme';
@@ -64,13 +63,31 @@ type SheetKind = 'clear' | 'signout' | 'delete' | null;
 
 export function SettingsScreen() {
   const { state, me, store, setViewer, go } = useApp();
-  const inNav = useNavItems() !== null;
   const [theme, setTheme] = useState<ThemeId>(loadTheme);
   const [account, setAccount] = useState<Account | null | undefined>(undefined);
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [confirmText, setConfirmText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [cleared, setCleared] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const savePhoto = async (avatar: string | null) => {
+    setSaving(true);
+    setPhotoError(null);
+    const result = await updateProfile({ avatar });
+    setSaving(false);
+    if (typeof result === 'string') setPhotoError(result);
+    else setAccount(result);
+  };
+  const changePhoto = async (file: File) => {
+    try {
+      await savePhoto(await toAvatarDataUrl(file));
+    } catch {
+      setPhotoError("That picture couldn't be used. Try a PNG, JPEG or WebP image.");
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -100,20 +117,59 @@ export function SettingsScreen() {
   return (
     <div className="screen">
       <div className="narrow">
-        {inNav ? <h1 className="t-title">Settings</h1> : <ScreenHeader title="Settings" onBack={() => go({ name: 'home' })} />}
+        {/* On phones Settings opens from a header gear, so it always offers a way back. */}
+        <ScreenHeader title="Settings" onBack={() => go({ name: 'home' })} />
 
-        <section className="glass card rise" aria-label="Profile" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span className="av glass-2" style={{ width: 48, height: 48, fontSize: 14 }}>
-            {profileName ? initials(profileName) : <Icon name="user" />}
-          </span>
-          <span className="stack grow">
-            <span className="t-card">{profileName ?? 'Guest'}</span>
-            <span className="t-sub">{profileSub}</span>
-          </span>
-          {account === null && (
-            <button type="button" className="btn chip glass-2" onClick={() => go({ name: 'signin' })}>
-              Sign in
-            </button>
+        <section className="glass card rise" aria-label="Profile" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="header">
+            {profileName ? (
+              <Avatar name={profileName} src={account?.avatar} size={56} />
+            ) : (
+              <span className="av glass-2" style={{ width: 56, height: 56 }}>
+                <Icon name="user" />
+              </span>
+            )}
+            <span className="stack grow">
+              <span className="t-card">{profileName ?? 'Guest'}</span>
+              <span className="t-sub">{profileSub}</span>
+            </span>
+            {account === null && (
+              <button type="button" className="btn chip glass-2" onClick={() => go({ name: 'signin' })}>
+                Sign in
+              </button>
+            )}
+          </div>
+          {account && (
+            <div className="inline">
+              <input
+                ref={fileInput}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="sr-only"
+                tabIndex={-1}
+                aria-hidden="true"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (file) void changePhoto(file);
+                }}
+              />
+              <button type="button" className="btn chip glass-2" disabled={saving} onClick={() => fileInput.current?.click()}>
+                <Icon name="camera" />
+                {account.avatar ? 'Change photo' : 'Add photo'}
+              </button>
+              {account.avatar && (
+                <button type="button" className="btn chip glass-2" disabled={saving} onClick={() => void savePhoto(null)}>
+                  Remove
+                </button>
+              )}
+            </div>
+          )}
+          {photoError && (
+            <p className="error" role="alert">
+              <Icon name="alert" />
+              {photoError}
+            </p>
           )}
         </section>
 

@@ -17,6 +17,8 @@ export const PROVIDER_LABEL: Record<Provider, string> = {
 export interface Account {
   id: string;
   displayName: string;
+  /** Image data URL, or null to show initials. */
+  avatar: string | null;
   email: string | null;
   providers: Provider[];
 }
@@ -51,6 +53,46 @@ export function signInUrl(provider: Provider, returnTo = '/'): string {
 }
 
 export const EXPORT_URL = '/api/me/export';
+
+/** Change the display name and/or profile picture (null removes it). Returns the updated account or an error message. */
+export async function updateProfile(patch: { displayName?: string; avatar?: string | null }): Promise<Account | string> {
+  try {
+    const res = await fetch('/api/me', {
+      method: 'PATCH',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    const body = (await res.json().catch(() => null)) as { user?: Account; error?: { message?: string } } | null;
+    if (res.ok && body?.user) return body.user;
+    return body?.error?.message ?? "Couldn't save. Try again.";
+  } catch {
+    return "Couldn't reach the server. Try again.";
+  }
+}
+
+/**
+ * Square-crops and shrinks a picked image to 256×256 so it fits the server's
+ * 100 KB limit. WebP where the browser can encode it, otherwise JPEG.
+ */
+export async function toAvatarDataUrl(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('canvas unavailable');
+  const side = Math.min(bitmap.width, bitmap.height);
+  ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size);
+  bitmap.close();
+  for (const quality of [0.85, 0.7, 0.55, 0.4]) {
+    let url = canvas.toDataURL('image/webp', quality);
+    if (!url.startsWith('data:image/webp')) url = canvas.toDataURL('image/jpeg', quality);
+    if (url.length < 130_000) return url;
+  }
+  throw new Error('image too large');
+}
 
 export async function signOut(): Promise<boolean> {
   try {

@@ -56,7 +56,7 @@ All bodies are JSON. Every request except sign-in needs the `ytc_session` cookie
 | `GET /api/incidents/:id` | subject, host, recipients | Incident, deliveries and log |
 | `POST /api/incidents/:id/resolve` | responder | After acknowledging: `false_alarm`, `assistance_reached` or `other` |
 | `GET /api/sessions/:id/timeline` | member | What you are permitted to see |
-| `GET /api/me` / `PATCH /api/me` | signed in | Profile |
+| `GET /api/me` / `PATCH /api/me` | signed in | Profile: `displayName`, and `avatar` (PNG, JPEG or WebP data URL up to 100 KB, or `null` to remove) |
 | `GET /api/me/export` | signed in | Everything about you, as JSON |
 | `DELETE /api/me` | signed in | `{ "confirm": "DELETE" }` deletes your account and all your data |
 
