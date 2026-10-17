@@ -88,7 +88,7 @@ export function parsePhyphoxExport(rawCsv: string, timeCsv: string, deviceCsv?: 
     }
     const [tS, x, y, z] = values as number[];
     const ts = tS! * timeScale;
-    // Segments are ordered; advance to the one this experiment time falls in.
+    // Segments are ordered; advance to the one containing this experiment time.
     while (seg + 1 < segments.length && ts >= segments[seg + 1]!.experimentStartS) seg++;
     const s = segments[seg]!;
     if (ts < s.experimentStartS) {

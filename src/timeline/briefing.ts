@@ -27,7 +27,7 @@ export const BRIEFING_VERSION = "2.0" as const;
 export const AGENT_DISCLAIMERS = [
   "Identify yourself as an automated assistant. All emergency-service contact in this prototype is simulated.",
   "Motion data are movement observations, not medical conclusions.",
-  "Acknowledgment means an alert was received; it does not mean the participant is safe.",
+  "Acknowledgment means an alert was received; it does not confirm the participant's safety.",
   "Location is last-known only, never live. Say how old it is.",
   "If a fact is not in the briefing or evidence, say it is unknown.",
 ] as const;

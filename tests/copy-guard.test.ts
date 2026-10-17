@@ -14,12 +14,17 @@ function walk(dir: string): string[] {
 
 const files = walk(SRC).filter((f) => /\.(tsx?|css)$/.test(f));
 
+// A line directly below a `copy-guard: allow (reason)` comment is exempt: for
+// lists that must name a word in order to block or detect it. Never for copy.
+const ALLOW = /\/\/ copy-guard: allow \(.+\)/;
+
 function scan(re: RegExp): string[] {
-  return files.flatMap((f) =>
-    readFileSync(f, 'utf8')
-      .split('\n')
-      .flatMap((line, i) => (re.test(line) ? [`${f.slice(SRC.length + 1)}:${i + 1}: ${line.trim()}`] : [])),
-  );
+  return files.flatMap((f) => {
+    const lines = readFileSync(f, 'utf8').split('\n');
+    return lines.flatMap((line, i) =>
+      re.test(line) && !ALLOW.test(lines[i - 1] ?? '') ? [`${f.slice(SRC.length + 1)}:${i + 1}: ${line.trim()}`] : [],
+    );
+  });
 }
 
 describe('UI wording', () => {
