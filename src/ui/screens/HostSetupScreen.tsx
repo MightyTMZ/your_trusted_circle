@@ -3,12 +3,16 @@ import { DEFAULT_CONFIG, UNVALIDATED_LABEL } from '../../domain/config';
 import { createSession, type ParticipantInput } from '../../domain/session';
 import { COPY } from '../copy';
 import { useApp } from '../context';
+import { ChipChoice, ScreenHeader, StepBar, Stepper, ToggleRow } from '../components/Controls';
+import { Icon } from '../components/Icon';
 import { ParticipantConsentFields, defaultParticipantInput } from '../components/ParticipantConsentFields';
 
 const DURATIONS = [120, 240, 360];
+const STEPS = 4;
 
 export function HostSetupScreen() {
   const { store, setViewer, go } = useApp();
+  const [step, setStep] = useState(1);
   const [sessionName, setSessionName] = useState('');
   const [durationMin, setDurationMin] = useState(240);
   const [commitment, setCommitment] = useState(false);
@@ -18,6 +22,7 @@ export function HostSetupScreen() {
     hostAckWindowSec: DEFAULT_CONFIG.hostAckWindowSec,
     backupAckWindowSec: DEFAULT_CONFIG.backupAckWindowSec,
   });
+  const [showTiming, setShowTiming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const create = () => {
@@ -30,93 +35,132 @@ export function HostSetupScreen() {
     go({ name: 'invite' });
   };
 
-  const num = (k: keyof typeof cfg, label: string) => (
-    <div className="field" style={{ flex: 1 }}>
-      <label htmlFor={k}>{label}</label>
-      <input
-        id={k}
-        className="input mono"
-        type="number"
-        min={10}
-        value={cfg[k]}
-        onChange={(e) => setCfg({ ...cfg, [k]: Math.max(10, Number(e.target.value) || 0) })}
-      />
-    </div>
-  );
+  const blocked = (step === 2 && !commitment) || (step === 3 && !host.displayName.trim());
+  const next = () => (step < STEPS ? setStep(step + 1) : create());
 
   return (
     <div className="screen">
-      <button className="btn btn-ghost back" onClick={() => go({ name: 'home' })}>
-        Back
-      </button>
-      <div className="stack">
-        <span className="eyebrow">Session host</span>
-        <h1 className="title">Start a session</h1>
-      </div>
-
-      <div className="field">
-        <label htmlFor="sessionName">Session name</label>
-        <input
-          id="sessionName"
-          className="input"
-          value={sessionName}
-          placeholder="Friday at Ridgeway Hall"
-          onChange={(e) => setSessionName(e.target.value)}
+      <div className="narrow">
+        <ScreenHeader
+          title="Start a session"
+          onBack={() => (step > 1 ? setStep(step - 1) : go({ name: 'home' }))}
+          right={<span className="t-sub num">{`${step} of ${STEPS}`}</span>}
         />
-      </div>
+        <StepBar step={step} total={STEPS} />
 
-      <div className="stack">
-        <span className="label">Ends automatically after</span>
-        <div className="segmented">
-          {DURATIONS.map((m) => (
-            <button key={m} aria-pressed={durationMin === m} onClick={() => setDurationMin(m)}>
-              {m / 60} hours
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <section className={`panel ${commitment ? '' : 'panel-attention'}`}>
-        <h2 className="h2">{COPY.hostCommitmentTitle}</h2>
-        <p className="small">Alerts come to you first. The group is counting on you being able to act.</p>
-        <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
-          {COPY.hostCommitmentPoints.map((p) => (
-            <li key={p}>{p}</li>
-          ))}
-        </ul>
-        <label className="toggle">
-          <input type="checkbox" checked={commitment} onChange={(e) => setCommitment(e.target.checked)} />
-          <span style={{ fontWeight: 600 }}>{COPY.hostCommitmentCheck}</span>
-        </label>
-      </section>
-
-      <hr className="divider" />
-      <div className="stack">
-        <h2 className="h2">Your own sharing</h2>
-        <p className="small">You're part of the group too. These choices apply only to you.</p>
-      </div>
-      <ParticipantConsentFields value={host} onChange={setHost} checkInWindowSec={cfg.checkInWindowSec} forHost />
-
-      <details className="stack">
-        <summary className="label" style={{ cursor: 'pointer' }}>
-          Escalation timing
-        </summary>
-        <div className="stack" style={{ marginTop: 12 }}>
-          <div className="row">
-            {num('checkInWindowSec', 'Check-in window (s)')}
-            {num('hostAckWindowSec', 'Host ack window (s)')}
+        {step === 1 && (
+          <div className="narrow rise" key="s1">
+            <h2 className="t-title">Session</h2>
+            <div className="fgroup">
+              <label className="lbl" htmlFor="sessionName">
+                Session name
+              </label>
+              <input
+                id="sessionName"
+                className="field"
+                value={sessionName}
+                placeholder="Friday at Ridgeway Hall"
+                autoComplete="off"
+                onChange={(e) => setSessionName(e.target.value)}
+              />
+            </div>
+            <ChipChoice<number>
+              label="Ends automatically after"
+              options={DURATIONS.map((m) => ({ value: m, label: `${m / 60} hours` }))}
+              value={durationMin}
+              onChange={setDurationMin}
+            />
           </div>
-          {num('backupAckWindowSec', 'Backup ack window before simulated emergency services (s)')}
-          <span className="tiny">{UNVALIDATED_LABEL}s. Not tested against real-world data.</span>
-        </div>
-      </details>
+        )}
 
-      <div className="screen-footer">
-        {error && <p className="error">{error}</p>}
-        <button className="btn btn-primary btn-block" disabled={!commitment || !host.displayName.trim()} onClick={create}>
-          Create session and show QR code
-        </button>
-        {!commitment && <p className="tiny">Accept the host commitment to continue.</p>}
+        {step === 2 && (
+          <div className="narrow rise" key="s2">
+            <h2 className="t-title">{COPY.hostCommitmentTitle}</h2>
+            <ul className="glass card card-list">
+              {COPY.hostCommitmentPoints.map((p) => (
+                <li key={p} className="row">
+                  <span className="av av-sm glass-2">
+                    <Icon name="check" size={16} />
+                  </span>
+                  <span className="t-body">{p}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="glass card card-list">
+              <ToggleRow label={COPY.hostCommitmentCheck} checked={commitment} onChange={setCommitment} />
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="narrow rise" key="s3">
+            <h2 className="t-title">Your own sharing</h2>
+            <ParticipantConsentFields value={host} onChange={setHost} checkInWindowSec={cfg.checkInWindowSec} forHost part="basics" />
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="narrow rise" key="s4">
+            <h2 className="t-title">If something happens</h2>
+            <ParticipantConsentFields value={host} onChange={setHost} checkInWindowSec={cfg.checkInWindowSec} forHost part="responders" />
+            <div className="glass card card-list">
+              <button type="button" className="btn lrow" aria-expanded={showTiming} onClick={() => setShowTiming(!showTiming)}>
+                <span className="stack grow">
+                  <span className="t-name">Escalation timing</span>
+                  <span className="t-sub num">
+                    Check-in {cfg.checkInWindowSec}s · Host {cfg.hostAckWindowSec}s · Backup {cfg.backupAckWindowSec}s
+                  </span>
+                </span>
+                <span className="tag" title={UNVALIDATED_LABEL}>
+                  Unvalidated
+                </span>
+                <span className="chev" style={{ display: 'flex', transform: showTiming ? 'rotate(90deg)' : undefined }}>
+                  <Icon name="chevronRight" />
+                </span>
+              </button>
+              {showTiming && (
+                <>
+                  <Stepper
+                    label="Check-in window"
+                    unit="s"
+                    step={10}
+                    min={10}
+                    value={cfg.checkInWindowSec}
+                    onChange={(v) => setCfg({ ...cfg, checkInWindowSec: v })}
+                  />
+                  <Stepper
+                    label="Host acknowledgment"
+                    unit="s"
+                    step={10}
+                    min={10}
+                    value={cfg.hostAckWindowSec}
+                    onChange={(v) => setCfg({ ...cfg, hostAckWindowSec: v })}
+                  />
+                  <Stepper
+                    label="Backup acknowledgment"
+                    unit="s"
+                    step={10}
+                    min={10}
+                    value={cfg.backupAckWindowSec}
+                    onChange={(v) => setCfg({ ...cfg, backupAckWindowSec: v })}
+                  />
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="screen-footer">
+          {error && (
+            <p className="error" role="alert">
+              <Icon name="alert" />
+              {error}
+            </p>
+          )}
+          <button type="button" className="btn pbtn on-accent" disabled={blocked} onClick={next}>
+            {step < STEPS ? 'Continue' : 'Create session'}
+          </button>
+        </div>
       </div>
     </div>
   );

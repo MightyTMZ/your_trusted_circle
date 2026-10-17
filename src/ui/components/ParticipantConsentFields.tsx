@@ -2,6 +2,8 @@ import { MAX_BACKUP_CONTACTS } from '../../domain/config';
 import type { ParticipantInput } from '../../domain/session';
 import type { LocationSharing } from '../../domain/types';
 import { SHARING_LABEL } from '../copy';
+import { OptionList, ToggleRow } from './Controls';
+import { Icon } from './Icon';
 
 export function defaultParticipantInput(): ParticipantInput {
   return {
@@ -21,68 +23,69 @@ const SHARING_HELP: Record<LocationSharing, string> = {
   off: 'Nobody in the group sees your location.',
 };
 
-/** The consent choices a person makes for themself. Never shown to anyone acting on their behalf. */
+/**
+ * The consent choices a person makes for themself. Never shown to anyone acting on their behalf.
+ * Split into two parts so join and host setup can show them as separate steps.
+ */
 export function ParticipantConsentFields({
   value,
   onChange,
   checkInWindowSec,
   forHost = false,
+  part,
 }: {
   value: ParticipantInput;
   onChange(v: ParticipantInput): void;
   checkInWindowSec: number;
   forHost?: boolean;
+  part: 'basics' | 'responders';
 }) {
   const set = <K extends keyof ParticipantInput>(k: K, v: ParticipantInput[K]) => onChange({ ...value, [k]: v });
   const options: LocationSharing[] = forHost ? ['group', 'off'] : ['group', 'host', 'off'];
 
+  if (part === 'basics') {
+    return (
+      <>
+        <div className="fgroup">
+          <label className="lbl" htmlFor="displayName">
+            Your name
+          </label>
+          <input
+            id="displayName"
+            className="field"
+            value={value.displayName}
+            placeholder="Use a synthetic name for the demo"
+            onChange={(e) => set('displayName', e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+        <OptionList
+          label="Who can see your location"
+          options={options.map((o) => ({ value: o, label: SHARING_LABEL[o], help: SHARING_HELP[o] }))}
+          value={value.locationSharing}
+          onChange={(o) => set('locationSharing', o)}
+        />
+        <div className="glass card card-list">
+          <ToggleRow
+            label="Movement check-ins"
+            sub={`You get a private check-in first. No answer within ${checkInWindowSec}s alerts ${forHost ? 'your backup contacts' : 'the host'}.`}
+            checked={value.motionMonitoring}
+            onChange={(v) => set('motionMonitoring', v)}
+          />
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
-      <div className="field">
-        <label htmlFor="displayName">Your name</label>
-        <input
-          id="displayName"
-          className="input"
-          value={value.displayName}
-          placeholder="Use a synthetic name for the demo"
-          onChange={(e) => set('displayName', e.target.value)}
-          autoComplete="off"
-        />
-      </div>
-
-      <section className="stack">
-        <span className="label">Who can see your location</span>
-        <div className="choice-list" role="radiogroup">
-          {options.map((o) => (
-            <label key={o} className="choice" data-checked={value.locationSharing === o}>
-              <input type="radio" name="sharing" checked={value.locationSharing === o} onChange={() => set('locationSharing', o)} />
-              <span className="stack" style={{ gap: 2 }}>
-                <span className="t">{SHARING_LABEL[o]}</span>
-                <span className="small">{SHARING_HELP[o]}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-        <span className="tiny">You can change this anytime during the session.</span>
-      </section>
-
-      <label className="toggle">
-        <input type="checkbox" checked={value.motionMonitoring} onChange={(e) => set('motionMonitoring', e.target.checked)} />
-        <span className="stack" style={{ gap: 2 }}>
-          <span style={{ fontWeight: 600 }}>Movement check-ins</span>
-          <span className="small">
-            The app learns your usual movement first. If it changes sharply, you get a private check-in. No answer within{' '}
-            {checkInWindowSec}s alerts {forHost ? 'your backup contacts' : 'the host'}.
-          </span>
-        </span>
-      </label>
-
-      <section className="stack">
-        <span className="label">Backup contacts if an alert isn't acknowledged</span>
+      <div className="fgroup">
+        <span className="lbl">Backup contacts if an alert isn't acknowledged</span>
         {value.backupContacts.map((c, i) => (
-          <div key={i} className="row">
+          <div key={i} className="field-row">
             <input
-              className="input"
+              className="field"
+              aria-label={`Backup contact ${i + 1} name`}
               placeholder="Name (synthetic)"
               value={c.name}
               onChange={(e) =>
@@ -90,8 +93,8 @@ export function ParticipantConsentFields({
               }
             />
             <input
-              className="input"
-              style={{ maxWidth: 120 }}
+              className="field"
+              aria-label={`Backup contact ${i + 1} relation`}
               placeholder="Relation"
               value={c.relation}
               onChange={(e) =>
@@ -103,45 +106,39 @@ export function ParticipantConsentFields({
         {value.backupContacts.length < MAX_BACKUP_CONTACTS && (
           <button
             type="button"
-            className="link small"
+            className="btn chip glass"
             style={{ alignSelf: 'flex-start' }}
             onClick={() => set('backupContacts', [...value.backupContacts, { name: '', relation: '' }])}
           >
+            <Icon name="plus" />
             Add another
           </button>
         )}
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={value.shareLocationWithResponders}
-            onChange={(e) => set('shareLocationWithResponders', e.target.checked)}
-          />
-          <span className="small">
-            During an alert, share my last-known location with backup contacts and simulated emergency services.
-          </span>
-        </label>
-      </section>
-
-      <section className="stack">
-        <label className="label" htmlFor="note">
+      </div>
+      <div className="fgroup">
+        <label className="lbl" htmlFor="note">
           Note for responders (optional)
         </label>
         <textarea
           id="note"
-          className="input"
-          placeholder="e.g. allergies or medication. Synthetic data only."
+          className="field"
+          placeholder="Allergies or medication. Synthetic data only."
           value={value.emergencyNote}
           onChange={(e) => set('emergencyNote', e.target.value)}
         />
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={value.shareNoteWithResponders}
-            onChange={(e) => set('shareNoteWithResponders', e.target.checked)}
-          />
-          <span className="small">Share this note with alert recipients during an alert. Otherwise it stays private.</span>
-        </label>
-      </section>
+      </div>
+      <div className="glass card card-list">
+        <ToggleRow
+          label="Share my last-known location with backup contacts and simulated emergency services during an alert"
+          checked={value.shareLocationWithResponders}
+          onChange={(v) => set('shareLocationWithResponders', v)}
+        />
+        <ToggleRow
+          label="Share my note with alert recipients during an alert"
+          checked={value.shareNoteWithResponders}
+          onChange={(v) => set('shareNoteWithResponders', v)}
+        />
+      </div>
     </>
   );
 }

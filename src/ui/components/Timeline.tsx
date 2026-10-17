@@ -13,21 +13,26 @@ const SOURCE_LABEL: Record<TimelineEntry['source'], string> = {
   system: 'System',
 };
 
+/** Vertical timeline. The newest entry gets the accent dot. */
 export function Timeline({ entries }: { entries: TimelineEntry[] }) {
   return (
-    <div className="timeline">
-      {entries.map((e) => (
-        <div key={e.id} className="tl">
-          <span className="time">{fmtTime(e.at)}</span>
-          <div className="stack" style={{ gap: 4 }}>
-            <span>{e.text}</span>
-            <span className="row" style={{ gap: 6 }}>
-              <span className="tiny">{SOURCE_LABEL[e.source]}</span>
+    <ol style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+      {entries.map((e, i) => (
+        <li key={e.id} className={`tl ${i === entries.length - 1 ? 'latest' : ''}`}>
+          <span className="t-cap num tl-time">{fmtTime(e.at)}</span>
+          <span className="tl-rail" aria-hidden="true">
+            <span className="tl-dot" />
+            <span className="tl-line" />
+          </span>
+          <span className="tl-body">
+            <span className="t-body">{e.text}</span>
+            <span className="inline">
+              <span className="t-cap">{SOURCE_LABEL[e.source]}</span>
               {e.simulated && <SimulatedTag />}
             </span>
-          </div>
-        </div>
+          </span>
+        </li>
       ))}
-    </div>
+    </ol>
   );
 }

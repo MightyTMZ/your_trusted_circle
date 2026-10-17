@@ -1,14 +1,25 @@
 import { useState } from 'react';
-import { HOST_RECIPIENT_PREFIX, acknowledge, repeatAlert, resolve } from '../../domain/incident';
+import { HOST_RECIPIENT_PREFIX, acknowledge, nextDeadline, repeatAlert, resolve } from '../../domain/incident';
 import { freshness } from '../../domain/location';
 import { latestPayloadFor } from '../../domain/transport';
-import type { ResolutionOutcome } from '../../domain/types';
+import type { Incident, ResolutionOutcome } from '../../domain/types';
 import { COPY } from '../copy';
 import { useApp, useNow } from '../context';
-import { fmtTime } from '../format';
+import { fmtCountdown, fmtTime } from '../format';
+import { OptionList, ScreenHeader, initials } from '../components/Controls';
 import { EscalationLadder } from '../components/EscalationLadder';
+import { ArcGauge } from '../components/Gauges';
+import { Icon } from '../components/Icon';
 import { LocationStamp } from '../components/LocationStamp';
 import { SimulatedTag } from '../components/SimulatedTag';
+
+const hm = (t: number) => fmtTime(t).slice(0, 5);
+
+function nextStepName(incident: Incident): string {
+  const step = incident.steps[incident.currentStep + 1];
+  if (!step) return '';
+  return step.level === 'backup' ? 'Backup contacts' : step.level === 'host' ? 'Session host' : COPY.emergencySimulated;
+}
 
 export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
   const { state, me, meRecipient, store, go } = useApp();
@@ -26,137 +37,186 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
   if (!incident || !payload) {
     return (
       <div className="screen">
-        <button className="btn btn-ghost back" onClick={back}>
-          Back
-        </button>
-        <p className="lead">Nothing about this alert has been sent to you.</p>
+        <div className="narrow">
+          <ScreenHeader title="Alert" onBack={back} />
+          <p className="t-lead">Nothing about this alert has been sent to you.</p>
+        </div>
       </div>
     );
   }
 
   const staleAfter = state.session?.config.locationStaleAfterSec ?? 90;
   const callReached = incident.steps.some((s) => s.level === 'emergency_simulated' && s.notifiedAt !== undefined);
+  const open = incident.status === 'open';
+  const deadline = nextDeadline(incident);
+  const lastNotified = incident.steps[incident.currentStep]?.notifiedAt ?? incident.openedAt;
+  const title =
+    payload.trigger === 'help_requested' ? `${payload.participantName} asked for help` : `${COPY.movementChanged}: ${payload.participantName}`;
+
+  const gauge = open
+    ? deadline !== undefined
+      ? {
+          progress: (now - lastNotified) / (deadline - lastNotified),
+          label: 'Next escalation',
+          value: fmtCountdown(deadline - now),
+          sub: nextStepName(incident),
+          start: hm(lastNotified),
+          end: hm(deadline),
+          aria: `Next escalation to ${nextStepName(incident)} in ${fmtCountdown(deadline - now)}, at ${fmtTime(deadline)}`,
+        }
+      : { progress: 1, label: 'Escalation', value: 'All alerted', sub: '', start: '', end: '', aria: 'Every escalation step has been alerted.' }
+    : {
+        progress: 1,
+        label: 'Escalation',
+        value: 'Stopped',
+        sub: incident.acknowledged ? `Acknowledged ${fmtTime(incident.acknowledged.at)}` : '',
+        start: '',
+        end: '',
+        aria: 'Escalation stopped by acknowledgment.',
+      };
 
   const doRepeat = () => {
     store.dispatch((d, t) => repeatAlert(d, incident.id, t));
-    setFlash('Alert repeated. Escalation deadline unchanged.');
+    setFlash(COPY.repeatAlertSub);
   };
 
   return (
     <div className="screen">
-      <button className="btn btn-ghost back" onClick={back}>
-        Back
-      </button>
+      <ScreenHeader title="Alert" onBack={back} />
+      <div className="cols">
+        <div className="col">
+          <section className="glass card rise" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="header">
+              <span className={`av num ${open ? 'on-accent' : 'glass-2'}`}>{initials(payload.participantName)}</span>
+              <span className="stack grow">
+                <h2 className="t-card">{title}</h2>
+                <span className="t-sub">{open ? 'Unacknowledged' : incident.status === 'acknowledged' ? 'Acknowledged' : 'Resolved'}</span>
+              </span>
+            </div>
+            <ArcGauge
+              progress={gauge.progress}
+              label={gauge.label}
+              value={gauge.value}
+              sub={gauge.sub}
+              startLabel={gauge.start}
+              endLabel={gauge.end}
+              stopped={!open}
+              ariaLabel={gauge.aria}
+              role="timer"
+            />
+            <p className="t-sub center">{payload.message}</p>
+          </section>
 
-      <div className="stack">
-        <div className="row" style={{ gap: 8 }}>
-          <span className="eyebrow">Alert</span>
-          <span className={`tag ${incident.status === 'open' ? 'tag-attention' : ''}`}>
-            {incident.status === 'open' ? 'Unacknowledged' : incident.status === 'acknowledged' ? 'Acknowledged' : 'Resolved'}
-          </span>
-        </div>
-        <h1 className="title">
-          {payload.trigger === 'help_requested' ? `${payload.participantName} asked for help` : `${COPY.movementChanged}: ${payload.participantName}`}
-        </h1>
-        <p className="lead">{payload.message}</p>
-      </div>
-
-      <section className="stack">
-        <span className="label">Last-known location</span>
-        {payload.lastKnownLocation ? (
-          <LocationStamp
-            reading={payload.lastKnownLocation}
-            fresh={freshness(payload.lastKnownLocation, { isLatest: true, sourceOnline: true }, now, staleAfter)}
-            now={now}
-          />
-        ) : (
-          <p className="small">{payload.locationWithheldReason ?? 'Unknown.'}</p>
-        )}
-        <span className="tiny">This is where their phone last reported, as sent to you. It may not be where they are now.</span>
-      </section>
-
-      {payload.emergencyNote && (
-        <section className="stack">
-          <span className="label">Note they chose to share</span>
-          <p className="small">"{payload.emergencyNote}"</p>
-        </section>
-      )}
-
-      <section className="stack">
-        <span className="label">Escalation</span>
-        <EscalationLadder incident={incident} now={now} showNames={isHost} />
-      </section>
-
-      {/* Step 1: acknowledge. Always its own action. */}
-      <section className="stack">
-        {incident.status === 'open' ? (
-          <>
-            <button
-              className="btn btn-attention btn-block btn-stacked"
-              onClick={() => store.dispatch((d, t) => acknowledge(d, incident.id, recipientId, t))}
-            >
-              {COPY.acknowledge}
-              <span className="btn-sub">{COPY.acknowledgeSub}</span>
-            </button>
-            <p className="tiny">{COPY.acknowledgeCaveat}</p>
-            {isHost && (
-              <>
-                <button className="btn btn-secondary btn-block" onClick={doRepeat}>
-                  {COPY.repeatAlert}
-                </button>
-                <p className="tiny">{flash ?? COPY.repeatAlertSub}</p>
-              </>
-            )}
-          </>
-        ) : (
-          <p className="small">{COPY.acknowledgedNotice(incident.acknowledged!.name, fmtTime(incident.acknowledged!.at))}</p>
-        )}
-      </section>
-
-      <hr className="divider" />
-
-      {/* Step 2: resolve. Separate, and only after acknowledgment. */}
-      <section className="stack">
-        <h2 className="h2">{COPY.resolve}</h2>
-        {incident.status === 'resolved' ? (
-          <p className="small">
-            Resolved by {incident.resolution!.name} at {fmtTime(incident.resolution!.at)}: {COPY.outcomes[incident.resolution!.outcome]}.
-            {incident.resolution!.note && ` "${incident.resolution!.note}"`}
-          </p>
-        ) : (
-          <>
-            <p className="small">{incident.status === 'open' ? COPY.resolveLocked : COPY.resolveIntro}</p>
-            <fieldset disabled={incident.status !== 'acknowledged'} style={{ border: 0, padding: 0, margin: 0 }} className="stack">
-              <div className="choice-list" role="radiogroup">
-                {(Object.keys(COPY.outcomes) as ResolutionOutcome[]).map((o) => (
-                  <label key={o} className="choice" data-checked={outcome === o}>
-                    <input type="radio" name="outcome" checked={outcome === o} onChange={() => setOutcome(o)} />
-                    <span className="t">{COPY.outcomes[o]}</span>
-                  </label>
-                ))}
-              </div>
-              <textarea className="input" placeholder="What happened? (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
-              <button
-                className="btn btn-secondary btn-block"
-                disabled={!outcome}
-                onClick={() => outcome && store.dispatch((d, t) => resolve(d, incident.id, recipientId, outcome, note, t))}
-              >
-                {COPY.resolve}
+          {open ? (
+            <div className="col rise rise-2">
+              <button type="button" className="btn pbtn on-accent" onClick={() => store.dispatch((d, t) => acknowledge(d, incident.id, recipientId, t))}>
+                <Icon name="check" />
+                {COPY.acknowledge}
               </button>
-            </fieldset>
-          </>
-        )}
-      </section>
+              <p className="t-sub center">{COPY.acknowledgeCaveat}</p>
+              <div className="inline" style={{ justifyContent: 'center' }}>
+                {isHost && (
+                  <button type="button" className="btn chip glass" onClick={doRepeat}>
+                    <Icon name="repeat" />
+                    {COPY.repeatAlert}
+                  </button>
+                )}
+                <button type="button" className="btn chip glass" onClick={() => go({ name: 'card', id: incident.id })}>
+                  <Icon name="file" />
+                  Incident card
+                </button>
+              </div>
+              {flash && (
+                <p className="t-cap center" role="status">
+                  {flash}
+                </p>
+              )}
+            </div>
+          ) : (
+            <section className="glass card col rise rise-2" style={{ gap: 16 }}>
+              <p className="t-body num" role="status">
+                {COPY.acknowledgedNotice(incident.acknowledged!.name, fmtTime(incident.acknowledged!.at))}
+              </p>
+              {incident.status === 'resolved' ? (
+                <div className="header">
+                  <span className="av glass-2">
+                    <Icon name="circleCheck" />
+                  </span>
+                  <p className="t-body num grow">
+                    Resolved by {incident.resolution!.name} at {fmtTime(incident.resolution!.at)}: {COPY.outcomes[incident.resolution!.outcome]}.
+                    {incident.resolution!.note && ` "${incident.resolution!.note}"`}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <OptionList<ResolutionOutcome>
+                    label={COPY.resolve}
+                    options={(Object.keys(COPY.outcomes) as ResolutionOutcome[]).map((o) => ({ value: o, label: COPY.outcomes[o] }))}
+                    value={outcome}
+                    onChange={setOutcome}
+                  />
+                  <label htmlFor="resnote" className="sr-only">
+                    What happened (optional)
+                  </label>
+                  <textarea id="resnote" className="field" placeholder="What happened? (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+                  <button
+                    type="button"
+                    className="btn pbtn on-accent"
+                    disabled={!outcome}
+                    onClick={() => outcome && store.dispatch((d, t) => resolve(d, incident.id, recipientId, outcome, note, t))}
+                  >
+                    {COPY.resolve}
+                  </button>
+                </>
+              )}
+              <div className="inline" style={{ justifyContent: 'center' }}>
+                <button type="button" className="btn chip glass" onClick={() => go({ name: 'card', id: incident.id })}>
+                  <Icon name="file" />
+                  Incident card
+                </button>
+              </div>
+            </section>
+          )}
+          {callReached && (
+            <button type="button" className="btn pbtn glass" onClick={() => go({ name: 'call', id: incident.id })}>
+              Simulated emergency call <SimulatedTag />
+            </button>
+          )}
+        </div>
 
-      <div className="screen-footer">
-        <button className="btn btn-secondary btn-block" onClick={() => go({ name: 'card', id: incident.id })}>
-          Incident Card
-        </button>
-        {callReached && (
-          <button className="btn btn-secondary btn-block" onClick={() => go({ name: 'call', id: incident.id })}>
-            Simulated emergency call <SimulatedTag />
-          </button>
-        )}
+        <div className="col">
+          <section className="glass card card-list rise rise-3" aria-labelledby="esc-h">
+            <div className="card-head">
+              <h2 className="t-card" id="esc-h">
+                Escalation
+              </h2>
+            </div>
+            <EscalationLadder incident={incident} now={now} showNames={isHost} />
+          </section>
+
+          <section className="glass card rise rise-4" aria-labelledby="loc-h" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <h2 className="t-card" id="loc-h">
+              Last-known location
+            </h2>
+            {payload.lastKnownLocation ? (
+              <LocationStamp
+                reading={payload.lastKnownLocation}
+                fresh={freshness(payload.lastKnownLocation, { isLatest: true, sourceOnline: true }, now, staleAfter)}
+                now={now}
+              />
+            ) : (
+              <p className="t-sub">{payload.locationWithheldReason ?? 'Unknown.'}</p>
+            )}
+            <span className="t-cap">Where their phone last reported, as sent to you. It may not be where they are now.</span>
+          </section>
+
+          {payload.emergencyNote && (
+            <section className="glass card stack rise rise-4" style={{ gap: 8 }}>
+              <h2 className="t-card">Note they chose to share</h2>
+              <p className="t-body">"{payload.emergencyNote}"</p>
+            </section>
+          )}
+        </div>
       </div>
     </div>
   );

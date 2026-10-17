@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { COPY } from '../copy';
 import { useApp } from '../context';
+import { Icon } from '../components/Icon';
 
 export function StartScreen() {
   const { go, state } = useApp();
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
-
+  const ready = code.trim().length === 6;
   const join = () => {
     const c = code.trim().toUpperCase();
     if (!state.session || state.session.code !== c || state.session.status === 'ended') {
@@ -15,46 +16,59 @@ export function StartScreen() {
     }
     go({ name: 'join', code: c });
   };
-
   return (
     <div className="screen">
-      <div className="stack" style={{ marginTop: 32 }}>
-        <span className="eyebrow">{COPY.appTagline}</span>
-        <h1 className="title">A buddy system for nights out that can ask for help when you can't.</h1>
-        <p className="lead">One sober host keeps watch. Everyone else joins on their own phone and chooses what they share.</p>
-      </div>
-
-      <div className="stack-lg">
-        <button className="btn btn-primary btn-block btn-large" onClick={() => go({ name: 'host-setup' })}>
-          Host a session
-        </button>
-        <div className="stack">
-          <label className="label" htmlFor="code">
-            Or join with a code
-          </label>
-          <div className="row">
+      <div className="narrow">
+        <div className="spread">
+          <div className="logo glass" role="img" aria-label="YTC" style={{ width: 56, height: 56, fontSize: 12 }}>
+            YTC
+          </div>
+          <span className="inline">
+            <button type="button" className="btn chip glass" onClick={() => go({ name: 'signin' })}>
+              Sign in
+            </button>
+            <button type="button" className="btn ibtn glass" aria-label="Settings" onClick={() => go({ name: 'settings' })}>
+              <Icon name="settings" />
+            </button>
+          </span>
+        </div>
+        <div className="stack rise rise-2" style={{ gap: 12 }}>
+          <span className="t-sub">{COPY.appTagline}</span>
+          <h1 className="t-display">A buddy system for nights out that can ask for help when you can't.</h1>
+          <p className="t-lead">One sober host keeps watch. Everyone else joins on their own phone and chooses what they share.</p>
+        </div>
+        <div className="screen-footer rise rise-3">
+          <button type="button" className="btn pbtn on-accent" onClick={() => go({ name: 'host-setup' })}>
+            Host a session
+          </button>
+          <div className="glass inputbar">
+            <label htmlFor="code" className="sr-only">
+              Join code
+            </label>
             <input
               id="code"
-              className="input code-input"
+              className="field field-bare code-input num"
               maxLength={6}
+              autoComplete="off"
               value={code}
-              placeholder="ABC123"
+              placeholder="Join code"
               onChange={(e) => {
-                setCode(e.target.value);
+                setCode(e.target.value.toUpperCase());
                 setError(null);
               }}
-              onKeyDown={(e) => e.key === 'Enter' && join()}
+              onKeyDown={(e) => e.key === 'Enter' && ready && join()}
             />
-            <button className="btn btn-secondary" onClick={join} disabled={code.trim().length < 6}>
-              Join
+            <button type="button" className={`btn ibtn ${ready ? 'on-accent' : 'glass-2'}`} aria-label="Join session" disabled={!ready} onClick={join}>
+              <Icon name="arrowRight" />
             </button>
           </div>
-          {error && <p className="error">{error}</p>}
+          {error && (
+            <p className="error" role="alert">
+              <Icon name="alert" />
+              {error}
+            </p>
+          )}
         </div>
-      </div>
-
-      <div className="screen-footer">
-        <p className="tiny">{COPY.prototypeNotice}</p>
       </div>
     </div>
   );

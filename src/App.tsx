@@ -1,6 +1,9 @@
 import { useEffect } from 'react';
 import { AppProvider, store, useApp } from './ui/context';
 import { ActiveSessionBar } from './ui/components/ActiveSessionBar';
+import { AppNav, useNavItems } from './ui/components/AppNav';
+import { SettingsScreen } from './ui/screens/SettingsScreen';
+import { SignInScreen } from './ui/screens/SignInScreen';
 import { DemoControls } from './ui/DemoControls';
 import { AlertEscalationScreen } from './ui/screens/AlertEscalationScreen';
 import { HostSetupScreen } from './ui/screens/HostSetupScreen';
@@ -17,6 +20,8 @@ import { saveViewer } from './domain/store';
 import type { Route } from './ui/context';
 
 function readInitialRoute(): Route {
+  // A failed sign-in redirects back with #login_error=…; the sign-in screen reads it.
+  if (window.location.hash.includes('login_error=')) return { name: 'signin' };
   const m = window.location.hash.match(/join=([A-Za-z0-9]{6})/);
   if (!m) return { name: 'home' };
   // A join link always starts a fresh identity in this tab.
@@ -33,6 +38,7 @@ function CurrentScreen() {
 
   if (route.name === 'host-setup') return <HostSetupScreen />;
   if (route.name === 'join' && !me) return <JoinSessionScreen code={route.code} />;
+  if (route.name === 'signin') return <SignInScreen />;
 
   if (meRecipient) {
     if (route.name === 'alert') return <AlertEscalationScreen incidentId={route.id} />;
@@ -41,10 +47,12 @@ function CurrentScreen() {
     return <RecipientInboxScreen />;
   }
 
-  if (!session || !me || me.sessionId !== session.id) return <StartScreen />;
+  if (!session || !me || me.sessionId !== session.id) return route.name === 'settings' ? <SettingsScreen /> : <StartScreen />;
 
+  // A pending check-in takes over every screen, settings included.
   const pending = state.checkIns.find((c) => c.participantId === me.id && c.status === 'pending');
   if (pending && me.status === 'active' && me.device.online) return <ParticipantCheckInScreen checkIn={pending} />;
+  if (route.name === 'settings') return <SettingsScreen />;
 
   const isHost = me.id === session.hostId;
   switch (route.name) {
@@ -73,14 +81,24 @@ export function App() {
   return (
     <AppProvider initialRoute={initialRoute}>
       <div className="stage">
-        <main className="device">
-          <div className="device-scroll">
-            <ActiveSessionBar />
-            <CurrentScreen />
-          </div>
-        </main>
+        <Shell />
         <DemoControls />
       </div>
     </AppProvider>
+  );
+}
+
+/** Rail on tablet and desktop, floating pill on phones, session bar on top. */
+function Shell() {
+  const withNav = useNavItems() !== null;
+  return (
+    <div className={`app ${withNav ? 'with-nav' : ''}`}>
+      <AppNav variant="rail" />
+      <main className="app-main">
+        <ActiveSessionBar />
+        <CurrentScreen />
+      </main>
+      <AppNav variant="bottom" />
+    </div>
   );
 }
