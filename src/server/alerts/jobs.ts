@@ -1,16 +1,19 @@
 /**
  * Alert orchestration: one notification job per recipient per escalation
- * step, dispatched by the scheduler with retries.
+ * step (plus one per repeat), dispatched by the scheduler with retries.
  *
- * - Exactly once: jobs are keyed `${incident}:${step}:${recipient}` with a
- *   unique index, and a worker must claim a job before sending it.
+ * - Exactly once: jobs are keyed `${incident}:${step}:${recipient}[:r${n}]`
+ *   with a unique index, and a worker must claim a job before sending it.
+ * - Each job freezes what it tells its recipient (AlertPayload). That frozen
+ *   copy is all a recipient may see (CLAUDE.md).
  * - Failures retry with backoff, then give up. A failed delivery never moves
  *   or cancels the escalation deadline (CLAUDE.md).
  * - Once an incident is acknowledged, unsent jobs are cancelled.
  */
 import type { Deps } from "../context.js";
 import { newId } from "../ids.js";
-import type { IncidentDoc, NotificationJobDoc, Recipient } from "../types.js";
+import { recorder } from "../timeline/recorder.js";
+import type { AlertPayload, IncidentDoc, NotificationJobDoc, Recipient, SessionDoc } from "../types.js";
 import type { DeliveryResult } from "./transport.js";
 
 export function recipientKey(r: Recipient): string {
@@ -19,21 +22,46 @@ export function recipientKey(r: Recipient): string {
   return "emergency_simulated";
 }
 
-/** Creates the step's jobs. Safe to call twice: duplicates are refused by dedupeKey. */
-export async function enqueueStep(deps: Deps, incident: IncidentDoc, index: number, at: Date, subjectUserId: string): Promise<number> {
+export function buildPayload(session: SessionDoc, incident: IncidentDoc): AlertPayload {
+  const subject = session.participants.find((p) => p.participantId === incident.participantId);
+  const about = subject?.displayName ?? "Someone in your group";
+  const what = incident.trigger === "checkin_missed" ? "did not answer a private check-in" : "asked for help";
+  return {
+    about,
+    sessionName: session.name,
+    trigger: incident.trigger,
+    openedAt: incident.openedAt,
+    message: `${about} ${what} (${session.name}, ${incident.openedAt.toISOString()}). Please check on them.`,
+    factEventIds: [incident.triggerEventId, incident.openedEventId].filter((x): x is string => x !== null),
+  };
+}
+
+/** Creates the step's jobs. Safe to call twice: duplicates are refused by dedupeKey. Returns the new jobs. */
+export async function enqueueStep(
+  deps: Deps,
+  session: SessionDoc,
+  incident: IncidentDoc,
+  index: number,
+  at: Date,
+  repeat: number,
+): Promise<NotificationJobDoc[]> {
   const step = incident.steps[index];
-  if (!step) return 0;
-  let created = 0;
+  if (!step) return [];
+  const subject = session.participants.find((p) => p.participantId === incident.participantId);
+  const payload = buildPayload(session, incident);
+  const created: NotificationJobDoc[] = [];
   for (const recipient of step.recipients) {
     const job: NotificationJobDoc = {
       _id: newId("ntf"),
-      dedupeKey: `${incident._id}:${index}:${recipientKey(recipient)}`,
+      dedupeKey: `${incident._id}:${index}:${recipientKey(recipient)}${repeat > 0 ? `:r${repeat}` : ""}`,
       incidentId: incident._id,
       sessionId: incident.sessionId,
       stepIndex: index,
       level: step.level,
+      repeat,
       recipient,
-      subjectUserId,
+      payload,
+      subjectUserId: subject?.userId ?? "",
       status: "queued",
       attempts: 0,
       nextAttemptAt: at,
@@ -41,9 +69,10 @@ export async function enqueueStep(deps: Deps, incident: IncidentDoc, index: numb
       results: [],
       createdAt: at,
       deliveredAt: null,
+      viewedAt: null,
       acknowledgedAt: null,
     };
-    if (await deps.store.insertJobIfAbsent(job)) created++;
+    if (await deps.store.insertJobIfAbsent(job)) created.push(job);
   }
   return created;
 }
@@ -59,11 +88,13 @@ export async function dispatchDue(deps: Deps): Promise<DispatchSummary> {
   const { store, config } = deps;
   const summary: DispatchSummary = { delivered: 0, retrying: 0, failed: 0, cancelled: 0 };
   const now = deps.now();
+  const rec = recorder(deps);
   for (const job of await store.listDueJobs(now, 100)) {
     if (!(await store.claimJob(job._id, now, new Date(now.getTime() + config.alertLeaseMs)))) continue;
 
     const incident = await store.getIncident(job.incidentId);
-    if (!incident || incident.status !== "open") {
+    const session = await store.getSession(job.sessionId);
+    if (!incident || !session || incident.status !== "open") {
       await store.updateJob(job._id, { status: "cancelled", leaseUntil: null });
       summary.cancelled++;
       continue;
@@ -79,6 +110,7 @@ export async function dispatchDue(deps: Deps): Promise<DispatchSummary> {
 
     if (result.ok) {
       await store.updateJob(job._id, { status: "delivered", attempts: attempt, deliveredAt: now, leaseUntil: null }, { at: now, ok: true });
+      await rec.notificationDelivered(session, job);
       await store.appendIncidentLog(incident._id, {
         at: now,
         kind: "delivery",
@@ -99,6 +131,7 @@ export async function dispatchDue(deps: Deps): Promise<DispatchSummary> {
         : { status: "queued", attempts: attempt, nextAttemptAt: new Date(now.getTime() + delay), leaseUntil: null },
       { at: now, ok: false, reason: result.reason },
     );
+    await rec.notificationFailed(session, job, !giveUp);
     await store.appendIncidentLog(incident._id, {
       at: now,
       kind: "delivery",

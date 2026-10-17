@@ -1,14 +1,14 @@
 /**
- * OAuth sign-in with Google, GitHub, Apple and Microsoft (Entra ID, personal
- * and work accounts). Each provider turns an authorization code into a stable
- * identity (provider + subject). Access and refresh tokens are used once and
- * never stored.
+ * OAuth sign-in with Google, Apple and Microsoft (Entra ID, personal and work
+ * accounts). GitHub sign-in is deliberately not offered. Each provider turns
+ * an authorization code into a stable identity (provider + subject). Access
+ * and refresh tokens are used once and never stored.
  *
  * ID tokens arrive straight from the provider's token endpoint over TLS, so
  * per OpenID Connect Core 3.1.3.7 the signature check may be skipped; issuer,
  * audience and expiry are still checked here.
  */
-import { Apple, GitHub, Google, MicrosoftEntraId, decodeIdToken } from "arctic";
+import { Apple, Google, MicrosoftEntraId, decodeIdToken } from "arctic";
 import type { ServerConfig } from "../config.js";
 import type { ProviderId } from "../types.js";
 
@@ -62,7 +62,7 @@ function pemToPkcs8(pem: string): Uint8Array {
 export function createProviders(config: ServerConfig, now: () => Date = () => new Date()): ProviderRegistry {
   const callback = (id: ProviderId) => `${config.apiOrigin}/api/auth/${id}/callback`;
   const registry: ProviderRegistry = {};
-  const { google, github, apple, microsoft } = config.providers;
+  const { google, apple, microsoft } = config.providers;
 
   if (google) {
     const client = new Google(google.clientId, google.clientSecret, callback("google"));
@@ -134,36 +134,6 @@ export function createProviders(config: ServerConfig, now: () => Date = () => ne
           // Missing or malformed: the name is optional.
         }
         return { subject: c.sub as string, email: str(c.email), emailVerified: truthy(c.email_verified), displayName };
-      },
-    };
-  }
-
-  if (github) {
-    const client = new GitHub(github.clientId, github.clientSecret, callback("github"));
-    const api = async (path: string, token: string) => {
-      const res = await fetch(`https://api.github.com${path}`, {
-        headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "YTC" },
-      });
-      if (!res.ok) throw new IdentityError(`GitHub ${path} returned ${res.status}`);
-      return res.json() as Promise<unknown>;
-    };
-    registry.github = {
-      id: "github",
-      formPost: false,
-      // GitHub OAuth apps do not support PKCE; state still protects the flow.
-      authorizationUrl: (state) => client.createAuthorizationURL(state, ["read:user", "user:email"]),
-      async identify({ code }) {
-        const token = (await client.validateAuthorizationCode(code)).accessToken();
-        const user = (await api("/user", token)) as { id?: number; login?: string; name?: string };
-        if (typeof user.id !== "number") throw new IdentityError("GitHub returned no user id");
-        const emails = (await api("/user/emails", token)) as { email: string; primary: boolean; verified: boolean }[];
-        const primary = Array.isArray(emails) ? emails.find((e) => e.primary) : undefined;
-        return {
-          subject: String(user.id),
-          email: primary?.email ?? null,
-          emailVerified: primary?.verified ?? false,
-          displayName: str(user.name) ?? str(user.login),
-        };
       },
     };
   }

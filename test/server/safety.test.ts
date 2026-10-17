@@ -29,7 +29,7 @@ test("closed client: a missed check-in alerts the host exactly once, and the hos
   const sam = await signIn(app, "sam2");
   const joined = await sam.call("POST", "/api/sessions/join", {
     code,
-    consent: CONSENT,
+    consent: CONSENT, consentTextVersion: "consent-v1",
     backupContacts: [{ name: "Priya", relation: "Sister" }],
   });
   assert.equal(joined.status, 201);
@@ -93,7 +93,7 @@ test("closed client: a missed check-in alerts the host exactly once, and the hos
 test("unacknowledged alerts escalate one step per deadline, ending in a simulated emergency step", async () => {
   const { app, store, advance, tick, maya, session, code } = await group();
   const jo = await signIn(app, "jo");
-  await jo.call("POST", "/api/sessions/join", { code, consent: CONSENT, backupContacts: [{ name: "Priya", relation: "Sister" }] });
+  await jo.call("POST", "/api/sessions/join", { code, consent: CONSENT, consentTextVersion: "consent-v1", backupContacts: [{ name: "Priya", relation: "Sister" }] });
   await jo.call("POST", `/api/sessions/${session.id}/help`);
   await tick();
   const incidentId = (await alertsFor(maya))[0].incidentId as string;
@@ -179,7 +179,7 @@ test("the host's own missed check-in goes to their backup contacts, not to thems
   const res = await maya.call("POST", "/api/sessions", {
     name: "Friday",
     durationMin: 240,
-    consent: CONSENT,
+    consent: CONSENT, consentTextVersion: "consent-v1",
     backupContacts: [{ name: "Chris", relation: "Brother" }],
   });
   const id = res.body.session.id as string;
