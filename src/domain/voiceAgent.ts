@@ -159,7 +159,7 @@ export function startSimulatedCall(state: AppState, incident: Incident, at: Mill
     call,
     'agent',
     {
-      text: `This is an automated assistant from the YPC buddy app, not a person. This is a simulated call. I'm relaying an unacknowledged alert about ${name}. I can only share what is in the incident record.`,
+      text: `This is an automated assistant from the YTC buddy app, not a person. This is a simulated call. I'm relaying an unacknowledged alert about ${name}. I can only share what is in the incident record.`,
       grounds: ['payload.participantName'],
     },
     at,

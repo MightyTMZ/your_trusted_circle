@@ -10,7 +10,7 @@ import { Timeline } from '../components/Timeline';
 
 function cardAsText(card: IncidentCard): string {
   const lines = [
-    `YPC Incident Card · ${card.incidentId}`,
+    `YTC Incident Card · ${card.incidentId}`,
     `Participant: ${card.participantName}`,
     `Status: ${card.status}`,
     `Opened: ${fmtTime(card.openedAt)}`,

@@ -1,7 +1,7 @@
 {
   "name": "your_trusted_companion",
   "version": "1.0.0",
-  "description": "YPC — opt-in buddy system prototype (Project KAZE, HTV XI). Simulation only.",
+  "description": "YTC — opt-in buddy system prototype (Project KAZE, HTV XI). Simulation only.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

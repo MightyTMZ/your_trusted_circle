@@ -5,8 +5,8 @@
  * - Anything involving emergency services says "simulated".
  */
 export const COPY = {
-  appName: 'YPC',
-  appTagline: 'Your Personal Companion',
+  appName: 'YTC',
+  appTagline: 'Your Trusted Companion',
   prototypeNotice: 'Prototype. Emergency services are simulated. Nothing in this app can place a real call or send a real message.',
 
   movementChanged: 'Movement changed',
