@@ -1,20 +1,19 @@
 {
   "compilerOptions": {
-    "target": "ES2023",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "lib": ["ES2023"],
-    "types": ["node"],
-    "rootDir": ".",
-    "outDir": "dist",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
     "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "forceConsistentCasingInFileNames": true,
-    "declaration": true,
-    "sourceMap": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "noEmit": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+  "include": ["src", "tests", "vite.config.ts"]
 }
