@@ -13,11 +13,13 @@ import {
   checkEvent,
   checkTypedFields,
   renderSummary,
+  specFor,
   type EventType,
   type PayloadOf,
   type TimelineEvent,
 } from "./schema/catalog.js";
 import type { TimelineSink } from "./sinks.js";
+import { ConsentLedger } from "./consent.js";
 
 export interface EventDraft<T extends EventType> {
   type: T;
@@ -60,6 +62,7 @@ export class Timeline {
   private readonly log: TimelineEvent[] = [];
   private readonly byId = new Map<string, TimelineEvent>();
   private readonly incidents = new Set<string>();
+  private readonly consent = new ConsentLedger();
 
   constructor(opts: TimelineOptions) {
     this.sessionId = opts.sessionId;
@@ -196,12 +199,21 @@ export class Timeline {
     if (event.type === "incident.opened" && !this.byId.has(event.data.trigger_event_id)) {
       issues.push({ path: "data.trigger_event_id", message: "is not an earlier event" });
     }
+
+    const required = specFor(event.type).requiresConsent;
+    if (required && event.participant_id && !this.consent.hasAny(event.participant_id, required)) {
+      issues.push({
+        path: "participant_id",
+        message: `${event.participant_id} has not granted ${required.join(" or ")}; ${event.type} cannot be recorded`,
+      });
+    }
     return issues;
   }
 
   private commit(event: TimelineEvent): void {
     this.log.push(event);
     this.byId.set(event.event_id, event);
+    this.consent.apply(event);
     if (event.type === "incident.opened" && event.incident_id) this.incidents.add(event.incident_id);
   }
 }

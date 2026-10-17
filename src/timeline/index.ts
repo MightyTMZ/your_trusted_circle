@@ -6,3 +6,4 @@ export { Timeline, TimelineError, type EventDraft, type TimelineOptions } from "
 export { JsonlFileSink, MemorySink, type TimelineSink } from "./sinks.js";
 export { parseJsonl, readTimelineFile, timelineFromJsonl, toJsonl, type JsonlLineError } from "./jsonl.js";
 export * from "./briefing.js";
+export { ConsentLedger } from "./consent.js";

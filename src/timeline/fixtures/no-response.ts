@@ -104,9 +104,10 @@ export function buildNoResponseTimeline() {
     data: {
       window_start: toIso(min(2)),
       window_end: toIso(min(12)),
+      window_ms: 60_000,
       sampling_rate_hz: 50,
       device_kind: "synthetic",
-      features: [{ name: "movement_rms_60s", unit: "m/s^2", mean: 1.1, std_dev: 0.35, sample_count: 30_000 }],
+      features: [{ name: "movement_rms_60s", unit: "m/s^2", mean: 1.1, std_dev: 0.35, window_count: 10 }],
     },
   });
 
@@ -124,6 +125,8 @@ export function buildNoResponseTimeline() {
       accuracy_m: 15,
       fix_at: toIso(min(40)),
       source: "synthetic",
+      speed_m_s: 0,
+      heading_deg: null,
       place_label: "Synthetic Venue A, rear patio",
     },
   });

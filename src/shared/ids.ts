@@ -14,6 +14,7 @@ export const ID_PREFIXES = {
   notification: "ntf",
   escalation: "esc",
   call: "call",
+  recording: "rec",
 } as const;
 
 export type IdPrefix = (typeof ID_PREFIXES)[keyof typeof ID_PREFIXES];

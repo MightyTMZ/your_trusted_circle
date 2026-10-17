@@ -17,6 +17,7 @@ import {
   actorSchema,
   provenanceSchema,
   type Actor,
+  type ConsentScope,
   type Provenance,
   type Sensitivity,
 } from "./envelope.js";
@@ -39,6 +40,8 @@ export interface EventSpec<P> {
   mustBeSimulated?: boolean;
   /** Only the participant themselves may emit this (e.g. consent: the host cannot consent for others). */
   selfActorOnly?: boolean;
+  /** The participant must currently hold at least one of these scopes, or the event is refused. */
+  requiresConsent?: readonly ConsentScope[];
   /** Cross-field rules the schema cannot express. */
   refine?: (data: P) => Issue[];
   summarize: (data: P, ctx: SummaryContext) => string;
@@ -205,34 +208,78 @@ export const EVENT_CATALOG = {
 
   // ── Location ─────────────────────────────────────────────────────────
   "location.reported": defineEvent({
-    description: "A location fix from the participant's device. Always last-known, never live.",
+    description: "A location fix with device velocity. Always last-known, never live.",
     sensitivity: "location",
     incident: "optional",
     participant: "required",
+    requiresConsent: ["location.group", "location.responders"],
     payload: v.object({
       latitude: v.number({ min: -90, max: 90 }),
       longitude: v.number({ min: -180, max: 180 }),
       accuracy_m: v.number({ min: 0 }),
       fix_at: v.timestamp(),
       source: v.enum(["gnss", "network", "synthetic"] as const),
+      /** Ground speed from the OS (GNSS doppler). Distinguishes stationary, walking, in a vehicle. */
+      speed_m_s: v.nullable(v.number({ min: 0 })),
+      /** Direction of travel, degrees clockwise from true north; null when stationary or unknown. */
+      heading_deg: v.nullable(v.number({ min: 0, max: 360 })),
       altitude_m: v.optional(v.number()),
       place_label: v.optional(shortText(120)),
     }),
     summarize: (d, ctx) =>
       // Coordinates are printed exactly; rounding would make the summary disagree with the data.
       `Location fix for ${who(ctx)} at ${d.fix_at}: ${d.latitude}, ${d.longitude} ` +
-      `(±${num(d.accuracy_m)} m, ${d.source}${d.place_label ? `, "${d.place_label}"` : ""}).`,
+      `(±${num(d.accuracy_m)} m, ${d.source}${d.place_label ? `, "${d.place_label}"` : ""}); ` +
+      (d.speed_m_s === null
+        ? "speed unknown."
+        : `speed ${num(d.speed_m_s)} m/s${d.heading_deg === null ? "" : ` heading ${num(d.heading_deg)}°`}.`),
   }),
 
   // ── Sensors and detection ────────────────────────────────────────────
-  "sensor.baseline_calibrated": defineEvent({
-    description: "Personal motion baseline computed from a calibration window.",
+  "sensor.motion_window": defineEvent({
+    description:
+      "Accelerometer features for one window, derived from a raw batch (provenance.raw_ref). " +
+      "Emitted continuously so activity before and after an incident can be reconstructed.",
     sensitivity: "none",
     incident: "optional",
     participant: "required",
+    requiresConsent: ["monitoring"],
     payload: v.object({
       window_start: v.timestamp(),
       window_end: v.timestamp(),
+      sample_count: v.number({ min: 0, integer: true }),
+      expected_sample_count: v.number({ min: 0, integer: true }),
+      /** Below 1 means samples went missing: low movement may then be missing data, not stillness. */
+      coverage_ratio: v.number({ min: 0, max: 1 }),
+      /** Mean of |a| minus gravity: overall movement level. */
+      dynamic_mean_m_s2: v.number({ min: 0 }),
+      /** Variability: rhythmic activity (walking, dancing) versus steady states. */
+      dynamic_std_m_s2: v.number({ min: 0 }),
+      /** Largest single deviation: sharp jolts such as a drop or impact. */
+      dynamic_peak_m_s2: v.number({ min: 0 }),
+      /** Share of samples below still_threshold: sustained motionlessness. */
+      stillness_ratio: v.number({ min: 0, max: 1 }),
+      still_threshold_m_s2: v.number({ min: 0 }),
+      /** Mean raw vector in the device frame: orientation (upright in a pocket, flat face-up, ...). */
+      gravity_vector_m_s2: v.array(v.number(), { minLength: 3, maxLength: 3 }),
+    }),
+    summarize: (d, ctx) =>
+      `Motion window for ${who(ctx)} ${d.window_start}–${d.window_end}: movement ` +
+      `${num(d.dynamic_mean_m_s2)} ± ${num(d.dynamic_std_m_s2)} m/s^2, peak ${num(d.dynamic_peak_m_s2)} m/s^2, ` +
+      `still ${Math.round(d.stillness_ratio * 100)}% of the window; ` +
+      `${d.sample_count}/${d.expected_sample_count} samples (${Math.round(d.coverage_ratio * 100)}% coverage).`,
+  }),
+
+  "sensor.baseline_calibrated": defineEvent({
+    description: "Personal motion baseline: spread of each feature across calibration windows (listed in caused_by).",
+    sensitivity: "none",
+    incident: "optional",
+    participant: "required",
+    requiresConsent: ["monitoring"],
+    payload: v.object({
+      window_start: v.timestamp(),
+      window_end: v.timestamp(),
+      window_ms: ms(),
       sampling_rate_hz: v.number({ min: 0 }),
       device_kind: v.enum(["phone", "wearable", "synthetic"] as const),
       features: v.array(
@@ -241,15 +288,15 @@ export const EVENT_CATALOG = {
           unit: shortText(32),
           mean: v.number(),
           std_dev: v.number({ min: 0 }),
-          sample_count: v.number({ min: 1, integer: true }),
+          window_count: v.number({ min: 2, integer: true }),
         }),
         { minLength: 1 },
       ),
     }),
     summarize: (d, ctx) =>
       `Motion baseline calibrated for ${who(ctx)} from ${d.window_start} to ${d.window_end} ` +
-      `(${d.device_kind}, ${num(d.sampling_rate_hz)} Hz): ` +
-      d.features.map((f) => `${f.name} ${num(f.mean)} ± ${num(f.std_dev)} ${f.unit} (n=${f.sample_count})`).join("; ") +
+      `(${d.device_kind}, ${num(d.sampling_rate_hz)} Hz, ${duration(d.window_ms)} windows): ` +
+      d.features.map((f) => `${f.name} ${num(f.mean)} ± ${num(f.std_dev)} ${f.unit} (n=${f.window_count})`).join("; ") +
       ".",
   }),
 
@@ -258,6 +305,7 @@ export const EVENT_CATALOG = {
     sensitivity: "none",
     incident: "optional",
     participant: "required",
+    requiresConsent: ["monitoring"],
     payload: v.object({
       feature: shortText(),
       unit: shortText(32),
@@ -287,6 +335,7 @@ export const EVENT_CATALOG = {
     sensitivity: "none",
     incident: "optional",
     participant: "required",
+    requiresConsent: ["monitoring"],
     payload: v.object({
       last_sample_at: v.timestamp(),
       reason: v.enum(["permission_revoked", "device_disconnected", "app_backgrounded", "unknown"] as const),
@@ -300,6 +349,7 @@ export const EVENT_CATALOG = {
     sensitivity: "none",
     incident: "optional",
     participant: "required",
+    requiresConsent: ["monitoring"],
     payload: v.object({ gap_ms: ms() }),
     summarize: (d, ctx) => `Sensor data from ${who(ctx)} resumed after a ${duration(d.gap_ms)} gap.`,
   }),
