@@ -1,18 +1,22 @@
 /**
- * Synthetic "No response" + "Unacknowledged alert" scenario (KAZE brief
- * scenarios 2 and 5). All identities, places and readings are invented.
+ * Synthetic four-hour night out covering KAZE scenarios 1 (safe), 2 (no
+ * response), 4 (connectivity failure) and 5 (unacknowledged alert). All
+ * identities, places and readings are invented.
  *
- * Motion data flows the way it will in the app: a synthetic accelerometer
- * produces raw samples -> RawRecorder stores them -> features are computed
- * from the stored batch -> a sensor.motion_window event cites it via
- * raw_ref. Motion windows are shown for calibration (23:02-23:07) and the
- * run-up to the incident (23:47-23:52); a live session emits them
- * continuously.
+ * The fixture supplies only *inputs*: accelerometer samples minute by
+ * minute and the humans' actions (consent, check-in answers, alerts). Every
+ * motion window, the baseline, anomalies and patterns are produced by the
+ * real SensorPipeline and detectors; if they do not fire, this throws.
  *
- * The anomaly is computed with an inline z-score as a stand-in for the
- * detector module, which does not exist yet.
+ *   20:00  arrive walking (calibration)       21:22  dancing until 22:40
+ *   20:10  sitting                             22:40  standing, chatting
+ *   21:00  phone left on a table -> check-in   23:30  walking to the patio
+ *          answered OK (false alarm)           23:50:58 hard impact, then still
+ *   21:15  app backgrounded for 7 min          23:52:40 phone drops off
+ *                                              23:54  no answer -> escalation
  *
- * `npm run examples` regenerates docs/examples/ from this file.
+ * `npm run examples` regenerates docs/examples/ (timeline + briefing) and
+ * data/examples/ (raw recording, git-ignored: ~10 MB).
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -20,105 +24,116 @@ import { argv } from "node:process";
 import { pathToFileURL } from "node:url";
 import { ManualClock, toIso } from "../../shared/clock.js";
 import { SequentialIds } from "../../shared/ids.js";
-import { RawRecorder, rawRef } from "../../sensors/raw-recording.js";
-import { STANDARD_GRAVITY_M_S2, accelerometerFeatures, baselineFrom, round } from "../../sensors/features.js";
+import { SensorPipeline } from "../../sensors/pipeline.js";
+import { ORIENTATION, addImpact, seeded, synthesize, type Motion, type Vec3 } from "../../sensors/synthetic.js";
+import type { Sample } from "../../sensors/stream.js";
 import { MOCK_OPERATOR_ENDPOINT_ID, type ConsentScope, type Provenance } from "../schema/envelope.js";
-import type { TimelineEvent } from "../schema/catalog.js";
+import type { EventType, TimelineEvent } from "../schema/catalog.js";
 import { Timeline } from "../timeline.js";
 import { toJsonl } from "../jsonl.js";
 import { buildOperatorBriefing } from "../briefing.js";
 
 export const FIXTURE_SESSION_ID = "ses_0001";
 export const FIXTURE_INCIDENT_ID = "inc_0001";
-export const FIXTURE_START_MS = Date.UTC(2026, 9, 17, 23, 0, 0, 0);
+export const FIXTURE_START_MS = Date.UTC(2026, 9, 17, 20, 0, 0, 0);
 
 const HOST = "par_0001";
 const SAM = "par_0002";
 const ALEX = "par_0003";
 const BACKUP = "con_0001";
-const SCENARIO = "no-response-v2";
-const RATE_HZ = 10;
-const WINDOW_MS = 60_000;
+const SCENARIO = "night-out-v3";
+const RATE_HZ = 25;
+const MINUTE = 60_000;
+const SENSOR_RANGE = 156.9064;
 
-const at = (m: number, s = 0) => FIXTURE_START_MS + m * 60_000 + s * 1000;
-const prov = (component: Provenance["component"], extra: Partial<Provenance> = {}): Provenance => ({
+const at = (m: number, s = 0) => FIXTURE_START_MS + m * MINUTE + s * 1000;
+const prov = (component: Provenance["component"], simulated = false): Provenance => ({
   component,
   data_origin: "synthetic_scenario",
-  simulated: false,
+  simulated,
   scenario_id: SCENARIO,
-  ...extra,
 });
-const simulated = (component: Provenance["component"]) => prov(component, { simulated: true });
 
-/** Deterministic PRNG so the example files are reproducible byte for byte. */
-function mulberry32(seed: number) {
-  return () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+/** What Sam's phone experiences during minute m (from 20:00). null = no samples. */
+function plan(m: number): { motion: Motion; gravity: Vec3; durationMs?: number } | null {
+  const pocket = ORIENTATION.inPocket;
+  if (m < 10) return { motion: { kind: "rhythmic", hz: 1.8, amplitude: 2 }, gravity: pocket };
+  if (m < 60) return { motion: { kind: "fidget", amplitude: 0.4 }, gravity: pocket };
+  if (m < 75) return { motion: { kind: "still" }, gravity: ORIENTATION.flat };
+  if (m < 82) return null; // app backgrounded
+  if (m < 160) return { motion: { kind: "rhythmic", hz: 2.3, amplitude: 4, jitter: 0.05 }, gravity: pocket };
+  if (m < 210) return { motion: { kind: "fidget", amplitude: 0.6 }, gravity: pocket };
+  if (m < 231) return { motion: { kind: "rhythmic", hz: 1.8, amplitude: 2 }, gravity: pocket };
+  if (m === 231) return { motion: { kind: "still" }, gravity: ORIENTATION.flat };
+  if (m === 232) return { motion: { kind: "still" }, gravity: ORIENTATION.flat, durationMs: 40_000 };
+  return null; // phone offline
 }
 
-/** Gravity directions in the device frame: upright in a pocket vs. lying flat. */
-const IN_POCKET = unit([0.0, 9.5, 2.43]);
-const FLAT = unit([0.25, 0.3, 9.8]);
-
-function unit(v: [number, number, number]): [number, number, number] {
-  const k = STANDARD_GRAVITY_M_S2 / Math.hypot(...v);
-  return [v[0] * k, v[1] * k, v[2] * k];
-}
-
-/** One window of accelerometer rows: gravity + rhythmic movement of `amplitude` + noise. */
-function synthWindow(rand: () => number, gravity: [number, number, number], amplitude: number, noise: number) {
-  const rows: number[][] = [];
-  for (let i = 0; i < (WINDOW_MS / 1000) * RATE_HZ; i++) {
-    const t = i / RATE_HZ;
-    const sway = amplitude * Math.sin(2 * Math.PI * 1.9 * t + rand() * 0.3);
-    const n = () => (rand() - 0.5) * 2 * noise;
-    rows.push([
-      i * (1000 / RATE_HZ),
-      +(gravity[0] + 0.3 * sway + n()).toFixed(3),
-      +(gravity[1] + 0.8 * sway + n()).toFixed(3),
-      +(gravity[2] + 0.5 * sway + n()).toFixed(3),
-    ]);
+function minuteOfSamples(m: number, rand: () => number): Sample[] {
+  const p = plan(m);
+  if (!p) return [];
+  const start = at(m) + 5;
+  const samples = synthesize({ start, durationMs: (p.durationMs ?? MINUTE) - 10, rateHz: RATE_HZ, gravity: p.gravity, motion: p.motion, rand, timingJitterMs: 1.5 });
+  if (m === 230) {
+    // Walking, then a hard impact at 23:50:58 that saturates the sensor, then the phone lies flat.
+    const flatFrom = at(230, 58.2);
+    for (const s of samples) {
+      if (s.t < flatFrom) continue;
+      s.x = ORIENTATION.flat[0] + (rand() - 0.5) * 0.02;
+      s.y = ORIENTATION.flat[1] + (rand() - 0.5) * 0.02;
+      s.z = ORIENTATION.flat[2] + (rand() - 0.5) * 0.02;
+    }
+    addImpact(samples, at(230, 58), 190, ORIENTATION.inPocket);
+    for (const s of samples) {
+      s.x = clamp(s.x);
+      s.y = clamp(s.y);
+      s.z = clamp(s.z);
+    }
   }
-  return rows;
+  return samples;
 }
+
+const clamp = (v: number) => Math.max(-SENSOR_RANGE, Math.min(SENSOR_RANGE, v));
 
 export function buildNoResponseScenario() {
   const clock = new ManualClock(FIXTURE_START_MS);
   const timeline = new Timeline({ sessionId: FIXTURE_SESSION_ID, clock, ids: new SequentialIds() });
   const rawLines: string[] = [];
-  const recorder = new RawRecorder({
-    recordingId: "rec_0001",
-    sessionId: FIXTURE_SESSION_ID,
+  const rand = seeded(17);
+  const detected: TimelineEvent[] = [];
+  const pipeline = new SensorPipeline({
+    timeline,
+    clock,
     participantId: SAM,
-    stream: "accelerometer",
-    sampleRateHz: RATE_HZ,
-    deviceKind: "synthetic",
-    dataOrigin: "synthetic_scenario",
-    write: (line) => rawLines.push(line),
+    recordingId: "rec_0001",
+    source: { sensor: "accelerometer", deviceKind: "synthetic", deviceModel: null, sensorName: "synthetic accelerometer", dataOrigin: "synthetic_scenario", scenarioId: SCENARIO },
+    rawWrite: (line) => rawLines.push(line),
+    features: { nominalRateHz: RATE_HZ, sensorRangeM_s2: SENSOR_RANGE },
   });
-  const rand = mulberry32(17);
-  const tick = (ms: number) => clock.set(ms);
 
-  /** Record one raw window ending at `endMs` and log its features. */
-  const motionWindow = (endMs: number, gravity: [number, number, number], amplitude: number, noise: number) => {
-    tick(endMs);
-    const batch = recorder.append(endMs - WINDOW_MS, synthWindow(rand, gravity, amplitude, noise));
-    const { window_ms: _w, ...features } = accelerometerFeatures(batch, { windowMs: WINDOW_MS, stillThresholdM_s2: 0.15 });
-    return timeline.append({
-      type: "sensor.motion_window",
-      participant_id: SAM,
-      occurred_at: endMs,
-      actor: { kind: "detector", id: null },
-      provenance: prov("sensor_adapter", { raw_ref: rawRef(batch), producer: "accel-features@0.1.0" }),
-      data: { window_start: toIso(endMs - WINDOW_MS), window_end: toIso(endMs), ...features },
-    });
+  /** Runs the sensor pipeline minute by minute up to time t, the way the server would. */
+  let cursor = FIXTURE_START_MS;
+  const advanceTo = (t: number) => {
+    while (cursor + MINUTE + 2_000 <= t) {
+      const samples = minuteOfSamples((cursor - FIXTURE_START_MS) / MINUTE, rand);
+      clock.set(cursor + MINUTE + 2_000);
+      detected.push(...pipeline.ingest(samples), ...pipeline.tick());
+      cursor += MINUTE;
+    }
+    if (t > clock.now()) clock.set(t);
+  };
+  const detection = <T extends EventType>(type: T, windowEnd: number, pattern?: string) => {
+    const found = detected.find(
+      (e): e is TimelineEvent<T> =>
+        e.type === type &&
+        Date.parse(e.occurred_at) === windowEnd &&
+        (!pattern || (e.type === "sensor.motion_pattern_observed" && e.data.pattern === pattern)),
+    );
+    if (!found) throw new Error(`Scenario expected the detector to report ${type}${pattern ? `/${pattern}` : ""} at ${toIso(windowEnd)}`);
+    return found;
   };
 
-  // ── 23:00 Session setup. Each person opts in for themselves. ───────────
+  // ── 20:00 Session setup. Each person opts in for themselves. ───────────
   timeline.append({
     type: "session.created",
     participant_id: HOST,
@@ -141,132 +156,91 @@ export function buildNoResponseScenario() {
     timeline.append({ type: "consent.granted", participant_id: id, actor, provenance: prov("ui"), data: { scopes, consent_text_version: "consent-v0.1" } });
   };
   join(HOST, "host", "host_created", ["monitoring", "location.group"]);
-  tick(at(1));
   join(SAM, "member", "invite_link", ["monitoring", "location.group", "location.responders", "profile.responders"]);
   timeline.append({
     type: "profile.shared",
     participant_id: SAM,
     actor: { kind: "participant", id: SAM },
     provenance: prov("ui"),
-    data: {
-      display_name: "Sam (synthetic)",
-      preferred_language: "English",
-      emergency_notes: "Synthetic demo note: carries an inhaler in left jacket pocket.",
-    },
+    data: { display_name: "Sam (synthetic)", preferred_language: "English", emergency_notes: "Synthetic demo note: carries an inhaler in left jacket pocket." },
   });
-  tick(at(1, 30));
-  // Alex shares nothing with responders; none of Alex's data may reach Sam's briefing.
-  join(ALEX, "member", "qr_code", ["monitoring"]);
+  join(ALEX, "member", "qr_code", ["monitoring"]); // Alex shares nothing with responders.
+  pipeline.start();
 
-  // ── 23:02–23:07 Calibration: five windows of Sam's normal movement. ────
-  const calibration = [1.0, 1.3, 0.8, 1.5, 1.1].map((amp, i) => motionWindow(at(3 + i), IN_POCKET, amp, 0.25));
-  const features = baselineFrom(
-    calibration.map((w) => w.data),
-    ["dynamic_mean_m_s2", "dynamic_peak_m_s2", "stillness_ratio"],
-  );
-  const baseline = timeline.append({
-    type: "sensor.baseline_calibrated",
-    participant_id: SAM,
-    actor: { kind: "detector", id: null },
-    provenance: prov("detector", { producer: "baseline@0.1.0" }),
-    caused_by: calibration.map((w) => w.event_id),
-    data: {
-      window_start: calibration[0]!.data.window_start,
-      window_end: calibration.at(-1)!.data.window_end,
-      window_ms: WINDOW_MS,
-      sampling_rate_hz: RATE_HZ,
-      device_kind: "synthetic",
-      features,
-    },
-  });
-
-  // ── 23:40 Walking across the venue. ────────────────────────────────────
-  const fix = (m: number, lat: number, lon: number, speed: number, heading: number | null, label?: string) => {
-    tick(at(m));
+  const fix = (m: number, s: number, lat: number, lon: number, speed: number, heading: number | null, label?: string) => {
+    advanceTo(at(m, s));
     return timeline.append({
       type: "location.reported",
       participant_id: SAM,
       actor: { kind: "participant", id: SAM },
       provenance: prov("sensor_adapter"),
-      data: {
-        latitude: lat,
-        longitude: lon,
-        accuracy_m: 12,
-        fix_at: toIso(at(m)),
-        source: "synthetic",
-        speed_m_s: speed,
-        heading_deg: heading,
-        ...(label ? { place_label: label } : {}),
-      },
+      data: { latitude: lat, longitude: lon, accuracy_m: 12, fix_at: toIso(at(m, s)), source: "synthetic", speed_m_s: speed, heading_deg: heading, ...(label ? { place_label: label } : {}) },
     });
   };
-  fix(40, 43.6618, -79.3984, 1.3, 75);
+  fix(0, 30, 43.6611, -79.4003, 1.4, 120, "Synthetic Venue A, entrance");
+  fix(30, 0, 43.6622, -79.3971, 0, null, "Synthetic Venue A, main room");
 
-  // ── 23:47–23:52 Active, then still with the phone now lying flat. ──────
-  motionWindow(at(47), IN_POCKET, 1.4, 0.25);
-  motionWindow(at(48), IN_POCKET, 1.2, 0.25);
-  motionWindow(at(49), IN_POCKET, 1.3, 0.25);
-  const lastFix = fix(50, 43.6629, -79.3957, 0, null, "Synthetic Venue A, rear patio");
-  motionWindow(at(50), IN_POCKET, 0.3, 0.1);
-  motionWindow(at(51), FLAT, 0.02, 0.02);
-  const stillWindow = motionWindow(at(52), FLAT, 0.0, 0.02);
-
-  // Stand-in detector: z-score of the window's movement against the personal baseline.
-  const ref = features.find((f) => f.name === "dynamic_mean_m_s2")!;
-  const observed = stillWindow.data.dynamic_mean_m_s2;
-  const anomaly = timeline.append({
-    type: "sensor.motion_anomaly_observed",
+  // ── 21:01 Phone left on a table: a private check-in, answered OK. ──────
+  advanceTo(at(61, 2));
+  const tableAnomaly = detection("sensor.motion_anomaly_observed", at(61));
+  const tableCheckin = timeline.append({
+    type: "checkin.prompted",
     participant_id: SAM,
-    actor: { kind: "detector", id: null },
-    provenance: prov("detector", { producer: "zscore-detector@0.1.0" }),
-    caused_by: [stillWindow.event_id, baseline.event_id],
-    data: {
-      feature: "dynamic_mean_m_s2",
-      unit: "m/s^2",
-      observed_value: observed,
-      baseline_mean: ref.mean,
-      baseline_std_dev: ref.std_dev,
-      z_score: round((observed - ref.mean) / ref.std_dev),
-      window_start: stillWindow.data.window_start,
-      window_end: stillWindow.data.window_end,
-      rule: { id: "stillness-z", comparator: "<=", threshold: -3, threshold_validated: false },
-    },
+    actor: { kind: "system", id: null },
+    provenance: prov("incident_manager"),
+    caused_by: [tableAnomaly.event_id],
+    data: { checkin_id: "chk_0001", trigger: "motion_anomaly", delivery: "haptic", response_deadline_at: toIso(at(63, 2)) },
   });
+  advanceTo(at(61, 20));
+  timeline.append({
+    type: "checkin.responded",
+    participant_id: SAM,
+    actor: { kind: "participant", id: SAM },
+    provenance: prov("ui"),
+    caused_by: [tableCheckin.event_id],
+    data: { checkin_id: "chk_0001", response: "confirmed_ok", method: "tap", latency_ms: 18_000 },
+  });
+
+  fix(90, 0, 43.6623, -79.3969, 0.2, null, "Synthetic Venue A, dance floor");
+  fix(180, 0, 43.6621, -79.3972, 0, null, "Synthetic Venue A, bar");
+
+  // ── 23:30 Walking out to the patio. ─────────────────────────────────────
+  fix(215, 0, 43.6619, -79.3978, 1.3, 80);
+  fix(225, 0, 43.6626, -79.3962, 1.2, 95);
+  const lastFix = fix(230, 30, 43.6629, -79.3957, 0.9, 100, "Synthetic Venue A, rear patio");
+
+  // ── 23:52 Impact, then stillness: the detectors raise it; a check-in goes out. ─
+  advanceTo(at(232, 2));
+  const impactPattern = detection("sensor.motion_pattern_observed", at(232), "impact_then_stillness");
+  const anomaly = detection("sensor.motion_anomaly_observed", at(232));
   const checkin = timeline.append({
     type: "checkin.prompted",
     participant_id: SAM,
     actor: { kind: "system", id: null },
     provenance: prov("incident_manager"),
-    caused_by: [anomaly.event_id],
-    data: { checkin_id: "chk_0001", trigger: "motion_anomaly", delivery: "haptic", response_deadline_at: toIso(at(54)) },
+    caused_by: [impactPattern.event_id, anomaly.event_id],
+    data: { checkin_id: "chk_0002", trigger: "motion_pattern", delivery: "haptic", response_deadline_at: toIso(at(234, 2)) },
   });
 
-  // ── 23:52:40 Sam's phone drops off. Timers keep running server-side. ───
-  tick(at(52, 40));
-  timeline.append({
-    type: "sensor.stream_interrupted",
-    participant_id: SAM,
-    actor: { kind: "system", id: null },
-    provenance: prov("sensor_adapter"),
-    data: { last_sample_at: toIso(at(52) - 100), reason: "device_disconnected" },
-  });
+  // ── 23:52:55 The phone stops reaching the server. Timers keep running. ─
+  advanceTo(at(232, 55));
   const offline = timeline.append({
     type: "connectivity.device_offline",
     participant_id: SAM,
     actor: { kind: "system", id: null },
     provenance: prov("session_manager"),
-    data: { last_seen_at: toIso(at(52, 10)), detected_by: "heartbeat_timeout", heartbeat_interval_ms: 15_000 },
+    data: { last_seen_at: toIso(at(232, 40)), detected_by: "heartbeat_timeout", heartbeat_interval_ms: 15_000 },
   });
 
-  // ── 23:54 No response: incident opens, host is alerted. ────────────────
-  tick(at(54));
+  // ── 23:54:02 No answer: incident opens, host is alerted. ───────────────
+  advanceTo(at(234, 2));
   const missed = timeline.append({
     type: "checkin.missed",
     participant_id: SAM,
     actor: { kind: "scheduler", id: null },
     provenance: prov("escalation_scheduler"),
     caused_by: [checkin.event_id],
-    data: { checkin_id: "chk_0001", response_deadline_at: toIso(at(54)) },
+    data: { checkin_id: "chk_0002", response_deadline_at: toIso(at(234, 2)) },
   });
   const opened = timeline.append({
     type: "incident.opened",
@@ -279,25 +253,16 @@ export function buildNoResponseScenario() {
   });
   const scope = { incident_id: FIXTURE_INCIDENT_ID, participant_id: SAM };
   // Exactly what each recipient is told; recipients may act only on these.
-  const delivered = [anomaly.event_id, missed.event_id, offline.event_id, lastFix.event_id];
+  const delivered = [impactPattern.event_id, anomaly.event_id, missed.event_id, offline.event_id, lastFix.event_id];
 
   const alert = (id: string, recipient: string, role: "host" | "backup_contact", step: number, attempt: number, cause: TimelineEvent) =>
     timeline.append({
       ...scope,
       type: "notification.sent",
       actor: { kind: "transport_sim", id: null },
-      provenance: simulated("transport_sim"),
+      provenance: prov("transport_sim", true),
       caused_by: [cause.event_id],
-      data: {
-        notification_id: id,
-        recipient_id: recipient,
-        recipient_role: role,
-        channel: role === "host" ? "in_app_sim" : "push_sim",
-        escalation_step: step,
-        attempt,
-        is_repeat: attempt > 1,
-        delivered_fact_event_ids: delivered,
-      },
+      data: { notification_id: id, recipient_id: recipient, recipient_role: role, channel: role === "host" ? "in_app_sim" : "push_sim", escalation_step: step, attempt, is_repeat: attempt > 1, delivered_fact_event_ids: delivered },
     });
   const schedule = (step: number, target: "backup_contact" | "emergency_service_sim", dueMs: number, basis: TimelineEvent) =>
     timeline.append({
@@ -309,7 +274,7 @@ export function buildNoResponseScenario() {
       data: { escalation_id: "esc_0001", step, target_role: target, due_at: toIso(dueMs), deadline_basis_event_id: basis.event_id },
     });
   const fire = (step: number, target: "backup_contact" | "emergency_service_sim", dueMs: number) => {
-    tick(dueMs);
+    advanceTo(dueMs);
     return timeline.append({
       ...scope,
       type: "escalation.step_fired",
@@ -318,58 +283,47 @@ export function buildNoResponseScenario() {
       data: { escalation_id: "esc_0001", step, target_role: target, scheduled_due_at: toIso(dueMs), fired_late_ms: 0 },
     });
   };
+  const transport = (type: "notification.delivered" | "notification.viewed", id: string, recipient: string, t: number) => {
+    advanceTo(t);
+    timeline.append({ ...scope, type, actor: { kind: type === "notification.viewed" ? "host" : "transport_sim", id: type === "notification.viewed" ? recipient : null }, provenance: prov("transport_sim", true), data: { notification_id: id, recipient_id: recipient } });
+  };
 
   const toHost = alert("ntf_0001", HOST, "host", 1, 1, opened);
-  schedule(2, "backup_contact", at(59), toHost);
-  tick(at(54, 1));
-  timeline.append({
-    ...scope,
-    type: "notification.delivered",
-    actor: { kind: "transport_sim", id: null },
-    provenance: simulated("transport_sim"),
-    data: { notification_id: "ntf_0001", recipient_id: HOST },
-  });
-  tick(at(55, 30));
-  timeline.append({
-    ...scope,
-    type: "notification.viewed",
-    actor: { kind: "host", id: HOST },
-    provenance: simulated("transport_sim"),
-    data: { notification_id: "ntf_0001", recipient_id: HOST },
-  });
-  // 23:56 Repeat to the host. The step-2 deadline stays anchored to the first alert.
-  tick(at(56));
-  alert("ntf_0001", HOST, "host", 1, 2, toHost);
+  schedule(2, "backup_contact", at(239, 2), toHost);
+  transport("notification.delivered", "ntf_0001", HOST, at(234, 3));
+  transport("notification.viewed", "ntf_0001", HOST, at(235, 30));
+  advanceTo(at(236, 2));
+  alert("ntf_0001", HOST, "host", 1, 2, toHost); // repeat; the step-2 deadline does not move
 
-  // ── 23:59 Host never acknowledged: backup contact. ─────────────────────
-  const step2 = fire(2, "backup_contact", at(59));
+  // ── 23:59:02 Host never acknowledged: backup contact. ──────────────────
+  const step2 = fire(2, "backup_contact", at(239, 2));
   const toBackup = alert("ntf_0002", BACKUP, "backup_contact", 2, 1, step2);
-  schedule(3, "emergency_service_sim", at(64), toBackup);
-  tick(at(59, 2));
+  schedule(3, "emergency_service_sim", at(244, 2), toBackup);
+  advanceTo(at(239, 4));
   timeline.append({
     ...scope,
     type: "notification.delivery_failed",
     actor: { kind: "transport_sim", id: null },
-    provenance: simulated("transport_sim"),
+    provenance: prov("transport_sim", true),
     data: { notification_id: "ntf_0002", recipient_id: BACKUP, reason: "recipient_offline", will_retry: true },
   });
 
-  // ── 00:04 Still unacknowledged: simulated emergency services. ──────────
-  const step3 = fire(3, "emergency_service_sim", at(64));
+  // ── 00:04:02 Still unacknowledged: simulated emergency services. ───────
+  const step3 = fire(3, "emergency_service_sim", at(244, 2));
   timeline.append({
     ...scope,
     type: "emergency.simulated_dispatch_requested",
     actor: { kind: "system", id: null },
-    provenance: simulated("transport_sim"),
+    provenance: prov("transport_sim", true),
     caused_by: [step3.event_id],
     data: { mock_endpoint_id: MOCK_OPERATOR_ENDPOINT_ID, escalation_id: "esc_0001", delivered_fact_event_ids: delivered },
   });
-  tick(at(64, 3));
+  advanceTo(at(244, 5));
   const call = timeline.append({
     ...scope,
     type: "voice.call_started",
     actor: { kind: "voice_agent", id: null },
-    provenance: simulated("voice_agent"),
+    provenance: prov("voice_agent", true),
     caused_by: [step3.event_id],
     data: { call_id: "call_0001", mock_endpoint_id: MOCK_OPERATOR_ENDPOINT_ID },
   });
@@ -378,26 +332,34 @@ export function buildNoResponseScenario() {
       ...scope,
       type: "voice.utterance",
       actor: { kind: speaker, id: null },
-      provenance: simulated("voice_agent"),
+      provenance: prov("voice_agent", true),
       data: { call_id: "call_0001", turn_index: turn, speaker, text, grounding_event_ids: grounding, interrupted: false },
     });
   say(0, "voice_agent", "This is an automated assistant from the YPC safety system. This is a simulated call.", [call.event_id]);
-  tick(at(64, 8));
+  advanceTo(at(244, 10));
   say(1, "mock_operator", "Go ahead. What is the situation?", []);
 
-  return { clock, timeline, rawLines, ids: { baseline, stillWindow, anomaly, checkin, offline, opened, lastFix, toHost, toBackup, call } };
+  const pick = <T extends EventType>(type: T) => timeline.events.filter((e): e is TimelineEvent<T> => e.type === type);
+  return {
+    clock,
+    timeline,
+    rawLines,
+    pipeline,
+    ids: { tableAnomaly, tableCheckin, impactPattern, anomaly, checkin, offline, opened, lastFix, toHost, toBackup, call, baseline: pick("sensor.baseline_calibrated")[0]! },
+  };
 }
 
-/** Writes the example files: timeline, briefing and the raw recording behind the motion windows. */
-export function writeExamples(dir: string): void {
+/** Writes the committed examples (timeline, briefing) and the git-ignored raw recording. */
+export function writeExamples(docsDir: string, rawDir: string): void {
   const { timeline, rawLines, clock } = buildNoResponseScenario();
   const briefing = buildOperatorBriefing(timeline.events, { incidentId: FIXTURE_INCIDENT_ID, now: clock.now() });
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "no-response-incident.jsonl"), toJsonl(timeline.events));
-  writeFileSync(join(dir, "no-response-briefing.json"), `${JSON.stringify(briefing, null, 2)}\n`);
-  writeFileSync(join(dir, "synthetic-raw-accelerometer.jsonl"), rawLines.map((l) => `${l}\n`).join(""));
+  mkdirSync(docsDir, { recursive: true });
+  mkdirSync(rawDir, { recursive: true });
+  writeFileSync(join(docsDir, "no-response-incident.jsonl"), toJsonl(timeline.events));
+  writeFileSync(join(docsDir, "no-response-briefing.json"), `${JSON.stringify(briefing, null, 2)}\n`);
+  writeFileSync(join(rawDir, "synthetic-raw-accelerometer.jsonl"), rawLines.map((l) => `${l}\n`).join(""));
 }
 
 if (argv[1] && import.meta.url === pathToFileURL(argv[1]).href) {
-  writeExamples(argv[2] ?? "docs/examples");
+  writeExamples(argv[2] ?? "docs/examples", argv[3] ?? "data/examples");
 }

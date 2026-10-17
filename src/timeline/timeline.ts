@@ -7,7 +7,7 @@ import { parseIso, toIso, type Clock } from "../shared/clock.js";
 import { randomIds, type IdGenerator } from "../shared/ids.js";
 import { hashEvent, serializeEvent } from "./canonical.js";
 import type { Issue } from "./schema/validate.js";
-import { SCHEMA_VERSION, type Actor, type Provenance } from "./schema/envelope.js";
+import { SCHEMA_VERSION, type Actor, type ConsentScope, type Provenance } from "./schema/envelope.js";
 import {
   categoryOf,
   checkEvent,
@@ -143,6 +143,11 @@ export class Timeline {
 
   get headHash(): string | null {
     return this.log.at(-1)?.hash ?? null;
+  }
+
+  /** Whether the participant currently holds this consent scope. Producers check it before recording. */
+  hasConsent(participantId: string, scope: ConsentScope): boolean {
+    return this.consent.has(participantId, scope);
   }
 
   getEvent(eventId: string): TimelineEvent | undefined {
