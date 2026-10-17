@@ -25,7 +25,11 @@ disagree, update one so they match before shipping.
    actions are glass chips or rows.
 5. **Show less.** Prefer progressive disclosure (steps, expandable rows,
    help text only on the selected option) over long forms. Don't repeat a
-   fact that is already on screen.
+   fact that is already on screen. No reassurance or explainer captions
+   ("you can change this anytime", "only you can see these"). Keep a
+   caption only when a safety rule requires it: motion is an observation,
+   not a diagnosis; acknowledging doesn't confirm wellbeing; simulated
+   calls say no real service is contacted.
 6. **Copy rules still apply.** Use `src/ui/copy.ts` wording. Motion is only
    "Movement changed"; acknowledgment never implies the person is OK;
    anything involving emergency services says "Simulated".
@@ -129,6 +133,7 @@ Minimum hit area 44×44.
 | Text field | `input.field` / `textarea.field` | 52px pill / radius-20 box, always with a `<label>` (visible `.lbl` or `.sr-only`). |
 | Tag | `span.tag` | 24px status pill. `.tag.on-accent` only for an active alert state. |
 | Avatar | `.av` | 40px circle with initials. `.on-accent` only for the person with an open alert. |
+| Avatar stack | `.av-stack` > `.av` | 32px solid (not glass) avatars overlapping 10px, ringed in `--bg-base`. Leftmost on top: set `z-index` descending left to right. |
 | Step progress | `.seg` > `span` | Multi-step flows; done/current segments `.is-on`. |
 | Sheet | `.sheet-wrap` > `.glass.sheet[role=dialog]` | Confirmations. Bottom sheet on phone, centered dialog on larger screens. Destructive confirms use a glass primary, not the accent. |
 | Nav slot | `button.btn.slot` | 52px circle. Active: `.is-on` (accent). Badge `.badge` for an unacknowledged alert. |
