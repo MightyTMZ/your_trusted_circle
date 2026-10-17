@@ -15,6 +15,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { alertRoutes } from "./alerts/routes.js";
 import { authRoutes } from "./auth/routes.js";
 import { fail, type AppEnv, type Deps } from "./context.js";
@@ -62,6 +63,16 @@ export function createApp(deps: Deps) {
   app.route("/api/me", accountRoutes(deps));
   // 6. Simulated voice-agent escalation
   if (deps.calls) app.route("/api/calls", voiceRoutes(deps.calls));
+
+  // Serve Vite build output for non-API routes (production only).
+  // root is relative to the working directory (repo root); Vite outputs to dist/.
+  app.get("*", async (c, next) => {
+    if (c.req.path.startsWith("/api")) return next();
+    const res = await serveStatic({ root: "dist" })(c, async () => {});
+    if (c.res.status !== 404) return res;
+    // SPA fallback: serve index.html for client-side routes.
+    return serveStatic({ root: "dist", path: "index.html" })(c, next);
+  });
 
   app.notFound((c) => fail(c, 404, "not_found", "No such endpoint."));
   app.onError((err, c) => {
