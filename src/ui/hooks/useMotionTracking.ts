@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ingestMotion } from '../../domain/session';
 import type { Store } from '../../domain/store';
 import type { MotionSample } from '../../domain/types';
+import { createCheckInOnServer } from '../api';
 
 type PermissionState = 'prompt' | 'granted' | 'denied' | 'unsupported';
 
@@ -10,6 +11,9 @@ type PermissionState = 'prompt' | 'granted' | 'denied' | 'unsupported';
  * motion monitoring enabled. Samples are buffered in memory and dispatched to
  * the store every 15 seconds (~4 writes/min) to keep localStorage churn low.
  * Anomaly detection latency is at most 15 s.
+ *
+ * When a check-in is created locally, it is also POSTed to the server so the
+ * check-in is persisted in MongoDB.
  */
 export function useMotionTracking(
   store: Store,
@@ -25,9 +29,32 @@ export function useMotionTracking(
     const pid = pidRef.current;
     if (!pid || bufferRef.current.length === 0) return;
     const batch = bufferRef.current.splice(0);
+
+    // Snapshot check-in IDs before the mutation so we can detect new ones.
+    const before = new Set(store.getState().checkIns.map((c) => c.id));
+
     store.dispatch((state) => {
       ingestMotion(state, pid, batch);
     });
+
+    // After mutation: find any newly created check-ins and POST them to the server.
+    const after = store.getState();
+    const sessionId = after.session?.id;
+    if (!sessionId) return;
+
+    for (const ci of after.checkIns) {
+      if (before.has(ci.id) || ci.serverId) continue; // already existed or already synced
+      if (ci.status !== 'pending') continue;
+
+      // Fire-and-forget: persist to MongoDB. On success, store the server ID.
+      createCheckInOnServer(sessionId, 'movement_changed').then((serverCi) => {
+        if (!serverCi) return;
+        store.dispatch((state) => {
+          const local = state.checkIns.find((c) => c.id === ci.id);
+          if (local) local.serverId = serverCi.id;
+        });
+      });
+    }
   };
 
   const startListening = () => {

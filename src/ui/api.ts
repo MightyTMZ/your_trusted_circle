@@ -214,6 +214,59 @@ export async function joinSessionOnServer(input: {
 }
 
 // ---------------------------------------------------------------------------
+// Check-in / safety API
+// ---------------------------------------------------------------------------
+
+export interface ServerCheckInView {
+  id: string;
+  sessionId: string;
+  reason: string;
+  promptedAt: string;
+  dueAt: string;
+  status: string;
+  respondedAt: string | null;
+  incidentId: string | null;
+}
+
+/** Tell the server a movement change was detected and a check-in should start. */
+export async function createCheckInOnServer(
+  sessionId: string,
+  reason: 'movement_changed' | 'manual',
+): Promise<ServerCheckInView | null> {
+  const result = await postJson<{ checkIn: ServerCheckInView }>(`/sessions/${sessionId}/checkins`, { reason });
+  return result.ok ? result.data.checkIn : null;
+}
+
+/** Respond to a server-side check-in. */
+export async function respondToCheckInOnServer(
+  checkInId: string,
+  response: 'ok' | 'help',
+): Promise<{ checkIn: ServerCheckInView; incidentId?: string } | null> {
+  const result = await postJson<{ checkIn: ServerCheckInView; incidentId?: string }>(`/checkins/${checkInId}/respond`, { response });
+  return result.ok ? result.data : null;
+}
+
+/** Ask for help directly (no preceding check-in). */
+export async function requestHelpOnServer(
+  sessionId: string,
+): Promise<{ incidentId: string } | null> {
+  const result = await postJson<{ incidentId: string }>(`/sessions/${sessionId}/help`, {});
+  return result.ok ? result.data : null;
+}
+
+/** Send a heartbeat so the server knows the device is alive. */
+export async function sendHeartbeat(sessionId: string): Promise<boolean> {
+  const result = await postJson<void>(`/sessions/${sessionId}/heartbeat`, {});
+  return result.ok;
+}
+
+/** Tell responders "I'm OK" (logged only, does not close the alert). */
+export async function sendParticipantUpdate(sessionId: string): Promise<boolean> {
+  const result = await postJson<void>(`/sessions/${sessionId}/update`, {});
+  return result.ok;
+}
+
+// ---------------------------------------------------------------------------
 
 const LOGIN_ERRORS: Record<string, string> = {
   cancelled: 'Sign-in was cancelled.',

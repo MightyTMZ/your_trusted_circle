@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { UNVALIDATED_LABEL } from '../../domain/config';
+import { sendParticipantUpdate } from '../api';
 import { activeIncidentFor, nextDeadline } from '../../domain/incident';
 import { canViewLocation, latestReading, participantFreshness } from '../../domain/location';
 import { endSession, participantUpdate, resumeSession, suspendSession } from '../../domain/session';
@@ -209,7 +210,11 @@ export function SessionHomeScreen() {
               : `${firstContact[0].toUpperCase()}${firstContact.slice(1)} ${isHost ? 'were' : 'was'} alerted at ${fmtTime(myIncident.openedAt)}.`}{' '}
             Only a recipient can resolve it.
           </p>
-          <button type="button" className="btn pbtn fill" onClick={() => run((d, t) => participantUpdate(d, viewer.id, t))}>
+          <button type="button" className="btn pbtn fill" onClick={() => {
+            if (run((d, t) => participantUpdate(d, viewer.id, t)) && session) {
+              sendParticipantUpdate(session.id).catch(() => {});
+            }
+          }}>
             Tell responders I'm OK
           </button>
           <span className="t-cap">Adds to the alert's record. It does not close the alert.</span>

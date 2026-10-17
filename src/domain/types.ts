@@ -124,6 +124,8 @@ export interface CheckIn {
   dueAt: Millis;
   status: CheckInStatus;
   respondedAt?: Millis;
+  /** Server-side check-in ID, set after the check-in is persisted to MongoDB. */
+  serverId?: string;
 }
 
 export type TimelineKind =

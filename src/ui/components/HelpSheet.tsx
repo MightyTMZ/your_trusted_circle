@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { requestHelp } from '../../domain/session';
 import { useApp } from '../context';
+import { requestHelpOnServer } from '../api';
 import { Icon } from './Icon';
 import { Sheet } from './Sheet';
 
@@ -23,9 +24,30 @@ export function useFirstContact(): string {
 
 /** Confirms before alerting. Opened from the help button in the nav. */
 export function HelpSheet({ onClose }: { onClose(): void }) {
-  const { store, me } = useApp();
+  const { store, me, state } = useApp();
   const firstContact = useFirstContact();
   const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+
+  const send = async () => {
+    setSending(true);
+    // Update local state immediately.
+    const err = store.dispatch((d, t) => requestHelp(d, me!.id, t));
+    if (err) {
+      setError(err);
+      setSending(false);
+      return;
+    }
+
+    // Persist to MongoDB via the server.
+    const sessionId = state.session?.id;
+    if (sessionId) {
+      await requestHelpOnServer(sessionId).catch(() => {});
+    }
+    setSending(false);
+    onClose();
+  };
+
   return (
     <Sheet title={`Alert ${firstContact} now?`} onClose={onClose}>
       <p className="t-lead">They will be alerted right away. If nobody acknowledges, it escalates.</p>
@@ -38,11 +60,8 @@ export function HelpSheet({ onClose }: { onClose(): void }) {
       <button
         type="button"
         className="btn pbtn on-accent"
-        onClick={() => {
-          const err = store.dispatch((d, t) => requestHelp(d, me!.id, t));
-          if (err) setError(err);
-          else onClose();
-        }}
+        disabled={sending}
+        onClick={send}
       >
         Send alert
       </button>

@@ -1,10 +1,32 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { suddenChange, typicalMovement } from '../domain/scenarios';
 import { emptyState, ingestMotion, setDeviceOnline } from '../domain/session';
+import type { Store } from '../domain/store';
+import type { MotionSample } from '../domain/types';
+import { createCheckInOnServer } from './api';
 import { useApp, useNow } from './context';
 import { fmtTime } from './format';
 import { Icon } from './components/Icon';
 import { joinUrl } from './screens/SessionInviteScreen';
+
+/** Dispatch ingestMotion and sync any newly created check-ins to the server. */
+function dispatchMotionAndSync(store: Store, targetId: string, samples: MotionSample[]) {
+  const before = new Set(store.getState().checkIns.map((c) => c.id));
+  store.dispatch((d) => ingestMotion(d, targetId, samples));
+  const after = store.getState();
+  const sessionId = after.session?.id;
+  if (!sessionId) return;
+  for (const ci of after.checkIns) {
+    if (before.has(ci.id) || ci.serverId || ci.status !== 'pending') continue;
+    createCheckInOnServer(sessionId, 'movement_changed').then((serverCi) => {
+      if (!serverCi) return;
+      store.dispatch((state) => {
+        const local = state.checkIns.find((c) => c.id === ci.id);
+        if (local) local.serverId = serverCi.id;
+      });
+    });
+  }
+}
 
 const POS_KEY = 'ytc.demoFab';
 const GAP = 16;
@@ -228,11 +250,11 @@ function DemoPanel({ style }: { style: CSSProperties }) {
           <div className="btns">
             <button
               className="btn chip fill"
-              onClick={() => store.dispatch((d, t) => ingestMotion(d, target.id, typicalMovement(30, t)))}
+              onClick={() => dispatchMotionAndSync(store, target.id, typicalMovement(30, Date.now() + state.clockOffsetMs))}
             >
               Typical movement (30 s)
             </button>
-            <button className="btn chip fill" onClick={() => store.dispatch((d, t) => ingestMotion(d, target.id, suddenChange(t)))}>
+            <button className="btn chip fill" onClick={() => dispatchMotionAndSync(store, target.id, suddenChange(Date.now() + state.clockOffsetMs))}>
               Sudden change (15 s)
             </button>
             <button
