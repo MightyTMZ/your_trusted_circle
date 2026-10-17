@@ -120,6 +120,96 @@ export async function deleteAccount(): Promise<boolean> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Session API
+// ---------------------------------------------------------------------------
+
+async function postJson<T>(path: string, body: unknown): Promise<{ ok: true; data: T } | { ok: false; message: string }> {
+  try {
+    const res = await fetch(`/api${path}`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+    if (res.ok && json) return { ok: true, data: json as T };
+    return { ok: false, message: (json?.error as Record<string, string> | undefined)?.message ?? 'Request failed.' };
+  } catch {
+    return { ok: false, message: "Couldn't reach the server." };
+  }
+}
+
+export interface SessionPreview {
+  name: string;
+  hostName: string | null;
+  expiresAt: string;
+  rules: {
+    checkInWindowSec: number;
+    hostAckWindowSec: number;
+    backupAckWindowSec: number;
+    locationStaleAfterSec: number;
+    heartbeatTimeoutSec: number;
+    maxParticipants: number;
+    allowLocationSharing: boolean;
+  };
+}
+
+export async function previewSession(code: string): Promise<SessionPreview | null> {
+  const body = await getJson<{ session: SessionPreview }>(`/sessions/join/${encodeURIComponent(code)}`);
+  return body?.session ?? null;
+}
+
+export interface ServerParticipant {
+  participantId: string;
+  displayName: string;
+  role: string;
+  isYou: boolean;
+  deviceOnline: boolean;
+}
+
+export interface ServerSessionView {
+  id: string;
+  name: string;
+  status: string;
+  createdAt: string;
+  expiresAt: string;
+  rules: SessionPreview['rules'];
+  isHost: boolean;
+  me: {
+    participantId: string;
+    role: string;
+    joinedAt: string;
+    leftAt: string | null;
+    consent: { monitoring: boolean; locationSharing: string; shareLocationWithResponders: boolean };
+    backupContacts: { name: string; relation: string }[];
+  } | null;
+  participants: ServerParticipant[];
+  code?: string;
+}
+
+export async function createSessionOnServer(input: {
+  name: string;
+  durationMin: number;
+  consent: { monitoring: boolean; locationSharing: string; shareLocationWithResponders: boolean };
+  backupContacts?: { name: string; relation: string }[];
+  rules?: Record<string, number | boolean>;
+}): Promise<{ session: ServerSessionView; joinUrl: string } | string> {
+  const result = await postJson<{ session: ServerSessionView; joinUrl: string }>('/sessions', input);
+  return result.ok ? result.data : result.message;
+}
+
+export async function joinSessionOnServer(input: {
+  code: string;
+  consent: { monitoring: boolean; locationSharing: string; shareLocationWithResponders: boolean };
+  backupContacts?: { name: string; relation: string }[];
+}): Promise<ServerSessionView | string> {
+  const result = await postJson<{ session: ServerSessionView }>('/sessions/join', input);
+  return result.ok ? result.data.session : result.message;
+}
+
+// ---------------------------------------------------------------------------
+
 const LOGIN_ERRORS: Record<string, string> = {
   cancelled: 'Sign-in was cancelled.',
   invalid_state: 'Sign-in expired. Try again.',

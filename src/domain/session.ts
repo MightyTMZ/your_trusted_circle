@@ -23,6 +23,99 @@ import type {
 
 export class SessionError extends Error {}
 
+// ---------------------------------------------------------------------------
+// Hydrate client state from server session data (cross-device join)
+// ---------------------------------------------------------------------------
+
+export interface ServerHydrateInput {
+  serverSession: {
+    id: string;
+    name: string;
+    status: string;
+    createdAt: string;
+    expiresAt: string;
+    rules: {
+      checkInWindowSec: number;
+      hostAckWindowSec: number;
+      backupAckWindowSec: number;
+      locationStaleAfterSec: number;
+    };
+    me: { participantId: string } | null;
+    participants: { participantId: string; displayName: string; role: string; isYou: boolean; deviceOnline: boolean }[];
+    code?: string;
+  };
+  code: string;
+  myInput: ParticipantInput;
+}
+
+/**
+ * Populate an empty AppState from a server session response so the local UI
+ * (motion detection, check-ins, location map) can work after a cross-device join.
+ */
+export function hydrateServerSession(state: AppState, input: ServerHydrateInput, now: Millis): string {
+  const { serverSession, code, myInput } = input;
+  const hostP = serverSession.participants.find((p) => p.role === 'host');
+  const myPid = serverSession.me?.participantId ?? '';
+
+  const offset = state.clockOffsetMs;
+  Object.assign(state, emptyState(), { clockOffsetMs: offset });
+
+  state.session = {
+    id: serverSession.id,
+    code: serverSession.code ?? code,
+    name: serverSession.name,
+    hostId: hostP?.participantId ?? '',
+    createdAt: new Date(serverSession.createdAt).getTime(),
+    expiresAt: new Date(serverSession.expiresAt).getTime(),
+    status: (serverSession.status as 'active' | 'suspended' | 'ended') ?? 'active',
+    hostCommitmentAcceptedAt: new Date(serverSession.createdAt).getTime(),
+    config: {
+      ...DEFAULT_CONFIG,
+      checkInWindowSec: serverSession.rules.checkInWindowSec,
+      hostAckWindowSec: serverSession.rules.hostAckWindowSec,
+      backupAckWindowSec: serverSession.rules.backupAckWindowSec,
+      locationStaleAfterSec: serverSession.rules.locationStaleAfterSec,
+    },
+  };
+
+  for (const sp of serverSession.participants) {
+    const isMe = sp.participantId === myPid;
+    state.participants[sp.participantId] = {
+      id: sp.participantId,
+      sessionId: serverSession.id,
+      displayName: isMe ? myInput.displayName.trim() || sp.displayName : sp.displayName,
+      role: sp.role as Participant['role'],
+      status: 'active',
+      consent: isMe
+        ? { joinedAt: now, locationSharing: myInput.locationSharing, motionMonitoring: myInput.motionMonitoring, shareLocationWithResponders: myInput.shareLocationWithResponders, shareNoteWithResponders: myInput.shareNoteWithResponders }
+        : { joinedAt: now, locationSharing: 'off', motionMonitoring: false, shareLocationWithResponders: false, shareNoteWithResponders: false },
+      emergencyNote: isMe ? myInput.emergencyNote : '',
+      backupContacts: isMe
+        ? myInput.backupContacts.filter((c) => c.name.trim()).slice(0, MAX_BACKUP_CONTACTS).map((c) => ({ id: makeId('bkc'), name: c.name.trim(), relation: c.relation.trim() }))
+        : [],
+      device: { online: sp.deviceOnline, changedAt: now },
+      locations: [],
+      baseline: isMe && myInput.motionMonitoring ? startCalibration() : emptyBaseline(),
+      motion: { consecutiveOutliers: 0 },
+    };
+  }
+
+  // Recipients
+  if (hostP) {
+    state.recipients[HOST_RECIPIENT_PREFIX + hostP.participantId] = {
+      id: HOST_RECIPIENT_PREFIX + hostP.participantId,
+      kind: 'host',
+      name: hostP.displayName,
+      participantId: hostP.participantId,
+    };
+  }
+  state.recipients[EMERGENCY_SIM_RECIPIENT_ID] = { id: EMERGENCY_SIM_RECIPIENT_ID, kind: 'emergency_simulated', name: 'Emergency services (simulated)' };
+  const myParticipant = state.participants[myPid];
+  if (myParticipant) registerBackupRecipients(state, myParticipant);
+
+  return myPid;
+}
+
 export function emptyState(): AppState {
   return {
     version: 1,
