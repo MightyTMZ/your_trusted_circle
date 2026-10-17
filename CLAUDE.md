@@ -127,6 +127,53 @@ Apply these guardrails to every voice-model prompt and response:
   where relevant. Responses that cannot be grounded must not be
   spoken.
 
+## Glossary and UI language
+Use these terms consistently in UI copy, component names, and code.
+
+Core terms:
+- **Session:** a time-limited, opt-in monitoring period.
+- **Host:** the participant who initializes the session and
+  receives alerts. Not "admin", "guardian", or "group".
+- **Participant:** anyone who has consented to join a session.
+- **Backup contact:** who an alert escalates to when the host
+  does not acknowledge it.
+- **Check-in:** the private prompt sent to a participant after a
+  qualifying movement change. It is a question, not an alert.
+- **Alert:** the notification sent to the host.
+- **Escalation:** forwarding an unacknowledged alert to backup
+  contacts, then to simulated emergency services.
+- **Incident:** the record linking a check-in, alerts, and
+  escalation steps.
+- **Incident Card:** the timestamped list of observed events.
+- **Acknowledge:** a recipient confirms they received an alert;
+  stops pending escalation. **Resolve:** a separate action that
+  closes the incident. Never merge them into "Dismiss" or "OK".
+
+UI language rules:
+- Describe observations: "Movement changed from baseline", not
+  "fall detected", "unconscious", or "intoxicated".
+- After acknowledgment, show "Alert acknowledged by [host]",
+  never "[Name] is safe".
+- Show "Last known location · [time]" unless the location is
+  live; mark stale locations as stale.
+- Label simulated features on screen ("Simulated emergency
+  services", "Mock operator"); no "Call 911" text or dial icons.
+- Call thresholds "sensitivity (unvalidated)", not "accuracy".
+- Consent copy is first-person and participant-initiated:
+  "Join session", "Share my location", "Leave session".
+- Keep the active-session indicator and time until expiry
+  visible on every screen.
+
+Mobile (React Native):
+- Name components after these terms, e.g. `CheckInPrompt`,
+  `IncidentCard`, `AcknowledgeButton`, `ResolveButton`,
+  `LastKnownLocation`, `SessionIndicator`.
+- Match permission copy to platform terms: iOS "While Using the
+  App" / "Always" location and "Motion & Fitness"; Android
+  background location as a separate permission.
+- Never use `Linking` with `tel:`/`sms:` URIs or add calling/SMS
+  libraries; this is covered by the build guard, not the agent hook.
+
 ## Development workflow
 - Before editing, state the exact files you will touch.
 - Touch only those files; announce changes to that list first.
