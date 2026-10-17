@@ -272,6 +272,13 @@ owner shares location; if the browser refuses location, the home screen
 says so. Location sharing has no "nobody" option: participants choose the
 group or the host only, and the host always shares with the group.
 
+The sign-in screen shows a "Test sign-in" card only when the server
+reports `testSignIn: true` (local development). Simulated people on the
+group map are drawn around the demo venue, which presenters set in the Demo
+panel (an address or coordinates, saved in that browser) or the build sets
+with `DEMO_VENUE`. Google requires its logo, map data, Terms and
+"Report a map error" links on the map; never hide them.
+
 Profile pictures are stored by the server (`avatar` on `GET`/`PATCH
 /api/me`) as a PNG, JPEG or WebP data URL of at most 100 KB. The app
 square-crops and resizes to 256×256 before upload (`toAvatarDataUrl`).

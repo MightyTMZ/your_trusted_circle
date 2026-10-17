@@ -5,17 +5,12 @@ import type { LiveFix } from '../api';
 import { useApp } from '../context';
 import { fmtTime } from '../format';
 import { useLive } from '../hooks/useServerSession';
+import { useDemoVenue } from '../venue';
 import { initials } from './Controls';
 import { GoogleMap, googleMapsConfigured, type MapPin } from './GoogleMap';
 
 const RANGE_M = 60;
 const M_PER_DEG = 111_320;
-
-/**
- * Where simulated positions are drawn when nobody has a real fix yet. A public
- * landmark (Toronto City Hall), not anyone's real location.
- */
-const SYNTHETIC_VENUE = { lat: 43.6532, lng: -79.3832 };
 
 export interface GroupPoint {
   participantId: string;
@@ -45,9 +40,10 @@ export function useGroupPoints(viewer: Participant, now: number): { points: Grou
   const { state } = useApp();
   const { fixes } = useLive();
   const session = state.session!;
+  const venue = useDemoVenue();
   return useMemo(() => {
-    const own = fixes.find((f) => f.isYou) ?? fixes[0];
-    const anchor = own ? { lat: own.latitude, lng: own.longitude } : SYNTHETIC_VENUE;
+    // Simulated people are drawn around the demo venue; real fixes show where they really are.
+    const anchor = { lat: venue.lat, lng: venue.lng };
     const cos = Math.cos((anchor.lat * Math.PI) / 180);
     const points: GroupPoint[] = [];
     for (const p of Object.values(state.participants)) {
@@ -86,7 +82,7 @@ export function useGroupPoints(viewer: Participant, now: number): { points: Grou
       });
     }
     return { points, anchor };
-  }, [state.participants, session, viewer, fixes, now]);
+  }, [state.participants, session, viewer, fixes, now, venue]);
 }
 
 function describe(points: GroupPoint[]): string {

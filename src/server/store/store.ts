@@ -17,7 +17,7 @@ import type {
   NotificationJobDoc,
   ParticipantConsent,
   ParticipantDoc,
-  ProviderId,
+  IdentityProvider,
   SessionDoc,
   SessionRules,
   TraceDoc,
@@ -38,7 +38,7 @@ export type ParticipantPatch = Partial<Pick<ParticipantDoc, "consent" | "leftAt"
 
 export interface Store {
   // users and sign-in
-  findUserByIdentity(provider: ProviderId, subject: string): Promise<UserDoc | null>;
+  findUserByIdentity(provider: IdentityProvider, subject: string): Promise<UserDoc | null>;
   getUser(id: string): Promise<UserDoc | null>;
   insertUser(user: UserDoc): Promise<void>;
   updateUser(id: string, patch: Partial<Pick<UserDoc, "displayName" | "avatar" | "email" | "emailVerified">>, now: Date): Promise<void>;

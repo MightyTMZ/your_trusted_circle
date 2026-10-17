@@ -9,7 +9,7 @@ import { ParticipantConsentFields, defaultParticipantInput } from '../components
 export function JoinSessionScreen({ code }: { code: string }) {
   const { state, store, setViewer, go, account, setPendingJoinCode } = useApp();
   const [step, setStep] = useState(1);
-  const [input, setInput] = useState<ParticipantInput>(defaultParticipantInput);
+  const [input, setInput] = useState<ParticipantInput>(() => ({ ...defaultParticipantInput(), displayName: account?.displayName ?? '' }));
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<SessionPreview | null | undefined>(undefined);
   const [joining, setJoining] = useState(false);

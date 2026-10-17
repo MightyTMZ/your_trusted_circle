@@ -9,9 +9,11 @@
 
 export const PROVIDER_IDS = ["google", "github", "apple", "microsoft"] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
+/** "test" is the localhost-only test sign-in (config.testSignIn); never an OAuth provider. */
+export type IdentityProvider = ProviderId | "test";
 
 export interface Identity {
-  provider: ProviderId;
+  provider: IdentityProvider;
   /** The provider's stable user id (OIDC `sub`, or GitHub's numeric id). */
   subject: string;
   linkedAt: Date;

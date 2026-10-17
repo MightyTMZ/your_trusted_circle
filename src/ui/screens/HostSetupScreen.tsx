@@ -17,7 +17,7 @@ export function HostSetupScreen() {
   const [sessionName, setSessionName] = useState('');
   const [durationMin, setDurationMin] = useState(240);
   const [commitment, setCommitment] = useState(false);
-  const [host, setHost] = useState<ParticipantInput>(() => ({ ...defaultParticipantInput(), motionMonitoring: false }));
+  const [host, setHost] = useState<ParticipantInput>(() => ({ ...defaultParticipantInput(), motionMonitoring: false, displayName: account?.displayName ?? '' }));
   const [cfg, setCfg] = useState({
     checkInWindowSec: DEFAULT_CONFIG.checkInWindowSec,
     hostAckWindowSec: DEFAULT_CONFIG.hostAckWindowSec,

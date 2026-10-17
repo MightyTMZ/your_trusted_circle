@@ -55,6 +55,7 @@ export const COPY = {
   locationNotShared: 'Location not shared with you',
   locationOff: 'Not sharing location',
   locationNone: 'No reading yet',
+  locationNotYetShared: 'No location shared with you yet',
 } as const;
 
 export const SHARING_LABEL = {

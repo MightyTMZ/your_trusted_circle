@@ -44,6 +44,29 @@ export async function fetchProviders(): Promise<Provider[] | null> {
   return PROVIDERS.filter((p) => body.providers.includes(p));
 }
 
+/** Whether the server offers the localhost-only test sign-in (TEST_SIGN_IN=true in development). */
+export async function fetchTestSignInEnabled(): Promise<boolean> {
+  const body = await getJson<{ testSignIn?: boolean }>('/auth/providers');
+  return body?.testSignIn === true;
+}
+
+/** Signs in as a made-up test person. Only works against a local development server. Returns an error message on failure. */
+export async function testSignIn(name: string): Promise<string | null> {
+  try {
+    const res = await fetch('/api/auth/test/signin', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (res.ok) return null;
+    const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+    return body?.error?.message ?? "Couldn't sign in. Try again.";
+  } catch {
+    return "Couldn't reach the server. Try again.";
+  }
+}
+
 /** The signed-in account, or null when signed out or the server can't be reached. */
 export async function fetchAccount(): Promise<Account | null> {
   const body = await getJson<{ user: Account }>('/me');

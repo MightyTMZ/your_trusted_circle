@@ -79,7 +79,9 @@ function PersonRow({ subject, viewer, now, alerting, fixes }: { subject: Partici
   const visible = canViewLocation(session, viewer, subject);
   let location;
   if (fix) location = <LiveFixStamp fix={fix} now={now} />;
-  else if (subject.remote) location = <span className="t-sub">{subject.id === viewer.id ? COPY.locationNone : COPY.locationNotShared}</span>;
+  // Everyone shares with at least the host, and the host with everyone, so no fix usually means no GPS yet.
+  else if (subject.remote)
+    location = <span className="t-sub">{isHostView || subject.role === 'host' ? COPY.locationNone : COPY.locationNotYetShared}</span>;
   else if (subject.consent.locationSharing === 'off') location = <span className="t-sub">{COPY.locationOff}</span>;
   else if (!visible) location = <span className="t-sub">{COPY.locationNotShared}</span>;
   else if (!reading) location = <span className="t-sub">{COPY.locationNone}</span>;

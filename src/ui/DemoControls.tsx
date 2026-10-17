@@ -5,6 +5,7 @@ import { useApp, useNow } from './context';
 import { fmtTime } from './format';
 import { Icon } from './components/Icon';
 import { joinUrl } from './screens/SessionInviteScreen';
+import { DEFAULT_VENUE, resolveVenue, setDemoVenue, useDemoVenue } from './venue';
 
 const POS_KEY = 'ytc.demoFab';
 const GAP = 16;
@@ -246,6 +247,8 @@ function DemoPanel({ style }: { style: CSSProperties }) {
         </div>
       )}
 
+      <VenuePicker />
+
       <div>
         <h3>Voice agent</h3>
         <div className="btns">
@@ -278,5 +281,57 @@ function DemoPanel({ style }: { style: CSSProperties }) {
         own phone for now. Thresholds are unvalidated.
       </p>
     </aside>
+  );
+}
+
+/** Where simulated people appear on the map. Real phone fixes are unaffected. */
+function VenuePicker() {
+  const venue = useDemoVenue();
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isDefault = venue.lat === DEFAULT_VENUE.lat && venue.lng === DEFAULT_VENUE.lng;
+  const apply = async () => {
+    setBusy(true);
+    setError(null);
+    const v = await resolveVenue(text);
+    setBusy(false);
+    if (typeof v === 'string') return setError(v);
+    setDemoVenue(v);
+    setText('');
+  };
+  return (
+    <div>
+      <h3>Demo venue</h3>
+      <p className="t-cap" style={{ marginBottom: 8 }}>
+        Simulated people appear around {venue.label}. Real phone locations are unaffected. Use a public place.
+      </p>
+      <label className="sr-only" htmlFor="demo-venue">
+        Venue address or coordinates
+      </label>
+      <input
+        id="demo-venue"
+        className="field"
+        value={text}
+        placeholder="Club address, or 43.6532, -79.3832"
+        autoComplete="off"
+        onChange={(e) => {
+          setText(e.target.value);
+          setError(null);
+        }}
+        onKeyDown={(e) => e.key === 'Enter' && text.trim() && !busy && apply()}
+      />
+      {error && <p className="t-cap" role="alert" style={{ marginTop: 6 }}>{error}</p>}
+      <div className="btns" style={{ marginTop: 8 }}>
+        <button className="btn chip fill" disabled={!text.trim() || busy} onClick={apply}>
+          {busy ? 'Finding…' : 'Set venue'}
+        </button>
+        {!isDefault && (
+          <button className="btn chip fill" onClick={() => setDemoVenue(null)}>
+            Back to {DEFAULT_VENUE.label}
+          </button>
+        )}
+      </div>
+    </div>
   );
 }

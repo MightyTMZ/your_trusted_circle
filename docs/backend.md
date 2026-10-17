@@ -34,6 +34,7 @@ All bodies are JSON. Every request except sign-in needs the `ytc_session` cookie
 | `GET /api/auth/providers` | anyone | Configured sign-in providers |
 | `GET /api/auth/:provider/start?returnTo=/path` | anyone | Redirect to Google, GitHub, Apple or Microsoft |
 | `GET\|POST /api/auth/:provider/callback` | provider | Signs in; creates the account on first sign-in |
+| `POST /api/auth/test/signin` | anyone on this computer | Development only: signs in as a made-up name, no password. Off unless `TEST_SIGN_IN=true`, the app and API origins are localhost, and `NODE_ENV` is not `production`; also refuses requests not addressed to localhost. `localhost` and `127.0.0.1` keep separate cookies, so they act as two phones. |
 | `POST /api/auth/logout` | signed in | Ends this browser's sign-in |
 | `POST /api/sessions` | signed in | Create a session; you are its host |
 | `GET /api/sessions/join/:code` | signed in | Preview before joining |

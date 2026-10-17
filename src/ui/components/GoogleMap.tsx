@@ -30,7 +30,7 @@ let authFailed = false;
 const authListeners = new Set<() => void>();
 
 /** Loads the Maps JavaScript API once. Rejects when the script can't load. */
-function loadGoogleMaps(): Promise<void> {
+export function loadGoogleMaps(): Promise<void> {
   if (window.google?.maps?.Map) return Promise.resolve();
   if (loading) return loading;
   loading = new Promise<void>((resolve, reject) => {
@@ -124,6 +124,8 @@ function GoogleMapInner({ pins, center, onFail }: { pins: MapPin[]; center: { la
           fullscreenControl: true,
           gestureHandling: 'cooperative',
           clickableIcons: false,
+          // The attribution, Terms and error-report links are required by Google and stay.
+          keyboardShortcuts: false,
         });
         setReady(true);
       })
@@ -167,8 +169,8 @@ function GoogleMapInner({ pins, center, onFail }: { pins: MapPin[]; center: { la
         );
       }
     }
-    // Re-frame only when who is on the map changes, not on every position update.
-    const key = pins.map((p) => p.id).sort().join(',');
+    // Re-frame only when who is on the map or the venue changes, not on every position update.
+    const key = `${pins.map((p) => p.id).sort().join(',')}@${center.lat},${center.lng}`;
     if (key === fitted.current) return;
     fitted.current = key;
     if (pins.length === 0) {

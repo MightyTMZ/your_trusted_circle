@@ -34,6 +34,22 @@ export interface ServerConfig {
   alertLeaseMs: number;
   /** Traces and finished sessions older than this are deleted. */
   retentionDays: number;
+  /**
+   * Password-free test sign-in for trying the app with several made-up people
+   * on one computer. Only ever on for a localhost app origin outside production.
+   */
+  testSignIn: boolean;
+}
+
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** True for http(s)://localhost, 127.0.0.1 or [::1] on any port. */
+export function isLocalUrl(url: string): boolean {
+  try {
+    return LOCAL_HOSTS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
 }
 
 /** Mirrors src/domain/config.ts. All values are unvalidated demo defaults. */
@@ -91,6 +107,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     appOrigin,
     apiOrigin,
     secureCookies: env.COOKIE_SECURE ? env.COOKIE_SECURE === "true" : appOrigin.startsWith("https://"),
+    testSignIn: env.TEST_SIGN_IN === "true" && env.NODE_ENV !== "production" && isLocalUrl(appOrigin) && isLocalUrl(apiOrigin),
     authSessionTtlMs: 30 * 24 * 60 * 60 * 1000,
     providers,
     defaultRules: DEFAULT_RULES,
