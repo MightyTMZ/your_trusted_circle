@@ -74,15 +74,15 @@ describe("operator call agent", () => {
   it("rejects drafts the judge does not fully support", async () => {
     const model = new ScriptedModel("fake", (req) => ({
       intent: "answer",
-      // Passes the lexical guard (the cited fact mentions breathing) but asserts the opposite of it.
-      sentences: [{ text: "They are breathing.", fact_ids: [idInPrompt(req, "Their condition is unknown")] }],
+      // Passes the deterministic guard ("dancing" is on no list and in no fact) but is invented.
+      sentences: [{ text: "They were dancing just before the impact.", fact_ids: [idInPrompt(req, "sudden impact")] }],
     }));
-    const judge = new ScriptedModel("judge", () => ({ verdicts: [{ claim: 1, verdict: "unsupported", reason: "facts say breathing is unknown" }] }));
+    const judge = new ScriptedModel("judge", () => ({ verdicts: [{ claim: 1, verdict: "unsupported", reason: "the facts do not mention dancing" }] }));
     const { agent } = scenario({ model, judge });
-    const reply = (await agent.respond("Are they breathing?"))!;
+    const reply = (await agent.respond("What were they doing before the impact?"))!;
     expect(reply.path).toBe("fallback");
     expect(reply.rejected.map((r) => r.stage)).toEqual(["judge", "judge"]);
-    expect(reply.text).not.toContain("They are breathing");
+    expect(reply.text).not.toContain("dancing");
   });
 
   it("treats a missing or malformed verdict as unsupported", async () => {
