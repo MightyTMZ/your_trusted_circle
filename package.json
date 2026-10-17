@@ -47,5 +47,8 @@
     "vitest": "^2.1.4"
   },
   "private": true,
-  "type": "module"
+  "type": "module",
+  "allowScripts": {
+    "protobufjs@7.6.6": true
+  }
 }
