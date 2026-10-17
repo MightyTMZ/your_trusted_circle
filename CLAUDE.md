@@ -126,6 +126,20 @@ Apply these guardrails to every voice-model prompt and response:
   where relevant. Responses that cannot be grounded must not be
   spoken.
 
+## UI changes
+Follow [`docs/ui-guidelines.md`](./docs/ui-guidelines.md) for any new
+or changed screen:
+- Use the design tokens and components listed there. No hard-coded colours,
+  radii or fonts in components.
+- The accent colour only marks something active, on, in progress, the
+  primary action or the current selection.
+- One focal point and one primary action per screen. Prefer steps or
+  expandable sections over long forms.
+- Every screen must work on phone, tablet and desktop layouts and in all
+  four themes (Ember, Onyx, Mono, Porcelain).
+- If you add a component or theme, document it in the guidelines in the
+  same change.
+
 ## Development workflow
 - Before editing, state the exact files you will touch.
 - Touch only those files; announce changes to that list first.
@@ -145,3 +159,4 @@ If these conflict, explain the conflict before changing behavior.
 - KAZE brief: [`HTV 11_ Project KAZE.pdf`](./HTV%2011_%20Project%20KAZE.pdf)
 - YTC Grand Architecture (./docs/YTC Grand Architecture.png)
 - Backend API, responsibilities and endpoints: [`docs/backend.md`](./docs/backend.md)
+- UI guidelines (themes, tokens, components): [`docs/ui-guidelines.md`](./docs/ui-guidelines.md)
