@@ -469,6 +469,8 @@ export function respondToCheckIn(
     return;
   }
   ci.status = 'requested_help';
+  // Server-backed: the answer is sent to the server, which opens the incident everyone sees.
+  if (state.session?.serverId) return;
   openIncident(state, actorId, 'help_requested', now, { observationId: ci.observationId, checkInId: ci.id });
 }
 

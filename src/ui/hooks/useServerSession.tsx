@@ -1,6 +1,18 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { applyServerTimeline, checkInNeedsSync } from '../../domain/serverAlerts';
 import { syncServerParticipants } from '../../domain/session';
-import { fetchLiveLocations, fetchServerSession, sendLiveLocation, type LiveFix } from '../api';
+import type { AppState, CheckIn } from '../../domain/types';
+import {
+  fetchLiveLocations,
+  fetchServerAlerts,
+  fetchServerSession,
+  fetchServerTimeline,
+  requestHelpOnServer,
+  respondCheckInOnServer,
+  sendLiveLocation,
+  startCheckInOnServer,
+  type LiveFix,
+} from '../api';
 import { useApp } from '../context';
 
 export type GeoState = 'idle' | 'waiting' | 'on' | 'denied' | 'unavailable';
@@ -12,11 +24,14 @@ interface Live {
   geo: GeoState;
   /** True once the server has answered at least once for this session. */
   connected: boolean;
+  /** Fetch the server's incidents now, e.g. right after acknowledging. */
+  refreshAlerts(): Promise<void>;
 }
 
-const LiveCtx = createContext<Live>({ fixes: [], geo: 'idle', connected: false });
+const LiveCtx = createContext<Live>({ fixes: [], geo: 'idle', connected: false, refreshAlerts: async () => {} });
 
 const SESSION_POLL_MS = 10_000;
+const ALERT_POLL_MS = 3_000;
 const LOCATION_POLL_MS = 5_000;
 const SEND_EVERY_MS = 10_000;
 
@@ -24,7 +39,10 @@ const SEND_EVERY_MS = 10_000;
  * Keeps a server-backed session in step with the server:
  * - the participant list (people who joined or left on other devices),
  * - this device's position, relayed while you share location,
- * - the group's positions you are allowed to see (docs/backend.md, "Live group location").
+ * - the group's positions you are allowed to see (docs/backend.md, "Live group location"),
+ * - check-ins and incidents: this device reports its check-ins and answers, and
+ *   shows the server's incidents (src/domain/serverAlerts.ts). The server owns
+ *   every deadline, so a closed phone still alerts the host.
  * Sessions that exist only on this device are left alone.
  */
 export function LiveLocationProvider({ children }: { children: ReactNode }) {
@@ -110,7 +128,95 @@ export function LiveLocationProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => setConnected(false), [serverId]);
 
-  return <LiveCtx.Provider value={{ fixes, geo, connected }}>{children}</LiveCtx.Provider>;
+  // Incidents keep escalating after a session ends, so alerts sync for as long as you're in it.
+  const alertsOn = !!serverId && !!me;
+  const isHost = !!me && me.id === session?.hostId;
+  const meId = me?.id;
+  const refreshAlerts = useCallback(async () => {
+    if (!alertsOn || !meId) return;
+    const [timeline, alerts] = await Promise.all([fetchServerTimeline(serverId!), isHost ? fetchServerAlerts() : Promise.resolve([])]);
+    if (!timeline) return;
+    store.dispatch((d) => applyServerTimeline(d, { ...timeline, alerts: alerts ?? [] }, meId));
+  }, [alertsOn, serverId, isHost, meId, store]);
+
+  // Report this device's check-ins and answers. Retried on every pass until the server has them.
+  const inFlight = useRef(new Set<string>());
+  const tried = useRef(new Set<string>());
+  const syncCheckIns = useCallback(async () => {
+    if (!alertsOn || !meId) return;
+    const s: AppState = store.getState();
+    const mine = s.checkIns.filter((c) => c.participantId === meId && checkInNeedsSync(c));
+    for (const c of mine) {
+      if (inFlight.current.has(c.id)) continue;
+      inFlight.current.add(c.id);
+      tried.current.add(`${c.id}:${c.status}`);
+      try {
+        await syncCheckIn(c, serverId!, store.dispatch);
+      } finally {
+        inFlight.current.delete(c.id);
+      }
+    }
+    if (mine.length > 0) await refreshAlerts();
+  }, [alertsOn, serverId, meId, store, refreshAlerts]);
+
+  useEffect(() => {
+    if (!alertsOn) return;
+    let alive = true;
+    const pass = async () => {
+      await syncCheckIns();
+      if (alive) await refreshAlerts();
+    };
+    pass();
+    const id = setInterval(pass, ALERT_POLL_MS);
+    // A new local check-in or answer is sent at once; failed sends are retried by the poll.
+    const unsub = store.subscribe(() => {
+      const fresh = store
+        .getState()
+        .checkIns.some((c) => c.participantId === meId && checkInNeedsSync(c) && !tried.current.has(`${c.id}:${c.status}`));
+      if (fresh) syncCheckIns();
+    });
+    return () => {
+      alive = false;
+      clearInterval(id);
+      unsub();
+    };
+  }, [alertsOn, meId, store, syncCheckIns, refreshAlerts]);
+
+  return <LiveCtx.Provider value={{ fixes, geo, connected, refreshAlerts }}>{children}</LiveCtx.Provider>;
+}
+
+type Dispatch = (m: (d: AppState) => void) => string | null;
+
+async function syncCheckIn(c: CheckIn, serverId: string, dispatch: Dispatch): Promise<void> {
+  const update = (patch: Partial<NonNullable<CheckIn['server']>>) =>
+    dispatch((d) => {
+      const x = d.checkIns.find((y) => y.id === c.id);
+      if (x) x.server = { ...x.server, ...patch } as NonNullable<CheckIn['server']>;
+    });
+
+  if (!c.server) {
+    // Asked for help before the server had the check-in: asking for help is never dropped.
+    if (c.status === 'requested_help') {
+      const r = await requestHelpOnServer(serverId);
+      if (r.ok) update({ id: null, refused: 'sent_as_help', responseSent: true });
+      return;
+    }
+    const r = await startCheckInOnServer(serverId);
+    if (r.ok) return void update({ id: r.data.checkIn.id });
+    // Refused (an alert about you is already open, or monitoring is off on the server): stop asking here.
+    if (r.code) {
+      update({ id: null, refused: r.code });
+      dispatch((d) => {
+        const x = d.checkIns.find((y) => y.id === c.id);
+        if (x?.status === 'pending') x.status = 'cancelled';
+      });
+    }
+    return;
+  }
+  if (!c.server.id) return;
+  const r = await respondCheckInOnServer(c.server.id, c.status === 'requested_help' ? 'help' : 'ok');
+  // `checkin_closed`: the server's deadline passed first; its alert stands and the next poll shows it.
+  if (r.ok || r.code) update({ responseSent: true });
 }
 
 export function useLive(): Live {

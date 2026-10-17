@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { HOST_RECIPIENT_PREFIX, acknowledge, nextDeadline, repeatAlert, resolve } from '../../domain/incident';
 import { freshness } from '../../domain/location';
+import { applyServerIncident } from '../../domain/serverAlerts';
 import { latestPayloadFor } from '../../domain/transport';
 import type { Incident, ResolutionOutcome } from '../../domain/types';
 import { COPY } from '../copy';
@@ -12,6 +13,8 @@ import { ArcGauge } from '../components/Gauges';
 import { Icon } from '../components/Icon';
 import { LocationStamp } from '../components/LocationStamp';
 import { SimulatedTag } from '../components/SimulatedTag';
+import { acknowledgeOnServer, resolveOnServer } from '../api';
+import { useLive } from '../hooks/useServerSession';
 
 const hm = (t: number) => fmtTime(t).slice(0, 5);
 
@@ -27,6 +30,8 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
   const [outcome, setOutcome] = useState<ResolutionOutcome | null>(null);
   const [note, setNote] = useState('');
   const [flash, setFlash] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { refreshAlerts } = useLive();
 
   const incident = state.incidents.find((i) => i.id === incidentId);
   const recipientId = meRecipient?.id ?? (me ? HOST_RECIPIENT_PREFIX + me.id : '');
@@ -75,6 +80,29 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
         aria: 'Escalation stopped by acknowledgment.',
       };
 
+  // Server incidents: the server decides, and its answer replaces this device's copy.
+  const onServer = !!incident.server;
+  const viewerId = me?.id ?? '';
+  const serverAction = async (call: () => ReturnType<typeof acknowledgeOnServer>) => {
+    setBusy(true);
+    const r = await call();
+    if (r.ok) store.dispatch((d) => void applyServerIncident(d, r.data.incident, viewerId));
+    else await refreshAlerts();
+    setBusy(false);
+    setFlash(r.ok ? null : r.message);
+  };
+  const doAcknowledge = () => {
+    if (!onServer) return void store.dispatch((d, t) => acknowledge(d, incident.id, recipientId, t));
+    const alertId = incident.server!.alertId;
+    if (!alertId) return setFlash('This alert was not delivered to you, so you cannot acknowledge it.');
+    void serverAction(() => acknowledgeOnServer(alertId));
+  };
+  const doResolve = () => {
+    if (!outcome) return;
+    if (!onServer) return void store.dispatch((d, t) => resolve(d, incident.id, recipientId, outcome, note, t));
+    void serverAction(() => resolveOnServer(incident.id, outcome));
+  };
+
   const doRepeat = () => {
     store.dispatch((d, t) => repeatAlert(d, incident.id, t));
     setFlash(COPY.repeatAlertSub);
@@ -109,13 +137,14 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
 
           {open ? (
             <div className="col rise rise-2">
-              <button type="button" className="btn pbtn on-accent" onClick={() => store.dispatch((d, t) => acknowledge(d, incident.id, recipientId, t))}>
+              <button type="button" className="btn pbtn on-accent" disabled={busy} onClick={doAcknowledge}>
                 <Icon name="check" />
                 {COPY.acknowledge}
               </button>
               <p className="t-sub center">{COPY.acknowledgeCaveat}</p>
               <div className="inline" style={{ justifyContent: 'center' }}>
-                {isHost && (
+                {/* The server has no repeat; its deadlines run regardless. */}
+                {isHost && !onServer && (
                   <button type="button" className="btn chip fill" onClick={doRepeat}>
                     <Icon name="repeat" />
                     {COPY.repeatAlert}
@@ -155,18 +184,23 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
                     value={outcome}
                     onChange={setOutcome}
                   />
-                  <label htmlFor="resnote" className="sr-only">
-                    What happened (optional)
-                  </label>
-                  <textarea id="resnote" className="field" placeholder="What happened? (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
-                  <button
-                    type="button"
-                    className="btn pbtn on-accent"
-                    disabled={!outcome}
-                    onClick={() => outcome && store.dispatch((d, t) => resolve(d, incident.id, recipientId, outcome, note, t))}
-                  >
+                  {/* The server records the outcome only, so no note is offered for its alerts. */}
+                  {!onServer && (
+                    <>
+                      <label htmlFor="resnote" className="sr-only">
+                        What happened (optional)
+                      </label>
+                      <textarea id="resnote" className="field" placeholder="What happened? (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+                    </>
+                  )}
+                  <button type="button" className="btn pbtn on-accent" disabled={!outcome || busy} onClick={doResolve}>
                     {COPY.resolve}
                   </button>
+                  {flash && (
+                    <p className="t-cap center" role="status">
+                      {flash}
+                    </p>
+                  )}
                 </>
               )}
               <div className="inline" style={{ justifyContent: 'center' }}>

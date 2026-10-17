@@ -277,6 +277,103 @@ export function sendLiveLocation(serverId: string, fix: { latitude: number; long
 }
 
 // ---------------------------------------------------------------------------
+// Check-ins and alerts (server-backed sessions). The server owns every
+// deadline; these calls only report what this device saw and fetch the result.
+// ---------------------------------------------------------------------------
+
+/** GET /api/incidents/:id and the timeline's incidents (src/server/alerts/routes.ts, incidentView). */
+export interface ServerIncidentView {
+  id: string;
+  sessionId: string;
+  participant: { participantId: string; displayName: string };
+  trigger: 'checkin_missed' | 'help_requested';
+  openedAt: string;
+  status: 'open' | 'acknowledged' | 'resolved';
+  nextEscalationAt: string | null;
+  acknowledged: { by: string; at: string; note: string } | null;
+  resolved: { by: string; at: string; outcome: 'false_alarm' | 'assistance_reached' | 'other' } | null;
+  steps: { level: 'host' | 'backup' | 'emergency_simulated'; recipients: string[]; notifiedAt: string | null; dueAt: string | null }[];
+  log: { at: string; kind: string; text: string; simulated?: boolean }[];
+}
+
+export interface ServerCheckInView {
+  id: string;
+  status: 'pending' | 'responded_ok' | 'requested_help' | 'missed' | 'cancelled';
+  dueAt: string;
+  incidentId: string | null;
+}
+
+/** GET /api/alerts: alerts delivered to the signed-in user. */
+export interface ServerAlertView {
+  id: string;
+  incidentId: string;
+  about: string;
+  trigger: 'checkin_missed' | 'help_requested';
+  deliveredAt: string | null;
+  incidentStatus: string;
+}
+
+export interface ServerTimeline {
+  incidents: ServerIncidentView[];
+  checkIns: ServerCheckInView[];
+}
+
+/** Incidents and your own check-ins in a session, or null when the server can't be reached. */
+export async function fetchServerTimeline(serverId: string): Promise<ServerTimeline | null> {
+  const body = await getJson<ServerTimeline>(`/sessions/${encodeURIComponent(serverId)}/timeline`);
+  return body ? { incidents: body.incidents ?? [], checkIns: body.checkIns ?? [] } : null;
+}
+
+export async function fetchServerAlerts(): Promise<ServerAlertView[] | null> {
+  const body = await getJson<{ alerts: ServerAlertView[] }>('/alerts');
+  return body?.alerts ?? null;
+}
+
+type Result<T> = { ok: true; data: T } | { ok: false; message: string; code?: string };
+
+async function postResult<T>(path: string, body: unknown): Promise<Result<T>> {
+  try {
+    const res = await fetch(`/api${path}`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+    if (res.ok) return { ok: true, data: (json ?? {}) as T };
+    const err = json?.error as { code?: string; message?: string } | undefined;
+    return { ok: false, message: err?.message ?? 'Request failed.', code: err?.code };
+  } catch {
+    return { ok: false, message: "Couldn't reach the server." };
+  }
+}
+
+/** Your device saw a movement change: the server starts your private check-in and its deadline. */
+export function startCheckInOnServer(serverId: string): Promise<Result<{ checkIn: ServerCheckInView }>> {
+  return postResult(`/sessions/${encodeURIComponent(serverId)}/checkins`, { reason: 'movement_changed' });
+}
+
+export function respondCheckInOnServer(checkInId: string, response: 'ok' | 'help'): Promise<Result<{ checkIn: ServerCheckInView; incidentId?: string }>> {
+  return postResult(`/checkins/${encodeURIComponent(checkInId)}/respond`, { response });
+}
+
+export function requestHelpOnServer(serverId: string): Promise<Result<{ incidentId: string }>> {
+  return postResult(`/sessions/${encodeURIComponent(serverId)}/help`, {});
+}
+
+export function sendImOkOnServer(serverId: string): Promise<Result<unknown>> {
+  return postResult(`/sessions/${encodeURIComponent(serverId)}/update`, {});
+}
+
+export function acknowledgeOnServer(alertId: string): Promise<Result<{ incident: ServerIncidentView }>> {
+  return postResult(`/alerts/${encodeURIComponent(alertId)}/acknowledge`, {});
+}
+
+export function resolveOnServer(incidentId: string, outcome: 'false_alarm' | 'assistance_reached' | 'other'): Promise<Result<{ incident: ServerIncidentView }>> {
+  return postResult(`/incidents/${encodeURIComponent(incidentId)}/resolve`, { outcome });
+}
+
+// ---------------------------------------------------------------------------
 
 const LOGIN_ERRORS: Record<string, string> = {
   cancelled: 'Sign-in was cancelled.',

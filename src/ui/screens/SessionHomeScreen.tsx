@@ -17,7 +17,7 @@ import { useFirstContact } from '../components/HelpSheet';
 import { Sheet } from '../components/Sheet';
 import { useMotionTracking } from '../hooks/useMotionTracking';
 import { useLive } from '../hooks/useServerSession';
-import { endSessionOnServer, type LiveFix } from '../api';
+import { endSessionOnServer, sendImOkOnServer, type LiveFix } from '../api';
 
 function fmtHM(ms: number): string {
   const m = Math.max(0, Math.round(ms / 60_000));
@@ -173,6 +173,12 @@ export function SessionHomeScreen() {
     setError(err);
     return !err;
   };
+  const sendImOk = async () => {
+    if (!myIncident?.server || !session.serverId) return void run((d, t) => participantUpdate(d, viewer.id, t));
+    const r = await sendImOkOnServer(session.serverId);
+    setError(r.ok ? null : r.message);
+    if (r.ok) await live.refreshAlerts();
+  };
   const errorBox = error && (
     <p className="error" role="alert">
       <Icon name="alert" />
@@ -235,7 +241,7 @@ export function SessionHomeScreen() {
               : `${firstContact[0].toUpperCase()}${firstContact.slice(1)} ${isHost ? 'were' : 'was'} alerted at ${fmtTime(myIncident.openedAt)}.`}{' '}
             Only a recipient can resolve it.
           </p>
-          <button type="button" className="btn pbtn fill" onClick={() => run((d, t) => participantUpdate(d, viewer.id, t))}>
+          <button type="button" className="btn pbtn fill" onClick={sendImOk}>
             Tell responders I'm OK
           </button>
           <span className="t-cap">Adds to the alert's record. It does not close the alert.</span>
