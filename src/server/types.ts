@@ -156,7 +156,8 @@ export interface IncidentDoc {
   steps: EscalationStep[];
   currentStep: number;
   acknowledged: { byUserId: string; name: string; at: Date } | null;
-  resolved: { byUserId: string; name: string; at: Date; outcome: "false_alarm" | "assistance_reached" | "other" } | null;
+  /** `bySubject`: the person the alert is about cancelled it themselves (their own report). */
+  resolved: { byUserId: string; name: string; at: Date; outcome: "false_alarm" | "assistance_reached" | "other"; bySubject?: boolean } | null;
   log: IncidentLogEntry[];
 }
 

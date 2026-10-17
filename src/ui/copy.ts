@@ -34,6 +34,14 @@ export const COPY = {
     other: 'Other',
   },
 
+  cancelAlert: 'Cancel alert: false alarm',
+  cancelAlertTitle: 'Cancel this alert?',
+  cancelAlertKeep: 'Keep the alert open',
+  cancelAlertConfirm: 'Yes, cancel it',
+  cancelAlertCaveat: 'Responders will see that you cancelled it yourself. If you need help later, ask again: that starts a new alert.',
+  cancelledBySelf: (name: string) => `Cancelled by ${name}: false alarm`,
+  cancelledBySelfCaveat: 'This is their own report from their device. No one has checked on them in person.',
+
   emergencySimulated: 'Emergency services (simulated)',
   simulatedTag: 'Simulated',
   simulatedCallBanner: 'Simulated call to a mock operator. No real number is dialed and no real service is contacted.',

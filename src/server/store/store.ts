@@ -82,6 +82,8 @@ export interface Store {
   claimStep(id: string, index: number, at: Date, nextDueAt: Date | null): Promise<boolean>;
   acknowledgeIncident(id: string, ack: NonNullable<IncidentDoc["acknowledged"]>): Promise<boolean>;
   resolveIncident(id: string, res: NonNullable<IncidentDoc["resolved"]>): Promise<boolean>;
+  /** The subject cancels their own open or acknowledged incident. Pending steps lose their deadlines. Once only. */
+  cancelIncidentBySubject(id: string, res: NonNullable<IncidentDoc["resolved"]>): Promise<boolean>;
   appendIncidentLog(id: string, entry: IncidentLogEntry): Promise<void>;
 
   // notification jobs

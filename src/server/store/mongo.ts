@@ -256,6 +256,15 @@ export class MongoStore implements Store {
     );
     return r.modifiedCount === 1;
   }
+  async cancelIncidentBySubject(id: string, res: NonNullable<IncidentDoc["resolved"]>) {
+    const r = await this.incidents.updateOne(
+      { _id: id, status: { $in: ["open", "acknowledged"] } },
+      { $set: { status: "resolved", resolved: res, activeKey: null } },
+    );
+    if (r.modifiedCount !== 1) return false;
+    await this.incidents.updateOne({ _id: id }, { $set: { "steps.$[pending].dueAt": null } }, { arrayFilters: [{ "pending.notifiedAt": null }] });
+    return true;
+  }
   async appendIncidentLog(id: string, entry: IncidentLogEntry) {
     await this.incidents.updateOne({ _id: id }, { $push: { log: entry } });
   }

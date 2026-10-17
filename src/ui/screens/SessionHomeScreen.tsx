@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { UNVALIDATED_LABEL } from '../../domain/config';
-import { sendParticipantUpdate } from '../api';
-import { activeIncidentFor, nextDeadline } from '../../domain/incident';
+import { cancelOwnAlertOnServer } from '../api';
+import { EMERGENCY_SIM_RECIPIENT_ID, activeIncidentFor, alertedRecipientIds, nextDeadline } from '../../domain/incident';
 import { canViewLocation, latestReading, participantFreshness } from '../../domain/location';
-import { endSession, participantUpdate, resumeSession, suspendSession } from '../../domain/session';
-import type { Incident, Participant } from '../../domain/types';
+import { cancelOwnAlert, endSession, resumeSession, suspendSession } from '../../domain/session';
+import type { AppState, Incident, Participant } from '../../domain/types';
 import { COPY } from '../copy';
 import { useApp, useNow } from '../context';
 import { fmtAgo, fmtCountdown, fmtTime } from '../format';
@@ -23,6 +23,14 @@ function fmtHM(ms: number): string {
   return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
 }
 
+/** Who has been sent an alert so far, by name. */
+function alertedNames(state: AppState, incident: Incident): string {
+  const names = alertedRecipientIds(incident).map((id) =>
+    id === EMERGENCY_SIM_RECIPIENT_ID ? 'simulated emergency services' : (state.recipients[id]?.name ?? 'unknown'),
+  );
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? 'nobody yet');
+}
+
 function AlertCard({ incident, now }: { incident: Incident; now: number }) {
   const { state, go } = useApp();
   const p = state.participants[incident.participantId];
@@ -34,7 +42,9 @@ function AlertCard({ incident, now }: { incident: Incident; now: number }) {
       : 'Unacknowledged · all steps alerted'
     : incident.status === 'acknowledged'
       ? `Acknowledged by ${incident.acknowledged?.name} · not yet resolved`
-      : `Resolved ${fmtTime(incident.resolution!.at)}`;
+      : incident.resolution?.by === 'participant'
+        ? `${COPY.cancelledBySelf(p.displayName)} · ${fmtTime(incident.resolution.at)}`
+        : `Resolved ${fmtTime(incident.resolution!.at)}`;
   const title = incident.trigger === 'help_requested' ? `${p.displayName} asked for help` : `${COPY.movementChanged} · ${p.displayName}`;
   return (
     <section className="surface card rise" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -124,7 +134,7 @@ function CheckInStatus({ me }: { me: Participant }) {
 export function SessionHomeScreen() {
   const { state, me, store, go, setViewer } = useApp();
   const now = useNow();
-  const [sheet, setSheet] = useState<null | 'end'>(null);
+  const [sheet, setSheet] = useState<null | 'end' | 'cancel'>(null);
   const [error, setError] = useState<string | null>(null);
   const session = state.session!;
   const viewer = me!;
@@ -141,6 +151,12 @@ export function SessionHomeScreen() {
     .sort((a, b) => Number(a.status === 'resolved') - Number(b.status === 'resolved') || b.openedAt - a.openedAt);
   const alerting = new Set(state.incidents.filter((i) => i.status === 'open').map((i) => i.participantId));
   const myIncident = activeIncidentFor(state, viewer.id);
+  // The alert this person most recently cancelled themselves, shown for ten minutes as a receipt.
+  const myCancelled = myIncident
+    ? undefined
+    : state.incidents
+        .filter((i) => i.participantId === viewer.id && i.resolution?.by === 'participant' && now - i.resolution.at < 10 * 60_000)
+        .sort((a, b) => b.resolution!.at - a.resolution!.at)[0];
   const hostName = state.participants[session.hostId]?.displayName;
   const firstContact = useFirstContact();
   const run = (fn: Parameters<typeof store.dispatch>[0]) => {
@@ -202,22 +218,30 @@ export function SessionHomeScreen() {
       </header>
 
       {myIncident && (
-        <section className="surface card stack rise" style={{ gap: 12 }}>
-          <h2 className="t-card">An alert about you is open</h2>
+        <section className="surface card stack rise" style={{ gap: 12 }} aria-labelledby="my-alert-h">
+          <h2 className="t-card" id="my-alert-h">
+            An alert about you is open
+          </h2>
           <p className="t-sub num">
             {myIncident.acknowledged
               ? `${myIncident.acknowledged.name} acknowledged at ${fmtTime(myIncident.acknowledged.at)} and is responding.`
-              : `${firstContact[0].toUpperCase()}${firstContact.slice(1)} ${isHost ? 'were' : 'was'} alerted at ${fmtTime(myIncident.openedAt)}.`}{' '}
-            Only a recipient can resolve it.
+              : `${firstContact[0].toUpperCase()}${firstContact.slice(1)} ${isHost ? 'were' : 'was'} alerted at ${fmtTime(myIncident.openedAt)}.`}
+            {state.voiceCalls[myIncident.id]?.status === 'connected' && ' A simulated emergency call is in progress.'}
           </p>
-          <button type="button" className="btn pbtn fill" onClick={() => {
-            if (run((d, t) => participantUpdate(d, viewer.id, t)) && session) {
-              sendParticipantUpdate(session.id).catch(() => {});
-            }
-          }}>
-            Tell responders I'm OK
+          <button type="button" className="btn pbtn on-accent" onClick={() => setSheet('cancel')}>
+            {COPY.cancelAlert}
           </button>
-          <span className="t-cap">Adds to the alert's record. It does not close the alert.</span>
+          <span className="t-cap">Only you can cancel an alert about you.</span>
+        </section>
+      )}
+
+      {myCancelled && (
+        <section className="surface card stack rise" style={{ gap: 8 }} role="status">
+          <h2 className="t-card num">You cancelled the alert at {fmtTime(myCancelled.resolution!.at)}</h2>
+          <p className="t-sub">
+            Escalation stopped. {alertedNames(state, myCancelled)} {alertedRecipientIds(myCancelled).length > 1 ? 'were' : 'was'} told it was a
+            false alarm. If you need help, use the help button: that starts a new alert.
+          </p>
         </section>
       )}
 
@@ -302,6 +326,32 @@ export function SessionHomeScreen() {
           <CheckInStatus me={viewer} />
         </div>
       </div>
+
+      {sheet === 'cancel' && myIncident && (
+        <Sheet title={COPY.cancelAlertTitle} onClose={() => setSheet(null)}>
+          <p className="t-lead">
+            Escalation stops now, and {alertedNames(state, myIncident)} will be told you cancelled it as a false alarm.
+            {state.voiceCalls[myIncident.id]?.status === 'connected' && ' The simulated emergency call ends after the assistant relays this.'}
+          </p>
+          <p className="t-sub">{COPY.cancelAlertCaveat}</p>
+          {errorBox}
+          <button
+            type="button"
+            className="btn pbtn on-accent"
+            onClick={() => {
+              if (run((d, t) => cancelOwnAlert(d, viewer.id, t))) {
+                setSheet(null);
+                cancelOwnAlertOnServer(session.id).catch(() => {});
+              }
+            }}
+          >
+            {COPY.cancelAlertConfirm}
+          </button>
+          <button type="button" className="btn pbtn fill" onClick={() => setSheet(null)}>
+            {COPY.cancelAlertKeep}
+          </button>
+        </Sheet>
+      )}
 
       {sheet === 'end' && (
         <Sheet title="End the session for everyone?" onClose={() => setSheet(null)}>

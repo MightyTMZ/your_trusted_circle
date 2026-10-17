@@ -1,7 +1,7 @@
 import { makeId } from './ids';
 import { describeOffset } from './location';
 import { MOCK_OPERATOR_ENDPOINT, latestPayloadFor } from './transport';
-import type { AppState, Incident, Millis, VoiceCall } from './types';
+import type { AppState, Incident, Millis, TimelineEntry, VoiceCall } from './types';
 
 /**
  * Voice-agent adapter. Talks only to an in-process mock operator at a fixed
@@ -216,7 +216,31 @@ export function disconnectCall(state: AppState, incidentId: string, reason: 'dis
 export function reconnectCall(state: AppState, incidentId: string, now: Millis): void {
   const call = state.voiceCalls[incidentId];
   const incident = state.incidents.find((i) => i.id === incidentId);
-  if (!call || !incident || call.status === 'connected') return;
+  // A closed alert (resolved, or cancelled by the person) is never called about again.
+  if (!call || !incident || call.status === 'connected' || incident.status === 'resolved') return;
   delete state.voiceCalls[incidentId];
   startSimulatedCall(state, incident, now);
+}
+
+/**
+ * The person cancelled the alert themselves. If the simulated call is live,
+ * the agent relays exactly that, grounded in the cancellation log entry, and
+ * ends the call. It does not say the person is unharmed: it cannot know.
+ */
+export function relayCancellation(state: AppState, incident: Incident, cancelled: TimelineEntry, now: Millis): void {
+  const live = liveCall(state, incident.id);
+  if (!live) return;
+  const name = state.participants[incident.participantId]?.displayName ?? 'The participant';
+  logUtterance(
+    incident,
+    live.call,
+    'agent',
+    {
+      text: `Update: at ${t(cancelled.at)}, ${name} cancelled the alert from their own device and reported a false alarm. That is their own report; no one has checked on them in person. I'm ending this simulated call.`,
+      grounds: [cancelled.id],
+    },
+    now,
+  );
+  live.call.status = 'ended';
+  live.call.endedAt = now;
 }

@@ -177,6 +177,13 @@ export class MemoryStore implements Store {
     Object.assign(i, { status: "resolved", resolved: clone(res), activeKey: null });
     return true;
   }
+  async cancelIncidentBySubject(id: string, res: NonNullable<IncidentDoc["resolved"]>) {
+    const i = this.incidents.get(id);
+    if (!i || i.status === "resolved") return false;
+    for (const s of i.steps) if (s.notifiedAt === null) s.dueAt = null;
+    Object.assign(i, { status: "resolved", resolved: clone(res), activeKey: null });
+    return true;
+  }
   async appendIncidentLog(id: string, entry: IncidentLogEntry) {
     this.incidents.get(id)?.log.push(clone(entry));
   }

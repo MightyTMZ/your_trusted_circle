@@ -48,6 +48,12 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
   const staleAfter = state.session?.config.locationStaleAfterSec ?? 90;
   const callReached = incident.steps.some((s) => s.level === 'emergency_simulated' && s.notifiedAt !== undefined);
   const open = incident.status === 'open';
+  const selfCancelled = incident.resolution?.by === 'participant';
+  // What the original alert said; the cancellation itself is shown below.
+  const alertMessage =
+    state.notifications
+      .filter((n) => n.incidentId === incident.id && n.recipientId === recipientId && n.payload.kind !== 'cancelled')
+      .sort((x, y) => y.deliveredAt - x.deliveredAt)[0]?.payload.message ?? payload.message;
   const deadline = nextDeadline(incident);
   const lastNotified = incident.steps[incident.currentStep]?.notifiedAt ?? incident.openedAt;
   const title =
@@ -69,10 +75,14 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
         progress: 1,
         label: 'Escalation',
         value: 'Stopped',
-        sub: incident.acknowledged ? `Acknowledged ${fmtTime(incident.acknowledged.at)}` : '',
+        sub: selfCancelled
+          ? `Cancelled ${fmtTime(incident.resolution!.at)}`
+          : incident.acknowledged
+            ? `Acknowledged ${fmtTime(incident.acknowledged.at)}`
+            : '',
         start: '',
         end: '',
-        aria: 'Escalation stopped by acknowledgment.',
+        aria: selfCancelled ? `Escalation stopped: ${payload.participantName} cancelled the alert.` : 'Escalation stopped by acknowledgment.',
       };
 
   const doRepeat = () => {
@@ -90,7 +100,15 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
               <span className={`av num ${open ? 'on-accent' : 'fill'}`}>{initials(payload.participantName)}</span>
               <span className="stack grow">
                 <h2 className="t-card">{title}</h2>
-                <span className="t-sub">{open ? 'Unacknowledged' : incident.status === 'acknowledged' ? 'Acknowledged' : 'Resolved'}</span>
+                <span className="t-sub">
+                  {open
+                    ? 'Unacknowledged'
+                    : incident.status === 'acknowledged'
+                      ? 'Acknowledged'
+                      : selfCancelled
+                        ? COPY.cancelledBySelf(payload.participantName)
+                        : 'Resolved'}
+                </span>
               </span>
             </div>
             <ArcGauge
@@ -104,7 +122,7 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
               ariaLabel={gauge.aria}
               role="timer"
             />
-            <p className="t-sub center">{payload.message}</p>
+            <p className="t-sub center">{alertMessage}</p>
           </section>
 
           {open ? (
@@ -134,10 +152,24 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
             </div>
           ) : (
             <section className="surface card col rise rise-2" style={{ gap: 16 }}>
-              <p className="t-body num" role="status">
-                {COPY.acknowledgedNotice(incident.acknowledged!.name, fmtTime(incident.acknowledged!.at))}
-              </p>
-              {incident.status === 'resolved' ? (
+              {incident.acknowledged && (
+                <p className="t-body num" role="status">
+                  {COPY.acknowledgedNotice(incident.acknowledged.name, fmtTime(incident.acknowledged.at))}
+                </p>
+              )}
+              {selfCancelled ? (
+                <div className="header" role="status">
+                  <span className="av fill">
+                    <Icon name="circleCheck" />
+                  </span>
+                  <span className="stack grow">
+                    <span className="t-body num">
+                      {payload.participantName} cancelled this alert from their own device at {fmtTime(incident.resolution!.at)}: false alarm.
+                    </span>
+                    <span className="t-sub">{COPY.cancelledBySelfCaveat}</span>
+                  </span>
+                </div>
+              ) : incident.status === 'resolved' ? (
                 <div className="header">
                   <span className="av fill">
                     <Icon name="circleCheck" />

@@ -45,6 +45,7 @@ export function RecipientInboxScreen() {
                   <span className="inline">
                     <span className="t-cap num">{fmtTime(n.deliveredAt)}</span>
                     {n.repeat && <span className="tag">Repeat</span>}
+                    {n.payload.kind === 'cancelled' && <span className="tag">Cancelled by them</span>}
                   </span>
                   <span className="t-body">{n.payload.message}</span>
                 </span>

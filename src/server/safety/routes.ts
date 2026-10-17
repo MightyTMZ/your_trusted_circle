@@ -7,6 +7,7 @@
  * POST /api/sessions/:id/help         ask for help now (the client confirms first)
  * POST /api/sessions/:id/heartbeat    my device is alive
  * POST /api/sessions/:id/update       add "I'm OK" to my open alert; never acknowledges or resolves it
+ * POST /api/sessions/:id/cancel-alert cancel my own open alert as a false alarm (my own report)
  */
 import { Hono } from "hono";
 import { v, validate, type Infer } from "../../timeline/schema/validate.js";
@@ -144,6 +145,26 @@ export function safetyRoutes(deps: Deps) {
       text: `${found.me.displayName} says they are OK. This is added to the record; the alert stays open until a responder resolves it.`,
     });
     return c.body(null, 204);
+  });
+
+  // Only the person the alert is about can cancel it, and only their own.
+  // Queued deliveries for a closed incident are dropped by the dispatcher.
+  r.post("/sessions/:id/cancel-alert", auth, async (c) => {
+    const found = await mine(c.req.param("id"), c.var.user._id);
+    if (!found) return fail(c, 404, "no_session", "You are not in this session.");
+    const incident = await deps.store.findActiveIncident(found.session._id, found.me.participantId);
+    if (!incident) return fail(c, 404, "no_incident", "There is no open alert about you to cancel.");
+    const now = deps.now();
+    const res = { byUserId: c.var.user._id, name: found.me.displayName, at: now, outcome: "false_alarm" as const, bySubject: true };
+    if (!(await deps.store.cancelIncidentBySubject(incident._id, res))) {
+      return fail(c, 409, "incident_closed", "This alert has already been closed.");
+    }
+    await deps.store.appendIncidentLog(incident._id, {
+      at: now,
+      kind: "resolution",
+      text: `${found.me.displayName} cancelled the alert from their own device: false alarm. Pending escalation stopped. This is their own report; no one has checked on them in person.`,
+    });
+    return c.json({ incidentId: incident._id, status: "resolved" });
   });
 
   return r;

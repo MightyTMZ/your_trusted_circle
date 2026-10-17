@@ -15,7 +15,7 @@ function cardAsText(card: IncidentCard): string {
   const lines = [
     `YTC Incident Card · ${card.incidentId}`,
     `Participant: ${card.participantName}`,
-    `Status: ${card.status}`,
+    `Status: ${card.status}${card.resolution?.by === 'participant' ? ` (cancelled by ${card.resolution.name} as a false alarm)` : ''}`,
     `Opened: ${fmtTime(card.openedAt)}`,
     card.lastKnownLocation
       ? `Last-known location (not current): ${describeOffset(card.lastKnownLocation)}, recorded ${fmtTime(card.lastKnownLocation.recordedAt)}`
@@ -40,7 +40,14 @@ export function IncidentCardScreen({ incidentId }: { incidentId: string }) {
   const staleAfter = state.session?.config.locationStaleAfterSec ?? 90;
   if (!card) return null;
 
-  const statusLabel = card.status === 'open' ? 'Unacknowledged' : card.status === 'acknowledged' ? 'Acknowledged, not resolved' : 'Resolved';
+  const statusLabel =
+    card.status === 'open'
+      ? 'Unacknowledged'
+      : card.status === 'acknowledged'
+        ? 'Acknowledged, not resolved'
+        : card.resolution?.by === 'participant'
+          ? 'Cancelled by them'
+          : 'Resolved';
   // The dial spans from the first observed event to the last escalation step (simulated emergency services).
   const start = card.events[0]?.at ?? card.openedAt;
   const lastStep = card.steps[card.steps.length - 1];
@@ -98,9 +105,11 @@ export function IncidentCardScreen({ incidentId }: { incidentId: string }) {
               )}
               {card.resolution && (
                 <div className="kv">
-                  <dt>Resolved</dt>
+                  <dt>{card.resolution.by === 'participant' ? 'Cancelled' : 'Resolved'}</dt>
                   <dd className="num">
-                    {COPY.outcomes[card.resolution.outcome]} · {fmtTime(card.resolution.at)}
+                    {card.resolution.by === 'participant'
+                      ? `By ${card.resolution.name}, their own report · ${COPY.outcomes[card.resolution.outcome]} · ${fmtTime(card.resolution.at)}`
+                      : `${COPY.outcomes[card.resolution.outcome]} · ${fmtTime(card.resolution.at)}`}
                   </dd>
                 </div>
               )}

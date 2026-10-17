@@ -266,6 +266,12 @@ export async function sendParticipantUpdate(sessionId: string): Promise<boolean>
   return result.ok;
 }
 
+/** Cancel my own open alert as a false alarm. Only works for an alert about me. */
+export async function cancelOwnAlertOnServer(sessionId: string): Promise<boolean> {
+  const result = await postJson<void>(`/sessions/${sessionId}/cancel-alert`, {});
+  return result.ok;
+}
+
 // ---------------------------------------------------------------------------
 
 const LOGIN_ERRORS: Record<string, string> = {
