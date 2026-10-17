@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.log
+.env
+.env.*
+# Runtime timeline output; committed examples live under docs/examples/.
+/data/
