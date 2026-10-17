@@ -4,6 +4,7 @@ import { createApp } from "../../src/server/app.js";
 import type { OAuthProvider, ProviderRegistry } from "../../src/server/auth/providers.js";
 import { loadConfig } from "../../src/server/config.js";
 import type { Deps } from "../../src/server/context.js";
+import { LocationRelay } from "../../src/server/lifecycle/relay.js";
 import { runSchedulerPass } from "../../src/server/safety/scheduler.js";
 import { MemoryStore } from "../../src/server/store/memory.js";
 import { ManualClock } from "../../src/shared/clock.js";
@@ -31,7 +32,7 @@ export function setup(transport: Transport = defaultTransport) {
   let nowMs = T0;
   const config = loadConfig({ APP_ORIGIN } as NodeJS.ProcessEnv);
   const providers: ProviderRegistry = { google: fakeGoogle };
-  const deps: Deps = { store, config, providers, transport, now: () => new Date(nowMs) };
+  const deps: Deps = { store, config, providers, transport, relay: new LocationRelay(), now: () => new Date(nowMs) };
   const app = createApp(deps);
   return {
     app,

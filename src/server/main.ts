@@ -9,6 +9,7 @@ import { createProviders } from "./auth/providers.js";
 import { enabledProviders, loadConfig } from "./config.js";
 import type { Deps } from "./context.js";
 import { runRetention } from "./data/retention.js";
+import { LocationRelay } from "./lifecycle/relay.js";
 import { runSchedulerPass } from "./safety/scheduler.js";
 import { MemoryStore } from "./store/memory.js";
 import { MongoStore } from "./store/mongo.js";
@@ -26,7 +27,14 @@ if (config.mongoUri) {
   console.warn("[api] MONGODB_URI is not set: using an in-memory store. Data is lost on restart.");
 }
 
-const deps: Deps = { store, config, providers: createProviders(config, now), transport: defaultTransport, now };
+const deps: Deps = {
+  store,
+  config,
+  providers: createProviders(config, now),
+  transport: defaultTransport,
+  relay: new LocationRelay(),
+  now,
+};
 const app = createApp(deps);
 
 // Deadlines live in the database; this loop only notices them. A pass that is

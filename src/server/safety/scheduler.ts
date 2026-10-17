@@ -26,6 +26,7 @@ export async function runSchedulerPass(deps: Deps): Promise<PassSummary> {
     if (session.expiresAt.getTime() <= now.getTime()) {
       if (await store.endSession(session._id, "expired", session.expiresAt)) {
         summary.sessionsExpired++;
+        deps.relay.clearSession(session._id);
         // Pending check-ins end with the session; open incidents keep escalating.
         for (const c of await store.listPendingCheckIns(session._id)) {
           await store.transitionCheckIn(c._id, "pending", { status: "cancelled", cancelledReason: "session_ended" });
@@ -87,5 +88,8 @@ export async function runSchedulerPass(deps: Deps): Promise<PassSummary> {
 
   // 4. Send whatever alerts are due, including the ones just queued.
   summary.alerts = await dispatchDue(deps);
+
+  // 5. Forget live positions past their keep time (memory only; nothing to delete on disk).
+  deps.relay.sweep(now);
   return summary;
 }

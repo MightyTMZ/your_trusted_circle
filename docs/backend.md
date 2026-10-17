@@ -44,6 +44,8 @@ All bodies are JSON. Every request except sign-in needs the `ytc_session` cookie
 | `POST /api/sessions/:id/leave` | participant | Leave |
 | `POST /api/sessions/:id/end` | host | End for everyone (not while an alert is open) |
 | `POST /api/ingest` | signed in | Store events, logs, actions, sensor and device data |
+| `POST /api/sessions/:id/location` | member | Send your latest position for the group map (relayed, not stored) |
+| `GET /api/sessions/:id/locations` | member | Positions you are allowed to see, labelled `live` or `stale` |
 | `POST /api/sessions/:id/checkins` | member | Your device saw a movement change: start your check-in |
 | `POST /api/checkins/:id/respond` | that person | `ok` cancels the deadline; `help` alerts now |
 | `POST /api/sessions/:id/help` | member | Ask for help (the app confirms first) |
@@ -68,6 +70,22 @@ All bodies are JSON. Every request except sign-in needs the `ytc_session` cookie
 - **Deadlines don't move.** The next step is due a fixed time after the current step was notified. Failed deliveries, retries and missed heartbeats never move that deadline.
 - **Acknowledgment stops escalation. It does not confirm wellbeing.** Resolving is a separate step.
 - **Location is stored only during an active server incident.** Until then, `location.reported` events are dropped, and location-like keys are removed from free-form data at any depth. Incident events sent by clients do not count; only the server's incidents unlock location.
+- **Live group location is relayed, never stored** (decision: option A, see below).
+
+## Live group location
+
+`CLAUDE.md` asks for consent-based group location visibility, while the backend rule is to store no location outside an incident. Both hold because live positions go through a relay (`src/server/lifecycle/relay.ts`) instead of the database.
+
+- **Memory only.** The server keeps each participant's latest fix in memory. It never writes it to MongoDB, the traces collection, logs or the export.
+- **Visibility follows consent.**
+  - You always see yourself.
+  - Everyone sees people who share with `group`.
+  - The host also sees people who share with `host`, and people who share with responders during an incident.
+  - Consent is checked again on every read.
+- **Live, stale, gone.** A fix is shown as `live` for `locationStaleAfterSec` (90 s by default), then as `stale` (last known) until twice that, and after that it's forgotten.
+- **Cleared at once** when someone turns sharing off, leaves, deletes their account, when the host ends the session or turns location off for it, and when the session expires.
+- **The only stored positions** are the person's fixes during an active incident, which are kept for responders and the incident record.
+- **Limitation:** the relay lives in one process's memory. Running more than one API instance would need a shared in-memory cache with expiry (for example Redis TTL keys) instead.
 - **Accounts are not merged by email**, because that would let an unverified address at one provider take over another account.
 - **Nothing sensitive is kept.** No IP addresses, provider access tokens or raw session tokens are stored.
 

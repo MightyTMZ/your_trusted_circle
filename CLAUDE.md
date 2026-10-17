@@ -58,6 +58,9 @@ and features requiring further validation.
 - Show a visible active-session indicator.
 - Participants can leave; sessions expire automatically.
 - Share location only according to participant permissions.
+- Live group location is relayed in server memory and never stored.
+  Location is persisted only while an incident about that person is
+  active (see docs/backend.md, "Live group location").
 - Use synthetic identities and locations in demonstrations.
 - Do not commit personal recordings, credentials, or API keys.
 - Voice-agent transcripts and audio must be grounded in real information provided.
