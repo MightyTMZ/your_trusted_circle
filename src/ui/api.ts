@@ -125,6 +125,7 @@ const LOGIN_ERRORS: Record<string, string> = {
   invalid_state: 'Sign-in expired. Try again.',
   provider_error: "That provider couldn't sign you in. Try again or use another option.",
   unknown_provider: 'That sign-in option is not available.',
+  server_error: 'Something went wrong on our end. Please try again.',
 };
 
 /** Reads and clears `#login_error=` left by a failed sign-in redirect. */

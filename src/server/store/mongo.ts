@@ -51,6 +51,11 @@ export class MongoStore implements Store {
   }
 
   private async ensureIndexes(): Promise<void> {
+    // Drop stale index from an earlier schema that used top-level oauth_provider / oauth_sub.
+    // It conflicts with the current identities-based index because every new document has null
+    // for those removed fields, and the old unique index only allows one null/null pair.
+    await this.users.dropIndex("uq_oauth").catch(() => {});
+
     await Promise.all([
       this.users.createIndex({ "identities.provider": 1, "identities.subject": 1 }, { unique: true }),
       this.authSessions.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),

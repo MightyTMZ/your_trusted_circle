@@ -132,8 +132,14 @@ export function authRoutes(deps: Deps) {
       return c.redirect(failRedirect("provider_error"), 302);
     }
 
-    const user = await findOrCreateUser(deps, providerId, identity);
-    await startAuthSession(c, deps, user._id);
+    let user;
+    try {
+      user = await findOrCreateUser(deps, providerId, identity);
+      await startAuthSession(c, deps, user._id);
+    } catch (err) {
+      console.error(`[auth] ${providerId} post-identify failed: ${(err as Error).message ?? (err as Error).name}`);
+      return c.redirect(failRedirect("server_error"), 302);
+    }
     return c.redirect(appUrl(pending.r), 302);
   });
 
