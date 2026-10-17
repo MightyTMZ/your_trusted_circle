@@ -54,7 +54,7 @@ export function ArcGauge({
       <svg viewBox="0 0 300 200" aria-hidden="true">
         <path className="gauge-track" d={arc(START, START - SPAN)} />
         {progress > 0 && (
-          <path className="gauge-fill" d={arc(START, end)} style={{ stroke: stopped ? 'var(--text-tertiary)' : 'var(--accent)' }} />
+          <path className="gauge-fill" d={arc(START, end)} style={{ stroke: stopped ? 'var(--text-tertiary)' : 'var(--danger)' }} />
         )}
         {!stopped && <circle className="gauge-knob" cx={kx.toFixed(1)} cy={ky.toFixed(1)} r={9} />}
       </svg>

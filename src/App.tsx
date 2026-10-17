@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { AppProvider, store, useApp } from './ui/context';
+import { AlertOverlay } from './ui/components/AlertOverlay';
 import { AppNav, useNavItems } from './ui/components/AppNav';
 import { SettingsScreen } from './ui/screens/SettingsScreen';
 import { SignInScreen } from './ui/screens/SignInScreen';
@@ -100,6 +101,7 @@ function Shell() {
         <CurrentScreen />
       </main>
       <AppNav variant="bottom" />
+      <AlertOverlay />
     </div>
   );
 }

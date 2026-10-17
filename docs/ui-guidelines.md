@@ -92,6 +92,7 @@ override tokens on the same element.
 | Labels | `--text-primary`, `--text-secondary` (≥ 4.5:1 everywhere), `--text-tertiary` (placeholders and decoration only, ≥ 3:1) |
 | Icons | `--icon` (default), `--icon-muted` (inactive sidebar icons) |
 | Accent | `--accent`, `--accent-ink` (text on accent), `--accent-icon` (icons on accent), `--accent-ring` (focus, selection outline, help ring), `--accent-soft` |
+| Danger | `--danger` (#ff3b30, Apple system red), `--danger-ink`, `--danger-icon`, `--danger-ring`, `--danger-soft`, `--danger-glow`. Used for open/unacknowledged alerts only. `.on-danger` replaces `.on-accent` on alert avatars, tags, badges, buttons, and cards. `.card.alert-open` adds a red border and glow. |
 | Switch | `--switch-off`, `--switch-knob`, `--switch-knob-on` (dark in Mono, where the track is white), `--segment-thumb` |
 | Data | `--track-inactive`, `--tick-inactive`, `--knob` |
 | Map | `--map-bg`, `--map-street`, `--map-block` |
@@ -100,8 +101,10 @@ override tokens on the same element.
 | Motion | `--ease` = `cubic-bezier(.25,.1,.25,1)` |
 | Type | `--font` = the system font stack (`-apple-system`, `BlinkMacSystemFont`, `system-ui`, then Segoe UI, Roboto, Helvetica Neue) |
 
-No gradients and no glows: fills are flat (`--accent-glow` stays `none`
-and exists only for older call sites). The page background is flat
+No gradients and no accent glows: fills are flat (`--accent-glow` stays
+`none` and exists only for older call sites). The one exception is
+`--danger-glow`, a red box-shadow used on `.card.alert-open` to make
+unacknowledged alerts impossible to miss. The page background is flat
 `--bg-base`.
 
 ## 4. Typography
@@ -174,8 +177,8 @@ pointer events. Minimum hit area 44×44 (`accessibility.md › Mobility`).
 | Stepper | `.ibtn.ibtn-sm` − value + | For numeric settings (escalation timing). |
 | Quick tile | `button.btn.qtile.fill` | 88px tall, 22px icon over 13px label, equal-width grid of 2–4. |
 | Text field | `input.field` / `textarea.field` | 50px, radius 12, `--surface` on the page and `--fill` inside a card, always with a `<label>` (visible `.lbl` or `.sr-only`). |
-| Tag | `span.tag` | 24px grey-fill capsule, 12/600. `.tag.on-accent` only for an active alert state. |
-| Avatar | `.av` / `<Avatar name src>` | 40px circle, `fill` by default. Profile picture when the account has one, initials otherwise. `.on-accent` only for the person with an open alert. |
+| Tag | `span.tag` | 24px grey-fill capsule, 12/600. `.tag.on-danger` for an active/open alert state; `.tag.on-accent` for non-alert active states. |
+| Avatar | `.av` / `<Avatar name src>` | 40px circle, `fill` by default. Profile picture when the account has one, initials otherwise. `.on-danger` for the person with an open alert; `.on-accent` for non-alert active states. |
 | Avatar stack | `.av-stack` > `.av` | 32px solid avatars overlapping 10px, ringed in `--surface`. Leftmost on top: set `z-index` descending left to right. |
 | Step progress | `.seg` > `span` | Multi-step flows; done/current segments `.is-on`. |
 | Sheet | `<Sheet title onClose>` | Confirmations, portalled to `<body>`. Material bottom sheet on phone, centered dialog on larger screens, blurred scrim, Escape closes. Most likely button on top of the stack (`alerts.md › Buttons`). Destructive confirms use a grey primary, not the accent; irreversible ones (delete account) also need typed confirmation. |

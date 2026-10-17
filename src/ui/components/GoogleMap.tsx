@@ -61,7 +61,7 @@ function pinElement(pin: MapPin): HTMLElement {
 }
 
 function updatePinElement(el: HTMLElement, pin: MapPin) {
-  const tone = pin.tone === 'alert' ? 'on-accent' : pin.tone === 'live' ? 'fill' : 'stale';
+  const tone = pin.tone === 'alert' ? 'on-danger' : pin.tone === 'live' ? 'fill' : 'stale';
   el.className = `av pin num ${tone}${pin.simulated ? ' sim' : ''}`;
   el.textContent = pin.label;
 }

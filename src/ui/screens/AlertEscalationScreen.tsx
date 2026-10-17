@@ -113,9 +113,9 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
       <ScreenHeader title="Alert" onBack={back} />
       <div className="cols">
         <div className="col">
-          <section className="surface card rise" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <section className={`surface card rise${open ? ' alert-open' : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div className="header">
-              <span className={`av num ${open ? 'on-accent' : 'fill'}`}>{initials(payload.participantName)}</span>
+              <span className={`av num ${open ? 'on-danger' : 'fill'}`}>{initials(payload.participantName)}</span>
               <span className="stack grow">
                 <h2 className="t-card">{title}</h2>
                 <span className="t-sub">{open ? 'Unacknowledged' : incident.status === 'acknowledged' ? 'Acknowledged' : 'Resolved'}</span>
@@ -137,7 +137,7 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
 
           {open ? (
             <div className="col rise rise-2">
-              <button type="button" className="btn pbtn on-accent" disabled={busy} onClick={doAcknowledge}>
+              <button type="button" className="btn pbtn on-danger" disabled={busy} onClick={doAcknowledge}>
                 <Icon name="check" />
                 {COPY.acknowledge}
               </button>

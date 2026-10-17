@@ -138,7 +138,7 @@ export function GroupMap({ points, anchor, alerting }: { points: GroupPoint[]; a
         return (
           <span
             key={pt.participantId}
-            className={`av mark num ${hot ? 'on-accent' : pt.live ? 'fill' : 'stale'}${pt.source === 'simulated' ? ' sim' : ''}`}
+            className={`av mark num ${hot ? 'on-danger' : pt.live ? 'fill' : 'stale'}${pt.source === 'simulated' ? ' sim' : ''}`}
             style={{ left: `${pos(pt.x)}%`, top: `${100 - pos(pt.y)}%` }}
             aria-hidden="true"
           >

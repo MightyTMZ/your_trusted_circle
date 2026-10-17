@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { UNVALIDATED_LABEL } from '../../domain/config';
-import { activeIncidentFor, nextDeadline } from '../../domain/incident';
+import { nextDeadline } from '../../domain/incident';
 import { canViewLocation, latestReading, participantFreshness } from '../../domain/location';
-import { endSession, participantUpdate, resumeSession, suspendSession } from '../../domain/session';
+import { endSession, resumeSession, suspendSession } from '../../domain/session';
 import type { Incident, Participant } from '../../domain/types';
 import { COPY } from '../copy';
 import { useApp, useNow } from '../context';
@@ -13,11 +13,10 @@ import { Scrubber } from '../components/Gauges';
 import { GroupMap, liveFixFor, useGroupPoints } from '../components/GroupMap';
 import { Icon } from '../components/Icon';
 import { LocationStamp } from '../components/LocationStamp';
-import { useFirstContact } from '../components/HelpSheet';
 import { Sheet } from '../components/Sheet';
 import { useMotionTracking } from '../hooks/useMotionTracking';
 import { useLive } from '../hooks/useServerSession';
-import { endSessionOnServer, sendImOkOnServer, type LiveFix } from '../api';
+import { endSessionOnServer, type LiveFix } from '../api';
 
 function fmtHM(ms: number): string {
   const m = Math.max(0, Math.round(ms / 60_000));
@@ -38,8 +37,8 @@ function AlertCard({ incident, now }: { incident: Incident; now: number }) {
       : `Resolved ${fmtTime(incident.resolution!.at)}`;
   const title = incident.trigger === 'help_requested' ? `${p.displayName} asked for help` : `${COPY.movementChanged} · ${p.displayName}`;
   return (
-    <section className="surface card rise" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-      <span className={`av num ${open ? 'on-accent' : 'fill'}`}>{initials(p.displayName)}</span>
+    <section className={`surface card rise${open ? ' alert-open' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <span className={`av num ${open ? 'on-danger' : 'fill'}`}>{initials(p.displayName)}</span>
       <span className="stack grow">
         <h2 className="t-card">{title}</h2>
         <span className="t-sub num">{status}</span>
@@ -96,7 +95,7 @@ function PersonRow({ subject, viewer, now, alerting, fixes }: { subject: Partici
     );
   return (
     <li className="row" style={{ alignItems: 'flex-start' }}>
-      <span className={`av num ${alerting ? 'on-accent' : 'fill'}`}>{initials(subject.displayName)}</span>
+      <span className={`av num ${alerting ? 'on-danger' : 'fill'}`}>{initials(subject.displayName)}</span>
       <span className="stack grow" style={{ gap: 4 }}>
         <span className="inline">
           <span className="t-name">{subject.id === viewer.id ? `${subject.displayName} (you)` : subject.displayName}</span>
@@ -165,21 +164,13 @@ export function SessionHomeScreen() {
     .filter((i) => i.participantId !== viewer.id)
     .sort((a, b) => Number(a.status === 'resolved') - Number(b.status === 'resolved') || b.openedAt - a.openedAt);
   const alerting = new Set(state.incidents.filter((i) => i.status === 'open').map((i) => i.participantId));
-  const myIncident = activeIncidentFor(state, viewer.id);
   const hostName = state.participants[session.hostId]?.displayName;
-  const firstContact = useFirstContact();
   const live = useLive();
   const { points, anchor } = useGroupPoints(viewer, now);
   const run = (fn: Parameters<typeof store.dispatch>[0]) => {
     const err = store.dispatch(fn);
     setError(err);
     return !err;
-  };
-  const sendImOk = async () => {
-    if (!myIncident?.server || !session.serverId) return void run((d, t) => participantUpdate(d, viewer.id, t));
-    const r = await sendImOkOnServer(session.serverId);
-    setError(r.ok ? null : r.message);
-    if (r.ok) await live.refreshAlerts();
   };
   const errorBox = error && (
     <p className="error" role="alert">
@@ -233,22 +224,6 @@ export function SessionHomeScreen() {
         )}
         <SettingsButton />
       </header>
-
-      {myIncident && (
-        <section className="surface card stack rise" style={{ gap: 12 }}>
-          <h2 className="t-card">An alert about you is open</h2>
-          <p className="t-sub num">
-            {myIncident.acknowledged
-              ? `${myIncident.acknowledged.name} acknowledged at ${fmtTime(myIncident.acknowledged.at)} and is responding.`
-              : `${firstContact[0].toUpperCase()}${firstContact.slice(1)} ${isHost ? 'were' : 'was'} alerted at ${fmtTime(myIncident.openedAt)}.`}{' '}
-            Only a recipient can resolve it.
-          </p>
-          <button type="button" className="btn pbtn fill" onClick={sendImOk}>
-            Tell responders I'm OK
-          </button>
-          <span className="t-cap">Adds to the alert's record. It does not close the alert.</span>
-        </section>
-      )}
 
       {trackingActive && motionPerm === 'prompt' && (
         <section className="surface card stack rise" style={{ gap: 8 }}>
@@ -362,6 +337,7 @@ export function SessionHomeScreen() {
           </button>
         </Sheet>
       )}
+
     </div>
   );
 }

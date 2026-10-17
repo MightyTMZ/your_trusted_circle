@@ -33,6 +33,13 @@
   --accent-ring: rgba(255, 255, 255, 0.55);
   --accent-soft: rgba(255, 255, 255, 0.14);
   --accent-glow: none;
+  /* Danger: open alerts and urgent states. High-contrast red. */
+  --danger: #ff3b30;
+  --danger-ink: #ffffff;
+  --danger-icon: #ffffff;
+  --danger-ring: rgba(255, 59, 48, 0.55);
+  --danger-soft: rgba(255, 59, 48, 0.18);
+  --danger-glow: 0 0 16px rgba(255, 59, 48, 0.45);
   /* Switch. */
   --switch-off: #39393d;
   --switch-knob: #ffffff;
@@ -80,6 +87,12 @@
   --accent-icon: #ffffff;
   --accent-ring: rgba(0, 0, 0, 0.5);
   --accent-soft: rgba(0, 0, 0, 0.07);
+  --danger: #ff3b30;
+  --danger-ink: #ffffff;
+  --danger-icon: #ffffff;
+  --danger-ring: rgba(255, 59, 48, 0.55);
+  --danger-soft: rgba(255, 59, 48, 0.14);
+  --danger-glow: 0 0 16px rgba(255, 59, 48, 0.4);
   --switch-off: #e9e9ea;
   --switch-knob-on: #ffffff;
   --segment-thumb: #ffffff;
@@ -165,6 +178,7 @@ ul { padding: 0; list-style: none; }
   .material { background: var(--material-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 .card { border-radius: var(--r-card); padding: 16px; }
+.card.alert-open { border: 2px solid var(--danger); box-shadow: var(--danger-glow); }
 .card-list { padding: 4px 16px; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; }
 .tile { border-radius: var(--r-tile); }
@@ -204,6 +218,7 @@ ul { padding: 0; list-style: none; }
 .btn:focus-visible, .field:focus-visible { outline: 3px solid var(--accent-ring); outline-offset: 2px; }
 .btn:disabled { opacity: 0.35; pointer-events: none; }
 .on-accent { background: var(--accent); color: var(--accent-ink); border: 0; }
+.on-danger { background: var(--danger); color: var(--danger-ink); border: 0; }
 .pbtn {
   width: 100%; min-height: 50px; padding: 0 20px; border-radius: var(--r-pill);
   display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 17px; font-weight: 600; text-align: center;
@@ -216,6 +231,7 @@ ul { padding: 0; list-style: none; }
 }
 .ibtn-sm { width: 40px; height: 40px; }
 .ibtn.on-accent { color: var(--accent-icon); }
+.ibtn.on-danger { color: var(--danger-icon); }
 .chip {
   min-height: 40px; padding: 0 16px; border-radius: var(--r-pill); flex: none;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 15px; font-weight: 500; white-space: nowrap;
@@ -251,7 +267,7 @@ ul { padding: 0; list-style: none; }
 .tab .slot-label { font-size: 11px; font-weight: 600; letter-spacing: 0; }
 .tab.is-on { background: var(--fill); color: var(--accent); }
 .slot-ic { position: relative; display: inline-flex; }
-.badge { position: absolute; top: -2px; right: -4px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface); }
+.badge { position: absolute; top: -2px; right: -4px; width: 9px; height: 9px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--surface); }
 .help-fab {
   width: 62px; height: 62px; padding: 0; border-radius: 50%; flex: none; color: var(--text-primary);
   display: inline-flex; align-items: center; justify-content: center;
@@ -286,6 +302,7 @@ ul { padding: 0; list-style: none; }
   display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; color: var(--text-primary);
 }
 .av.on-accent { color: var(--accent-ink); }
+.av.on-danger { color: var(--danger-ink); }
 .av-sm { width: 32px; height: 32px; font-size: 13px; }
 .av-stack { display: flex; }
 .av-stack .av {
@@ -298,6 +315,7 @@ ul { padding: 0; list-style: none; }
   font-size: 12px; font-weight: 600; color: var(--text-secondary); background: var(--fill);
 }
 .tag.on-accent { color: var(--accent-ink); background: var(--accent); }
+.tag.on-danger { color: var(--danger-ink); background: var(--danger); }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text-tertiary); }
 .dot.live { background: var(--accent); }
 .dot.hollow { background: transparent; border: 1.5px solid var(--text-tertiary); }
@@ -379,7 +397,7 @@ textarea.field { height: 100px; padding: 13px 16px; resize: none; line-height: 1
 .gauge svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .gauge-track { fill: none; stroke: var(--track-inactive); stroke-width: 8; stroke-linecap: round; }
 .gauge-fill { fill: none; stroke-width: 8; stroke-linecap: round; }
-.gauge-knob { fill: var(--knob); stroke: var(--accent); stroke-width: 2; }
+.gauge-knob { fill: var(--knob); stroke: var(--danger); stroke-width: 2; }
 .gauge-center { position: absolute; left: 10%; right: 10%; top: 33%; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
 .gauge-end { position: absolute; bottom: -2px; }
 .dial { position: relative; width: 300px; max-width: 100%; height: 168px; align-self: center; margin-top: 8px; }
@@ -447,6 +465,26 @@ textarea.field { height: 100px; padding: 13px 16px; resize: none; line-height: 1
 .session-side .session-meta { order: 3; flex-basis: 100%; padding-left: 18px; }
 .session-side:hover { background: var(--fill-strong); }
 .session-facts { margin: 0; }
+
+/* ---------- Alert overlay (blocks the whole app when an alert is about you) ---------- */
+.alert-overlay {
+  position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: rgba(255, 20, 10, 0.12); -webkit-backdrop-filter: blur(16px) saturate(120%); backdrop-filter: blur(16px) saturate(120%);
+  animation: ytc-fade 200ms var(--ease) both;
+}
+.alert-overlay-card {
+  width: 100%; max-width: 400px; border-radius: var(--r-card); padding: 32px 24px 24px;
+  display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center;
+  background: var(--surface); border: 2px solid var(--danger); box-shadow: var(--danger-glow), var(--material-shadow);
+  animation: ytc-rise 260ms var(--ease) both;
+}
+.alert-overlay-icon {
+  width: 56px; height: 56px; border-radius: 50%; background: var(--danger); color: var(--danger-ink);
+  display: flex; align-items: center; justify-content: center;
+}
+.alert-overlay-icon .ic { width: 28px; height: 28px; }
+.alert-overlay .btn-sent { opacity: 0.6; pointer-events: none; }
+@media (prefers-reduced-transparency: reduce) { .alert-overlay { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(0, 0, 0, 0.85); } }
 
 /* ---------- Sheet (functional layer) ---------- */
 .sheet-backdrop {
