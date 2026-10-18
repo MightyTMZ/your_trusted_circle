@@ -176,10 +176,10 @@ describe('check-ins on the participant device of a server-backed session', () =>
     return { s, hostId };
   }
 
-  it('a missed deadline opens no local incident: the server owns it', () => {
+  it('leaves a missed deadline pending locally: the server owns it', () => {
     const { s } = participantDevice();
     tick(s, T0 + 61_000);
-    expect(s.checkIns[0].status).toBe('missed');
+    expect(s.checkIns[0].status).toBe('pending');
     expect(s.incidents).toHaveLength(0);
   });
 

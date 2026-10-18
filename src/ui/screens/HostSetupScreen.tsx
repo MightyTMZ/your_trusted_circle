@@ -236,7 +236,7 @@ export function HostSetupScreen() {
                     label="Check-in window"
                     unit="s"
                     step={10}
-                    min={10}
+                    min={15}
                     value={cfg.checkInWindowSec}
                     onChange={(v) => setCfg({ ...cfg, checkInWindowSec: v })}
                   />
@@ -244,7 +244,7 @@ export function HostSetupScreen() {
                     label="Host acknowledgment"
                     unit="s"
                     step={10}
-                    min={10}
+                    min={30}
                     value={cfg.hostAckWindowSec}
                     onChange={(v) => setCfg({ ...cfg, hostAckWindowSec: v })}
                   />
@@ -252,7 +252,7 @@ export function HostSetupScreen() {
                     label="Backup acknowledgment"
                     unit="s"
                     step={10}
-                    min={10}
+                    min={30}
                     value={cfg.backupAckWindowSec}
                     onChange={(v) => setCfg({ ...cfg, backupAckWindowSec: v })}
                   />

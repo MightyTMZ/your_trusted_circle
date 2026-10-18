@@ -10,6 +10,7 @@ import {
   requestHelpOnServer,
   respondCheckInOnServer,
   sendLiveLocation,
+  sendHeartbeat,
   startCheckInOnServer,
   type LiveFix,
 } from '../api';
@@ -35,6 +36,7 @@ const LiveCtx = createContext<Live>({ fixes: [], geo: 'idle', connected: false, 
 const SESSION_POLL_MS = 10_000;
 const ALERT_POLL_MS = 3_000;
 const LOCATION_POLL_MS = 5_000;
+const HEARTBEAT_MS = 30_000;
 const SEND_EVERY_MS = 10_000;
 
 /**
@@ -57,14 +59,22 @@ export function LiveLocationProvider({ children }: { children: ReactNode }) {
   const [fixes, setFixes] = useState<LiveFix[]>([]);
   const [geo, setGeo] = useState<GeoState>('idle');
   const [connected, setConnected] = useState(false);
+  const sessionRequest = useRef(0);
+  const locationRequest = useRef(0);
+  const alertsRequest = useRef(0);
 
   // Participant list and session status.
   useEffect(() => {
     if (!active) return;
     let alive = true;
     const poll = async () => {
+      const request = ++sessionRequest.current;
       const view = await fetchServerSession(serverId!);
-      if (!alive || !view) return;
+      if (!alive || request !== sessionRequest.current) return;
+      if (!view) {
+        setConnected(false);
+        return;
+      }
       setConnected(true);
       store.dispatch((d, now) => syncServerParticipants(d, view, now));
       applySessionVenue(view.rules.demoVenue ?? null);
@@ -76,6 +86,15 @@ export function LiveLocationProvider({ children }: { children: ReactNode }) {
       clearInterval(id);
     };
   }, [active, serverId, store]);
+
+  // keep the server's device status accurate even when location sharing is off
+  useEffect(() => {
+    if (!active) return;
+    const heartbeat = () => void sendHeartbeat(serverId!);
+    heartbeat();
+    const id = setInterval(heartbeat, HEARTBEAT_MS);
+    return () => clearInterval(id);
+  }, [active, serverId]);
 
   // Leaving the session leaves its demo venue behind.
   useEffect(() => {
@@ -90,8 +109,10 @@ export function LiveLocationProvider({ children }: { children: ReactNode }) {
     }
     let alive = true;
     const poll = async () => {
+      const request = ++locationRequest.current;
       const next = await fetchLiveLocations(serverId!);
-      if (alive && next) setFixes(next);
+      if (!alive || request !== locationRequest.current) return;
+      setFixes(next ?? []);
     };
     poll();
     const id = setInterval(poll, LOCATION_POLL_MS);
@@ -167,7 +188,9 @@ export function LiveLocationProvider({ children }: { children: ReactNode }) {
   const meId = me?.id;
   const refreshAlerts = useCallback(async () => {
     if (!alertsOn || !meId) return;
+    const request = ++alertsRequest.current;
     const [timeline, alerts] = await Promise.all([fetchServerTimeline(serverId!), fetchServerAlerts()]);
+    if (request !== alertsRequest.current) return;
     if (!timeline) return;
     store.dispatch((d) => applyServerTimeline(d, { ...timeline, alerts: alerts ?? [] }, meId));
   }, [alertsOn, serverId, meId, store]);
@@ -221,10 +244,13 @@ export function LiveLocationProvider({ children }: { children: ReactNode }) {
 type Dispatch = (m: (d: AppState) => void) => string | null;
 
 async function syncCheckIn(c: CheckIn, serverId: string, dispatch: Dispatch): Promise<void> {
-  const update = (patch: Partial<NonNullable<CheckIn['server']>>) =>
+  const update = (patch: Partial<NonNullable<CheckIn['server']>>, deadline?: Pick<CheckIn, 'promptedAt' | 'dueAt'>) =>
     dispatch((d) => {
       const x = d.checkIns.find((y) => y.id === c.id);
-      if (x) x.server = { ...x.server, ...patch } as NonNullable<CheckIn['server']>;
+      if (x) {
+        x.server = { ...x.server, ...patch } as NonNullable<CheckIn['server']>;
+        if (deadline) Object.assign(x, deadline);
+      }
     });
 
   if (!c.server) {
@@ -235,7 +261,12 @@ async function syncCheckIn(c: CheckIn, serverId: string, dispatch: Dispatch): Pr
       return;
     }
     const r = await startCheckInOnServer(serverId);
-    if (r.ok) return void update({ id: r.data.checkIn.id });
+    if (r.ok) {
+      return void update(
+        { id: r.data.checkIn.id },
+        { promptedAt: Date.parse(r.data.checkIn.promptedAt), dueAt: Date.parse(r.data.checkIn.dueAt) },
+      );
+    }
     // Refused (an alert about you is already open, or monitoring is off on the server): stop asking here.
     if (r.code) {
       update({ id: null, refused: r.code });

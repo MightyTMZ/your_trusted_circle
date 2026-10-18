@@ -57,4 +57,21 @@ describe('server participant sync', () => {
     tick(s, 60_000);
     expect(s.participants.ptc_sam.locations).toEqual([]);
   });
+
+  it('leaves server-backed check-ins pending until the server closes them', () => {
+    const { s, hostId } = setup();
+    s.checkIns.push({
+      id: 'chk_server',
+      participantId: hostId,
+      observationId: '',
+      promptedAt: 0,
+      dueAt: 1_000,
+      status: 'pending',
+      server: { id: 'chk_server' },
+    });
+
+    tick(s, 2_000);
+
+    expect(s.checkIns[0]?.status).toBe('pending');
+  });
 });

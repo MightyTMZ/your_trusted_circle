@@ -21,10 +21,10 @@ export function tick(state: AppState, now: Millis): void {
 
   // Missed private check-ins open an incident.
   for (const ci of state.checkIns) {
-    if (ci.status !== 'pending' || now < ci.dueAt) continue;
-    ci.status = 'missed';
     // Server-backed: the server holds this deadline and opens the incident everyone sees.
     if (session.serverId) continue;
+    if (ci.status !== 'pending' || now < ci.dueAt) continue;
+    ci.status = 'missed';
     openIncident(state, ci.participantId, 'checkin_missed', ci.dueAt, {
       observationId: ci.observationId,
       checkInId: ci.id,

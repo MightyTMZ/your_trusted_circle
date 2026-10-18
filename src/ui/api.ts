@@ -292,6 +292,10 @@ export function endSessionOnServer(serverId: string): Promise<boolean> {
   return sendJson('POST', `/sessions/${encodeURIComponent(serverId)}/end`);
 }
 
+export function sendHeartbeat(serverId: string): Promise<boolean> {
+  return sendJson('POST', `/sessions/${encodeURIComponent(serverId)}/heartbeat`);
+}
+
 /** A live position from the server's in-memory relay (docs/backend.md, "Live group location"). */
 export interface LiveFix {
   participantId: string;

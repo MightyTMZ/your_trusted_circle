@@ -192,6 +192,7 @@ ul { padding: 0; list-style: none; }
 .card { border-radius: var(--r-card); padding: 16px; }
 .card.alert-open { border: 2px solid var(--danger); box-shadow: var(--danger-glow); }
 .card-list { padding: 4px 16px; }
+.alert-list { max-height: min(360px, 45vh); overflow-y: auto; overscroll-behavior: contain; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; }
 .tile { border-radius: var(--r-tile); }
 
@@ -684,6 +685,7 @@ textarea.field { height: 100px; padding: 13px 16px; resize: none; line-height: 1
 }
 .opx-dock { flex: none; display: flex; flex-direction: column; gap: 10px; }
 .opx-compose { display: flex; align-items: center; gap: 12px; }
+.opx-text { flex: 1; min-width: 0; }
 .opx-tools { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
 .opx-mic {
   width: 64px; height: 64px; flex: none; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center;

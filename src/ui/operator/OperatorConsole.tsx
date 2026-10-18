@@ -80,6 +80,7 @@ export function OperatorConsole() {
   const [activity, setActivity] = useState<Activity | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [voiceOn, setVoiceOn] = useState(true);
+  const [typedText, setTypedText] = useState('');
   const [micReady, setMicReady] = useState(false);
   const [cited, setCited] = useState<string[]>([]);
   const [record, setRecord] = useState(false);
@@ -96,11 +97,30 @@ export function OperatorConsole() {
   const recordRef = useRef(false);
   const spaceHeld = useRef(false);
   const stopping = useRef(false);
+  const talkAttempt = useRef(0);
+  const silenceGeneration = useRef(0);
   const chatEnd = useRef<HTMLLIElement | null>(null);
   callRef.current = call;
   phaseRef.current = phase;
   voiceRef.current = voiceOn;
   recordRef.current = record;
+
+  const ensureMic = useCallback(
+    async (enabled = !!caps?.speech_to_text): Promise<boolean> => {
+      if (!enabled || !PushToTalk.supported) return false;
+      mic.current ??= new PushToTalk();
+      try {
+        await mic.current.open();
+        setMicReady(true);
+        return true;
+      } catch {
+        setMicReady(false);
+        setError('Allow microphone access to talk to the operator.');
+        return false;
+      }
+    },
+    [caps?.speech_to_text],
+  );
 
   useEffect(() => {
     callApi.capabilities().then(setCaps, (e: Error) => setError(e.message));
@@ -179,7 +199,10 @@ export function OperatorConsole() {
     chatEnd.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
   }, [call?.transcript.length, phase]);
 
-  const clearSilence = () => window.clearTimeout(silenceTimer.current);
+  const clearSilence = () => {
+    silenceGeneration.current += 1;
+    window.clearTimeout(silenceTimer.current);
+  };
 
   const settle = useCallback((next: CallView | null) => {
     if (next?.status === 'ended') {
@@ -190,12 +213,14 @@ export function OperatorConsole() {
     }
     setPhase('ready');
     clearSilence();
+    const generation = silenceGeneration.current;
     silenceTimer.current = window.setTimeout(async () => {
       const current = callRef.current;
       // not while the operator is reading the record
-      if (!current || phaseRef.current !== 'ready' || recordRef.current) return;
+      if (generation !== silenceGeneration.current || !current || phaseRef.current !== 'ready' || recordRef.current) return;
       try {
         const res = await callApi.silence(current.call_id, SILENCE_MS);
+        if (generation !== silenceGeneration.current || phaseRef.current !== 'ready' || recordRef.current) return;
         setCall(res.call);
         if (res.reply) play(res.reply, res.call);
       } catch (e) {
@@ -236,6 +261,11 @@ export function OperatorConsole() {
   );
 
   const startPractice = async () => {
+    const el = audio.current;
+    if (el) {
+      el.src = SILENT_WAV;
+      el.play().catch(() => {});
+    }
     setError(null);
     setReplies({});
     setCited([]);
@@ -289,29 +319,26 @@ export function OperatorConsole() {
     setPhase('starting');
     const known = caps ?? (await callApi.capabilities().catch(() => null));
     setCaps(known);
-    if (known?.speech_to_text && PushToTalk.supported) {
-      try {
-        mic.current = new PushToTalk();
-        await mic.current.open();
-        setMicReady(true);
-      } catch {
-        setMicReady(false);
-        setError('The microphone is unavailable. Voice input is required for this console.');
-      }
-    }
+    await ensureMic(!!known?.speech_to_text);
     try {
       const res: StartCallResponse = await callApi.answer(id);
       setCall(res.call);
       setConnectedAt(Date.now());
       play(res.reply, res.call);
     } catch (e) {
+      mic.current?.close();
+      setMicReady(false);
       setError((e as Error).message);
       setPhase('idle');
     }
   };
 
   const talkStart = async () => {
-    if (stopping.current || !mic.current || !micReady || !callRef.current || phaseRef.current === 'ended' || mic.current.recording) return;
+    const phaseAtStart = phaseRef.current;
+    if (stopping.current || !callRef.current || phaseAtStart === 'ended' || mic.current?.recording) return;
+    const attempt = ++talkAttempt.current;
+    if (!(await ensureMic()) || attempt !== talkAttempt.current) return;
+    if (!mic.current || !callRef.current || phaseRef.current === 'ended' || mic.current.recording) return;
     clearSilence();
     // Record at once; the interrupt is logged in the background, long before this turn is sent.
     void bargeIn();
@@ -321,6 +348,7 @@ export function OperatorConsole() {
   };
 
   const talkStop = async () => {
+    talkAttempt.current += 1;
     if (stopping.current) return;
     const current = callRef.current;
     if (!mic.current?.recording || !current) return;
@@ -344,6 +372,23 @@ export function OperatorConsole() {
     }
   };
 
+  const sendText = async () => {
+    const value = typedText.trim();
+    const current = callRef.current;
+    if (!value || stopping.current || !current || phaseRef.current === 'ended' || phaseRef.current === 'starting' || phaseRef.current === 'thinking' || phaseRef.current === 'listening') return;
+    setTypedText('');
+    clearSilence();
+    if (phaseRef.current === 'speaking') await bargeIn();
+    setError(null);
+    setPhase('thinking');
+    try {
+      handleTurn(await callApi.say(current.call_id, value));
+    } catch (e) {
+      setError((e as Error).message);
+      settle(callRef.current);
+    }
+  };
+
   const endCall = async () => {
     const current = callRef.current;
     if (!current) return;
@@ -363,6 +408,7 @@ export function OperatorConsole() {
     setCall(null);
     setPhase('idle');
     setConnectedAt(null);
+    setTypedText('');
     setRecord(false);
     history.replaceState(null, '', '#operator');
   };
@@ -380,6 +426,8 @@ export function OperatorConsole() {
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.code !== 'Space' || e.repeat || spaceHeld.current || recordRef.current) return;
+      const target = e.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable)) return;
       e.preventDefault();
       spaceHeld.current = true;
       void talkStart();
@@ -498,15 +546,40 @@ export function OperatorConsole() {
       </ol>
 
       <div className="opx-dock">
-        <ActivityStrip phase={phase} activity={activity} voiceIn={voiceIn && micReady} />
+        <ActivityStrip phase={phase} activity={activity} voiceIn={voiceIn} />
         {error && <ErrorLine text={error} />}
         {live ? (
           <div className="opx-compose">
+            <label className="sr-only" htmlFor="operator-text">
+              Type a message
+            </label>
+            <input
+              id="operator-text"
+              className="field opx-text"
+              value={typedText}
+              placeholder="Type if you can't use the microphone"
+              disabled={phase === 'starting' || phase === 'thinking' || phase === 'listening'}
+              onChange={(e) => setTypedText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void sendText();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="btn chip fill"
+              disabled={!typedText.trim() || phase === 'starting' || phase === 'thinking' || phase === 'listening'}
+              onClick={() => void sendText()}
+            >
+              Send
+            </button>
             <button
               type="button"
               className={`btn opx-mic ${phase === 'listening' ? 'on-accent is-live' : 'fill'}`}
-              aria-label={voiceIn ? 'Hold to talk' : 'Voice input is unavailable'}
-              disabled={!voiceIn || !micReady}
+              aria-label={voiceIn ? (micReady ? 'Hold to talk' : 'Hold to talk; microphone permission required') : 'Voice input is unavailable'}
+              disabled={!voiceIn}
               onPointerDown={(e) => {
                 e.preventDefault();
                 e.currentTarget.setPointerCapture(e.pointerId);

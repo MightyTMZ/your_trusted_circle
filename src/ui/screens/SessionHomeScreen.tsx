@@ -25,7 +25,7 @@ function fmtHM(ms: number): string {
   return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
 }
 
-function AlertCard({ incident, now }: { incident: Incident; now: number }) {
+function AlertRow({ incident, now }: { incident: Incident; now: number }) {
   const { state, go } = useApp();
   const p = state.participants[incident.participantId];
   const deadline = nextDeadline(incident);
@@ -39,17 +39,32 @@ function AlertCard({ incident, now }: { incident: Incident; now: number }) {
       : incident.resolution?.by === 'participant'
         ? `${COPY.cancelledBySelf(p.displayName)} · ${fmtTime(incident.resolution.at)}`
         : `Resolved ${fmtTime(incident.resolution!.at)}`;
-  const title = incident.trigger === 'help_requested' ? `${p.displayName} asked for help` : `${COPY.movementChanged} · ${p.displayName}`;
+  const title =
+    incident.resolution?.by === 'participant'
+      ? `${p.displayName} cancelled an alert`
+      : incident.trigger === 'help_requested'
+        ? `${p.displayName} started an alert`
+        : `Alert started for ${p.displayName}`;
   return (
-    <section className={`surface card rise${open ? ' alert-open' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+    <button type="button" className={`btn lrow${open ? ' alert-row-open' : ''}`} onClick={() => go({ name: 'alert', id: incident.id })}>
       <span className={`av num ${open ? 'on-danger' : 'fill'}`}>{initials(p.displayName)}</span>
       <span className="stack grow">
         <h2 className="t-card">{title}</h2>
         <span className="t-sub num">{status}</span>
       </span>
-      <button type="button" className="btn ibtn fill" aria-label={`Open alert: ${title}`} onClick={() => go({ name: 'alert', id: incident.id })}>
+      <span className="chev" aria-hidden="true">
         <Icon name="arrowUpRight" />
-      </button>
+      </span>
+    </button>
+  );
+}
+
+function AlertList({ incidents, now }: { incidents: Incident[]; now: number }) {
+  return (
+    <section className="surface card card-list alert-list" aria-label="Alerts">
+      {incidents.map((incident) => (
+        <AlertRow key={incident.id} incident={incident} now={now} />
+      ))}
     </section>
   );
 }
@@ -251,9 +266,7 @@ export function SessionHomeScreen() {
           {visibleAlerts.length > 0 && (
             <section className="col">
               <h2 className="lbl">Alerts from this session</h2>
-              {visibleAlerts.map((i) => (
-                <AlertCard key={i.id} incident={i} now={now} />
-              ))}
+              <AlertList incidents={visibleAlerts} now={now} />
             </section>
           )}
           <div className="screen-footer">
@@ -339,7 +352,7 @@ export function SessionHomeScreen() {
 
       <div className="cols">
         <div className="col">
-          {visibleAlerts.map((i) => <AlertCard key={i.id} incident={i} now={now} />)}
+          {visibleAlerts.length > 0 && <AlertList incidents={visibleAlerts} now={now} />}
           <section className="surface card rise rise-2" style={{ padding: 8 }} aria-label="Group map">
             <div style={{ position: 'relative' }}>
               <GroupMap points={points} anchor={anchor} alerting={alerting} />
