@@ -81,7 +81,7 @@ test("location is stored only while the server has an active incident for that p
   // No incident: the fix is dropped, and coordinates are stripped from free-form data.
   let res = await ingest(sam, [
     { kind: "event", sessionId, data: locationFix(t, samPid) },
-    { kind: "sensor", sessionId, data: { accel: [0.1, 9.8, 0.2], gps: { lat: 43.6, lng: -79.4 }, meta: { position: "x", battery: 0.4 } } },
+    { kind: "sensor", sessionId, dataOrigin: "synthetic_scenario", dataClass: "derived", units: "m/s^2", data: { accel: [0.1, 9.8, 0.2], gps: { lat: 43.6, lng: -79.4 }, meta: { position: "x", battery: 0.4 } } },
   ]);
   assert.equal(res.body.locationDropped, 1);
   assert.equal(res.body.locationFieldsRemoved, 2);

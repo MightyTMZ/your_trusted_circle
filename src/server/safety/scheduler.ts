@@ -6,6 +6,7 @@
  */
 import { dispatchDue, type DispatchSummary } from "../alerts/jobs.js";
 import type { Deps } from "../context.js";
+import { recorder } from "../timeline/recorder.js";
 import { nextDeadline, notifyStep, openIncident } from "./escalation.js";
 
 export interface PassSummary {
@@ -20,6 +21,7 @@ export async function runSchedulerPass(deps: Deps): Promise<PassSummary> {
   const { store } = deps;
   const now = deps.now();
   const summary: PassSummary = { sessionsExpired: 0, devicesWentSilent: 0, checkInsMissed: 0, stepsEscalated: 0, alerts: { delivered: 0, retrying: 0, failed: 0, cancelled: 0 } };
+  const rec = recorder(deps);
 
   // 1. Session expiry and missed heartbeats.
   for (const session of await store.listActiveSessions()) {
@@ -27,6 +29,7 @@ export async function runSchedulerPass(deps: Deps): Promise<PassSummary> {
       if (await store.endSession(session._id, "expired", session.expiresAt)) {
         summary.sessionsExpired++;
         deps.relay.clearSession(session._id);
+        await rec.expired(session);
         // Pending check-ins end with the session; open incidents keep escalating.
         for (const c of await store.listPendingCheckIns(session._id)) {
           await store.transitionCheckIn(c._id, "pending", { status: "cancelled", cancelledReason: "session_ended" });
@@ -34,12 +37,15 @@ export async function runSchedulerPass(deps: Deps): Promise<PassSummary> {
       }
       continue;
     }
+    // While the host has the session suspended, silent devices are expected.
+    if (session.suspendedAt !== null) continue;
     const timeoutMs = session.rules.heartbeatTimeoutSec * 1000;
     for (const p of session.participants) {
       if (p.leftAt !== null || !p.deviceOnline || p.lastHeartbeatAt === null) continue;
       if (now.getTime() - p.lastHeartbeatAt.getTime() < timeoutMs) continue;
       await store.updateParticipant(session._id, p.participantId, { deviceOnline: false });
       summary.devicesWentSilent++;
+      await rec.deviceOffline(session, p, p.lastHeartbeatAt);
       const incident = await store.findActiveIncident(session._id, p.participantId);
       if (incident) {
         await store.appendIncidentLog(incident._id, {
@@ -58,7 +64,8 @@ export async function runSchedulerPass(deps: Deps): Promise<PassSummary> {
     const session = await store.getSession(checkIn.sessionId);
     const subject = session?.participants.find((p) => p.participantId === checkIn.participantId);
     if (!session || !subject) continue;
-    const incident = await openIncident(deps, session, subject, "checkin_missed", checkIn.dueAt, checkIn._id);
+    const missed = await rec.checkInMissed(session, checkIn);
+    const incident = await openIncident(deps, session, subject, "checkin_missed", checkIn.dueAt, checkIn._id, missed?.event_id ?? null);
     await store.transitionCheckIn(checkIn._id, "missed", { incidentId: incident._id });
   }
 
@@ -73,7 +80,8 @@ export async function runSchedulerPass(deps: Deps): Promise<PassSummary> {
       const index = incident.currentStep + 1;
       const prev = incident.steps[incident.currentStep];
       const waited = Math.round((due.getTime() - (prev?.notifiedAt?.getTime() ?? due.getTime())) / 1000);
-      if (!(await notifyStep(deps, session, incident, index, due))) break;
+      const firing = incident;
+      if (!(await notifyStep(deps, session, incident, index, due, () => rec.stepFired(session, firing, index, due, now)))) break;
       await store.appendIncidentLog(incident._id, {
         at: due,
         kind: "escalation",
