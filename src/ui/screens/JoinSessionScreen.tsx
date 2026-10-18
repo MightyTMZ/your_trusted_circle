@@ -4,7 +4,7 @@ import { previewSession, joinSessionOnServer, type SessionPreview } from '../api
 import { useApp } from '../context';
 import { ScreenHeader, StepBar, initials } from '../components/Controls';
 import { Icon } from '../components/Icon';
-import { ParticipantConsentFields, defaultParticipantInput } from '../components/ParticipantConsentFields';
+import { ParticipantConsentFields, backupContactsReady, defaultParticipantInput } from '../components/ParticipantConsentFields';
 
 export function JoinSessionScreen({ code }: { code: string }) {
   const { state, store, setViewer, go, account, setPendingJoinCode } = useApp();
@@ -149,7 +149,12 @@ export function JoinSessionScreen({ code }: { code: string }) {
               {error}
             </p>
           )}
-          <button type="button" className="btn pbtn on-accent" disabled={!input.displayName.trim() || joining} onClick={() => (step === 1 ? setStep(2) : join())}>
+          <button
+            type="button"
+            className="btn pbtn on-accent"
+            disabled={!input.displayName.trim() || (step === 2 && !backupContactsReady(input.backupContacts)) || joining}
+            onClick={() => (step === 1 ? setStep(2) : join())}
+          >
             {joining ? 'Joining…' : step === 1 ? 'Continue' : 'Join session'}
           </button>
         </div>

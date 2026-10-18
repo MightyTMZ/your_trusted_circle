@@ -184,6 +184,7 @@ pointer events. Minimum hit area 44×44 (`accessibility.md › Mobility`).
 | Chip | `button.btn.chip.fill` | 40px capsule, 15/500. Small secondary actions. |
 | Segmented control | `<ChipChoice>` → `.segmented` > `button.segment[role=radio]` | Grey track, the selected segment gets a raised `--segment-thumb`, never the accent (`segmented-controls.md`). |
 | Option list | `<OptionList>` → `.opt-list` > `button.btn.opt[role=radio]` | One grouped list; the selected row shows a trailing accent checkmark. Help text only for the selected option. Inside a card the list takes `--fill`. |
+| Checkmark row | `<CheckRow>` → `button.btn.check-row[role=checkbox][aria-checked]` | A sign-off choice with a trailing checkmark; use for explicit commitments, not sharing settings. |
 | Switch | `button.btn.toggle[role=switch][aria-checked]` > `.knob` | iOS switch: 52×32 track, 28px white knob, accent track when on, 44px hit area via `::before`. No icon or On/Off text; the fill and knob position carry the state. Use inside a list row (`toggles.md › Mobile`). |
 | Stepper | `.ibtn.ibtn-sm` − value + | For numeric settings (escalation timing). |
 | Quick tile | `button.btn.qtile.fill` | 88px tall, 22px icon over 13px label, equal-width grid of 2–4. |
@@ -198,11 +199,11 @@ pointer events. Minimum hit area 44×44 (`accessibility.md › Mobility`).
 | Help button | `button.btn.material.help-fab` (phone), `button.btn.side-help` (sidebar) | "I need help". Never a tab: tabs navigate, help acts (`tab-bars.md › Best practices`). 62px material circle with an accent ring hanging off the tab bar's left edge (the tabs are centred on their own, so help never shifts them); a labelled ringed row at the top of the sidebar. |
 | Error | `p.error[role=alert]` + `alert` icon | Grey-fill box, primary text. No red. |
 | Access prompt | `<AccessPrompt icon title primary secondary>` | Access the session can't work without (motion for check-ins, location for the map): a centred material card over a blurred, locked app, shown before the browser's own request (`privacy.md › Pre-alert screens`). One at a time. Always a way out (`modality.md › Best practices`): "Turn off check-ins" (their consent choice) or "Not now" (this visit only). Waits while an alert about the person is open. |
-| Alert about you | `<AlertAboutYou>` → `.alert-island` | While an alert about you is open, floating at the top centre (over the main column on larger screens), over the page rather than in it. Waiting for "I'm OK": the full card with a 2px `--alert` outline, the status and "Tell responders I'm OK"; its close button (or Escape) shrinks it to the red "Alert about you" pill, sized to its content, with a gentle pulse; tap to open again. Once the record shows "I'm OK": the outline and bell turn `--positive` (the message reached responders; the alert is still open), the card says "Okay, understood" with the time from the record, and after 4 s it shrinks into the green pill. The card is laid out once at full size and the pill is a window onto its top centre, so opening and shrinking grow the window and the outlined shape together (like the Dynamic Island) and nothing inside moves or resizes. Collapsed, only the pill takes taps. Reduce Motion: no pulse, no animation. Help hides meanwhile; `.help-fab-slot` keeps its place. |
+| Alert about you | `<AlertOverlay>` → `.alert-overlay` | While an alert about you is open, show the blocking alert and its cancel action. The confirmation explains that escalation stops and keeps the safety caveat; it has only "Confirm cancel" and "Keep the alert open". Do not add a redundant "I'm OK" action to this overlay. Reduce Motion: no pulse, no animation. |
 
 React wrappers in `src/ui/components/Controls.tsx`: `Toggle`, `ToggleRow`,
-`OptionList`, `ChipChoice`, `Stepper`, `StepBar`, `ScreenHeader`, plus
-`initials()` for avatars. Use them instead of re-writing the markup.
+`CheckRow`, `OptionList`, `ChipChoice`, `Stepper`, `StepBar`, `ScreenHeader`,
+plus `initials()` for avatars. Use them instead of re-writing the markup.
 
 ### Data components
 

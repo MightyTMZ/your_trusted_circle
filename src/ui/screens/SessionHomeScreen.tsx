@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { UNVALIDATED_LABEL } from '../../domain/config';
-import { alertedNames, nextDeadline } from '../../domain/incident';
+import { GROUP_RECIPIENT_PREFIX, HOST_RECIPIENT_PREFIX, alertedNames, nextDeadline } from '../../domain/incident';
 import { canViewLocation, latestReading, participantFreshness } from '../../domain/location';
 import { endSession, resumeSession, suspendSession, updateConsent } from '../../domain/session';
 import type { Incident, Participant } from '../../domain/types';
@@ -177,6 +177,8 @@ export function SessionHomeScreen() {
   const alerts = state.incidents
     .filter((i) => i.participantId !== viewer.id)
     .sort((a, b) => Number(a.status === 'resolved') - Number(b.status === 'resolved') || b.openedAt - a.openedAt);
+  const recipientId = isHost ? HOST_RECIPIENT_PREFIX + viewer.id : GROUP_RECIPIENT_PREFIX + viewer.id;
+  const visibleAlerts = isHost ? alerts : alerts.filter((i) => state.notifications.some((n) => n.incidentId === i.id && n.recipientId === recipientId));
   const alerting = new Set(state.incidents.filter((i) => i.status === 'open').map((i) => i.participantId));
   const hostName = state.participants[session.hostId]?.displayName;
   // The alert this person most recently cancelled themselves, shown for ten minutes as a receipt.
@@ -238,10 +240,10 @@ export function SessionHomeScreen() {
             <h1 className="t-title">{viewer.status === 'left' ? 'You left the session' : 'This session has ended'}</h1>
           </header>
           <p className="t-lead">Location sharing and check-ins have stopped.</p>
-          {isHost && alerts.length > 0 && (
+          {visibleAlerts.length > 0 && (
             <section className="col">
               <h2 className="lbl">Alerts from this session</h2>
-              {alerts.map((i) => (
+              {visibleAlerts.map((i) => (
                 <AlertCard key={i.id} incident={i} now={now} />
               ))}
             </section>
@@ -327,7 +329,7 @@ export function SessionHomeScreen() {
 
       <div className="cols">
         <div className="col">
-          {isHost && alerts.map((i) => <AlertCard key={i.id} incident={i} now={now} />)}
+          {visibleAlerts.map((i) => <AlertCard key={i.id} incident={i} now={now} />)}
           <section className="surface card rise rise-2" style={{ padding: 8 }} aria-label="Group map">
             <div style={{ position: 'relative' }}>
               <GroupMap points={points} anchor={anchor} alerting={alerting} />

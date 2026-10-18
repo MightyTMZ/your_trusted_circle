@@ -29,6 +29,7 @@ describe("operator call agent", () => {
     expect(utterances.at(-1)!.data).toMatchObject({ speaker: "voice_agent", turn_index: 3 });
     expect(utterances.at(-1)!.data.grounding_event_ids).toContain("evt_0246");
     expect(utterances.at(-1)!.provenance.producer).toContain("fake-reasoner");
+    expect(model.requests[0]!.system).toContain("Keep the exchange conversational");
   });
 
   it("puts operator speech in the prompt as quoted data, never in the system rules", async () => {

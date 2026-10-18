@@ -13,7 +13,7 @@ const host: ParticipantInput = {
   shareLocationWithResponders: true,
   shareNoteWithResponders: false,
   emergencyNote: '',
-  backupContacts: [],
+  backupContacts: [{ name: 'Rin', relation: 'Friend' }],
 };
 
 const T0 = Date.parse('2026-10-17T22:00:00.000Z');
@@ -50,7 +50,7 @@ function serverIncident(over: Partial<ServerIncidentInput> = {}): ServerIncident
     resolved: null,
     steps: [
       { level: 'host', recipients: ['Maya'], notifiedAt: iso(0), dueAt: null },
-      { level: 'backup', recipients: ['Alex'], notifiedAt: null, dueAt: iso(120) },
+      { level: 'group', recipients: ['Alex'], notifiedAt: null, dueAt: iso(120) },
       { level: 'emergency_simulated', recipients: ['Emergency services (simulated)'], notifiedAt: null, dueAt: null },
     ],
     log: [

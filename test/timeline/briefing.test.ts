@@ -42,8 +42,8 @@ test("incident, escalation and alert state are derived from the log", () => {
   assert.equal(briefing.device.status, "offline");
   assert.equal(briefing.escalation.simulated_emergency_requested, true);
   assert.deepEqual(briefing.escalation.pending, []);
-  assert.deepEqual(briefing.escalation.fired.map((s) => s.target_role), ["backup_contact", "emergency_service_sim"]);
-  const [host, backup] = briefing.alerts;
+  assert.deepEqual(briefing.escalation.fired.map((s) => s.target_role), ["participant", "emergency_service_sim"]);
+  const [host, , backup] = briefing.alerts;
   assert.deepEqual(
     { attempts: host!.attempts, delivered: host!.delivered, viewed: host!.viewed, acknowledged: host!.acknowledged },
     { attempts: 2, delivered: true, viewed: true, acknowledged: false },
@@ -144,9 +144,9 @@ test("acknowledgment changes state but is never reported as safety", () => {
     type: "incident.acknowledged",
     incident_id: FIXTURE_INCIDENT_ID,
     participant_id: SAM,
-    actor: { kind: "backup_contact", id: "con_0001" },
+    actor: { kind: "participant", id: "par_0003" },
     provenance: { component: "transport_sim", data_origin: "synthetic_scenario", simulated: true },
-    data: { acknowledged_by_role: "backup_contact", acknowledged_by_id: "con_0001", notification_id: "ntf_0002" },
+    data: { acknowledged_by_role: "participant", acknowledged_by_id: "par_0003", notification_id: "ntf_0003" },
   });
   const briefing = rebrief(f);
   assert.equal(briefing.incident.state, "acknowledged");

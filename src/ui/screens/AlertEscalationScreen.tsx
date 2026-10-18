@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { HOST_RECIPIENT_PREFIX, acknowledge, nextDeadline, repeatAlert, resolve } from '../../domain/incident';
+import { GROUP_RECIPIENT_PREFIX, HOST_RECIPIENT_PREFIX, acknowledge, nextDeadline, repeatAlert, resolve } from '../../domain/incident';
 import { freshness } from '../../domain/location';
 import { applyServerIncident } from '../../domain/serverAlerts';
 import { latestPayloadFor } from '../../domain/transport';
@@ -21,7 +21,13 @@ const hm = (t: number) => fmtTime(t).slice(0, 5);
 function nextStepName(incident: Incident): string {
   const step = incident.steps[incident.currentStep + 1];
   if (!step) return '';
-  return step.level === 'backup' ? 'Backup contacts' : step.level === 'host' ? 'Session host' : COPY.emergencySimulated;
+  return step.level === 'group'
+    ? 'Group and backup contacts'
+    : step.level === 'backup'
+      ? 'Backup contacts'
+      : step.level === 'host'
+        ? 'Session host'
+        : COPY.emergencySimulated;
 }
 
 export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
@@ -35,8 +41,8 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
   const { refreshAlerts } = useLive();
 
   const incident = state.incidents.find((i) => i.id === incidentId);
-  const recipientId = meRecipient?.id ?? (me ? HOST_RECIPIENT_PREFIX + me.id : '');
   const isHost = !!me && me.id === state.session?.hostId;
+  const recipientId = meRecipient?.id ?? (me ? (isHost ? HOST_RECIPIENT_PREFIX : GROUP_RECIPIENT_PREFIX) + me.id : '');
   const payload = incident ? latestPayloadFor(state, incident.id, recipientId) : undefined;
   const back = () => go({ name: 'home' });
 

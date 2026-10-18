@@ -10,7 +10,7 @@ const host: ParticipantInput = {
   shareLocationWithResponders: true,
   shareNoteWithResponders: false,
   emergencyNote: '',
-  backupContacts: [],
+  backupContacts: [{ name: 'Rin', relation: 'Friend' }],
 };
 
 function setup() {

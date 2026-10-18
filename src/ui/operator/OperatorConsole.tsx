@@ -79,7 +79,6 @@ export function OperatorConsole() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [activity, setActivity] = useState<Activity | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [text, setText] = useState('');
   const [voiceOn, setVoiceOn] = useState(true);
   const [micReady, setMicReady] = useState(false);
   const [cited, setCited] = useState<string[]>([]);
@@ -94,13 +93,13 @@ export function OperatorConsole() {
   const callRef = useRef<CallView | null>(null);
   const phaseRef = useRef<Phase>('idle');
   const voiceRef = useRef(true);
-  const textRef = useRef('');
   const recordRef = useRef(false);
+  const spaceHeld = useRef(false);
+  const stopping = useRef(false);
   const chatEnd = useRef<HTMLLIElement | null>(null);
   callRef.current = call;
   phaseRef.current = phase;
   voiceRef.current = voiceOn;
-  textRef.current = text;
   recordRef.current = record;
 
   useEffect(() => {
@@ -193,8 +192,8 @@ export function OperatorConsole() {
     clearSilence();
     silenceTimer.current = window.setTimeout(async () => {
       const current = callRef.current;
-      // Not while the operator is typing or reading the record.
-      if (!current || phaseRef.current !== 'ready' || textRef.current.trim() || recordRef.current) return;
+      // not while the operator is reading the record
+      if (!current || phaseRef.current !== 'ready' || recordRef.current) return;
       try {
         const res = await callApi.silence(current.call_id, SILENCE_MS);
         setCall(res.call);
@@ -297,7 +296,7 @@ export function OperatorConsole() {
         setMicReady(true);
       } catch {
         setMicReady(false);
-        setError('The microphone is unavailable, so type your questions.');
+        setError('The microphone is unavailable. Voice input is required for this console.');
       }
     }
     try {
@@ -311,26 +310,8 @@ export function OperatorConsole() {
     }
   };
 
-  const sendText = async (line: string) => {
-    const current = callRef.current;
-    if (!current || !line.trim() || phaseRef.current === 'ended') return;
-    clearSilence();
-    await bargeIn();
-    setText('');
-    setError(null);
-    setPhase('thinking');
-    setCall({ ...current, transcript: [...current.transcript, pendingTurn(line)] });
-    try {
-      handleTurn(await callApi.say(current.call_id, line));
-    } catch (e) {
-      setError((e as Error).message);
-      settle(callRef.current);
-      callApi.state(current.call_id).then((r) => setCall(r.call), () => {});
-    }
-  };
-
   const talkStart = async () => {
-    if (!mic.current || !micReady || !callRef.current || phaseRef.current === 'ended' || mic.current.recording) return;
+    if (stopping.current || !mic.current || !micReady || !callRef.current || phaseRef.current === 'ended' || mic.current.recording) return;
     clearSilence();
     // Record at once; the interrupt is logged in the background, long before this turn is sent.
     void bargeIn();
@@ -340,20 +321,26 @@ export function OperatorConsole() {
   };
 
   const talkStop = async () => {
+    if (stopping.current) return;
     const current = callRef.current;
     if (!mic.current?.recording || !current) return;
-    const take = await mic.current.stop();
-    if (!take || take.heldMs < MIN_HOLD_MS) {
-      setError('Keep holding while you speak, then let go.');
-      settle(current);
-      return;
-    }
-    setPhase('thinking');
+    stopping.current = true;
     try {
-      handleTurn(await callApi.speak(current.call_id, take.audio));
-    } catch (e) {
-      setError((e as Error).message);
-      settle(callRef.current);
+      const take = await mic.current.stop();
+      if (!take || take.heldMs < MIN_HOLD_MS) {
+        setError('Keep holding while you speak, then let go.');
+        settle(current);
+        return;
+      }
+      setPhase('thinking');
+      try {
+        handleTurn(await callApi.speak(current.call_id, take.audio));
+      } catch (e) {
+        setError((e as Error).message);
+        settle(callRef.current);
+      }
+    } finally {
+      stopping.current = false;
     }
   };
 
@@ -389,24 +376,32 @@ export function OperatorConsole() {
     setVoiceOn(!voiceOn);
   };
 
-  // Space bar is push-to-talk, except while typing.
+  // space bar is push-to-talk.
   useEffect(() => {
-    const typing = (e: KeyboardEvent) => e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
     const down = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || typing(e) || e.repeat || recordRef.current) return;
+      if (e.code !== 'Space' || e.repeat || spaceHeld.current || recordRef.current) return;
       e.preventDefault();
+      spaceHeld.current = true;
       void talkStart();
     };
     const up = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || typing(e)) return;
+      if (e.code !== 'Space' || !spaceHeld.current) return;
       e.preventDefault();
+      spaceHeld.current = false;
+      void talkStop();
+    };
+    const release = () => {
+      if (!spaceHeld.current) return;
+      spaceHeld.current = false;
       void talkStop();
     };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
+    window.addEventListener('blur', release);
     return () => {
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', release);
     };
   });
 
@@ -507,43 +502,19 @@ export function OperatorConsole() {
         {error && <ErrorLine text={error} />}
         {live ? (
           <div className="opx-compose">
-            <form
-              className="fill inputbar grow"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void sendText(text);
-              }}
-            >
-              <label htmlFor="op-question" className="sr-only">
-                Ask the agent
-              </label>
-              <input
-                id="op-question"
-                className="field field-bare"
-                placeholder="Ask the agent"
-                autoComplete="off"
-                value={text}
-                maxLength={1000}
-                onChange={(e) => {
-                  setText(e.target.value);
-                  clearSilence();
-                }}
-              />
-              <button type="submit" className="btn ibtn on-accent" aria-label="Send" disabled={!text.trim()}>
-                <Icon name="send" />
-              </button>
-            </form>
             <button
               type="button"
               className={`btn opx-mic ${phase === 'listening' ? 'on-accent is-live' : 'fill'}`}
-              aria-label={voiceIn ? 'Hold to talk' : 'Voice input is off on this server'}
+              aria-label={voiceIn ? 'Hold to talk' : 'Voice input is unavailable'}
               disabled={!voiceIn || !micReady}
               onPointerDown={(e) => {
+                e.preventDefault();
                 e.currentTarget.setPointerCapture(e.pointerId);
                 void talkStart();
               }}
               onPointerUp={() => void talkStop()}
               onPointerCancel={() => void talkStop()}
+              onLostPointerCapture={() => void talkStop()}
               onContextMenu={(e) => e.preventDefault()}
             >
               <Icon name={voiceIn ? 'mic' : 'micOff'} size={26} />
@@ -630,20 +601,17 @@ function ActivityStrip({ phase, activity, voiceIn }: { phase: Phase; activity: A
   if (line === '') return null;
   return (
     <div className="opx-activity" role="status" aria-live="polite">
-      {line ?? (
+      {line ??
+        (voiceIn ? (
         <>
-          <span className="opx-hint-touch">{voiceIn ? 'Your turn. Hold the microphone to talk, or type.' : 'Your turn. Type a question.'}</span>
+          <span className="opx-hint-touch">Your turn. Hold the microphone to talk.</span>
           <span className="opx-hint-key">
-            {voiceIn ? (
-              <>
-                Your turn. Hold <kbd>Space</kbd> to talk, or type.
-              </>
-            ) : (
-              'Your turn. Type a question.'
-            )}
+            Your turn. Hold <kbd>Space</kbd> to talk.
           </span>
         </>
-      )}
+      ) : (
+          'Voice input is unavailable on this server.'
+        ))}
     </div>
   );
 }
@@ -660,10 +628,6 @@ function ErrorLine({ text }: { text: string }) {
 function fmtDuration(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-}
-
-function pendingTurn(text: string): CallView['transcript'][number] {
-  return { turn_index: -1, speaker: 'mock_operator', text, at: new Date().toISOString() };
 }
 
 function Turn({ turn, reply, facts }: { turn: CallView['transcript'][number]; reply?: ReplyView; facts: FactView[] }) {

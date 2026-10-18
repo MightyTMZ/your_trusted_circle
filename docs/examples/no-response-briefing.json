@@ -5,7 +5,7 @@
   "session_id": "ses_0001",
   "incident_id": "inc_0001",
   "participant_id": "par_0002",
-  "timeline_head_hash": "sha256:a37d44cac30ad476b9580bedc14b44281e2a53b7483c299874ede1ea50818020",
+  "timeline_head_hash": "sha256:a216270ad141a532d05a0079f468ea10405a61a70370be0d49ae01cd1fda9d5f",
   "incident": {
     "state": "open",
     "trigger": "checkin_missed",
@@ -283,7 +283,7 @@
     "fired": [
       {
         "step": 2,
-        "target_role": "backup_contact",
+        "target_role": "participant",
         "at": "2026-10-17T23:59:02.000Z",
         "source_event_id": "evt_0264"
       },
@@ -291,7 +291,7 @@
         "step": 3,
         "target_role": "emergency_service_sim",
         "at": "2026-10-18T00:04:02.000Z",
-        "source_event_id": "evt_0268"
+        "source_event_id": "evt_0269"
       }
     ],
     "simulated_emergency_requested": true
@@ -306,6 +306,18 @@
       "attempts": 2,
       "delivered": true,
       "viewed": true,
+      "delivery_failed": false,
+      "acknowledged": false
+    },
+    {
+      "notification_id": "ntf_0003",
+      "recipient_id": "par_0003",
+      "recipient_role": "participant",
+      "escalation_step": 2,
+      "first_sent_at": "2026-10-17T23:59:02.000Z",
+      "attempts": 1,
+      "delivered": false,
+      "viewed": false,
       "delivery_failed": false,
       "acknowledged": false
     },
@@ -375,7 +387,8 @@
       "evt_0269",
       "evt_0270",
       "evt_0271",
-      "evt_0272"
+      "evt_0272",
+      "evt_0273"
     ],
     "redacted": []
   }

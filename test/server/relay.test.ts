@@ -15,7 +15,12 @@ async function group() {
   const code = (await maya.call("GET", `/api/sessions/${s.id}`)).body.session.code as string;
   const joinAs = async (name: string, locationSharing: string, shareLocationWithResponders = false) => {
     const c = await signIn(env.app, name);
-    const res = await c.call("POST", "/api/sessions/join", { code, consent: { monitoring: true, locationSharing, shareLocationWithResponders }, consentTextVersion: "consent-v1" });
+    const res = await c.call("POST", "/api/sessions/join", {
+      code,
+      consent: { monitoring: true, locationSharing, shareLocationWithResponders },
+      consentTextVersion: "consent-v1",
+      backupContacts: [{ name: "Rin", relation: "Friend" }],
+    });
     assert.equal(res.status, 201);
     return c;
   };

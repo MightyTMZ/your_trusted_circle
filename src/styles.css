@@ -400,6 +400,17 @@ textarea.field { height: 100px; padding: 13px 16px; resize: none; line-height: 1
 .toggle[aria-checked='true'] .knob { transform: translateX(20px); background: var(--switch-knob-on); }
 .toggle-row { display: flex; align-items: center; gap: 16px; min-height: 50px; padding: 10px 0; border-top: 0.5px solid var(--border-hairline); }
 .toggle-row:first-child { border-top: 0; }
+.check-row {
+  width: 100%; display: flex; align-items: center; gap: 16px; min-height: 50px; padding: 10px 0;
+  text-align: left;
+}
+.check-box {
+  width: 24px; height: 24px; flex: none; display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--border-highlight); border-radius: var(--r-tile); color: var(--accent-icon); background: var(--fill);
+}
+.check-box .ic { width: 18px; height: 18px; opacity: 0; }
+.check-row.is-checked .check-box { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.check-row.is-checked .check-box .ic { opacity: 1; }
 .seg { display: flex; gap: 6px; }
 .seg span { flex: 1; height: 4px; border-radius: 2px; background: var(--track-inactive); }
 .seg span.is-on { background: var(--accent); }

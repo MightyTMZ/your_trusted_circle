@@ -6,6 +6,7 @@ import { fmtCountdown, fmtTime } from '../format';
 
 function stepTitle(step: EscalationStep): string {
   if (step.level === 'host') return 'Session host';
+  if (step.level === 'group') return 'Group and backup contacts';
   if (step.level === 'backup') return 'Backup contacts';
   return COPY.emergencySimulated;
 }

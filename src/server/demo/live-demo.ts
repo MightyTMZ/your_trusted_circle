@@ -413,7 +413,7 @@ export class LiveDemo {
         checkin_response_window_ms: policy.checkInWindowSec * 1000,
         escalation_steps: [
           ...(sub.role !== "host" ? [{ step: 1, target_role: "host" as const, ack_window_ms: policy.hostAckWindowSec * 1000, max_repeats: 0 }] : []),
-          ...(sub.backupContacts.length > 0 ? [{ step: 0, target_role: "backup_contact" as const, ack_window_ms: policy.backupAckWindowSec * 1000, max_repeats: 0 }] : []),
+          { step: 0, target_role: "participant" as const, ack_window_ms: policy.backupAckWindowSec * 1000, max_repeats: 0 },
           { step: 0, target_role: "emergency_service_sim" as const, ack_window_ms: 0, max_repeats: 0 },
         ].map((s, i) => ({ ...s, step: i + 1 })),
         thresholds_validated: false,
@@ -630,7 +630,7 @@ export class LiveDemo {
       if (!step.notifiedAt || this.mirroredSteps.has(i)) continue;
       this.mirroredSteps.add(i);
       const at = Math.min(step.notifiedAt.getTime(), deps.now().getTime());
-      const role = step.level === "host" ? "host" : step.level === "backup" ? "backup_contact" : "emergency_service_sim";
+      const role = step.level === "host" ? "host" : step.level === "group" ? "participant" : step.level === "backup" ? "backup_contact" : "emergency_service_sim";
       let basis: TimelineEvent = this.timeline.getEvent(inc.openedEventId)!;
       if (i > 0) {
         basis = this.timeline.append({
@@ -683,7 +683,7 @@ export class LiveDemo {
           data: {
             escalation_id: inc.escalationId,
             step: i + 2,
-            target_role: next.level === "backup" ? "backup_contact" : next.level === "host" ? "host" : "emergency_service_sim",
+            target_role: next.level === "group" ? "participant" : next.level === "backup" ? "backup_contact" : next.level === "host" ? "host" : "emergency_service_sim",
             due_at: next.dueAt.toISOString(),
             deadline_basis_event_id: (firstSent ?? basis).event_id,
           },

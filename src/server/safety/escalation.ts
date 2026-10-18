@@ -2,8 +2,8 @@
  * Escalation rules, matching the client (src/domain/incident.ts) and CLAUDE.md:
  *
  * 1. The host is alerted first, for every participant except themselves.
- * 2. Then that person's backup contacts: their YTC inbox if they accepted an
- *    invite, otherwise the simulated transport.
+ * 2. Then every other active group participant and that person's backup
+ *    contacts in parallel.
  * 3. Then emergency services, always simulated, which also triggers the voice agent.
  *
  * Each step's deadline is set when the previous step is notified, never when
@@ -34,13 +34,17 @@ export function buildSteps(session: SessionDoc, subject: ParticipantDoc): Escala
   const steps: EscalationStep[] = [];
   const host = session.participants.find((p) => p.role === "host");
   if (host && subject.role !== "host") steps.push(stepOf("host", [{ kind: "user", userId: host.userId, name: host.displayName }]));
-  if (subject.backupContacts.length > 0) {
+  const group = session.participants
+    .filter((p) => p.leftAt === null && p.participantId !== subject.participantId && p.role !== "host")
+    .map((p) => ({ kind: "user" as const, userId: p.userId, name: p.displayName }));
+  const backups = subject.backupContacts.map((c) =>
+    c.userId ? { kind: "user" as const, userId: c.userId, name: c.name } : { kind: "backup_contact" as const, contactId: c.id, name: c.name },
+  );
+  if (group.length > 0 || backups.length > 0) {
     steps.push(
       stepOf(
-        "backup",
-        subject.backupContacts.map((c) =>
-          c.userId ? { kind: "user" as const, userId: c.userId, name: c.name } : { kind: "backup_contact" as const, contactId: c.id, name: c.name },
-        ),
+        "group",
+        [...group, ...backups],
       ),
     );
   }
@@ -87,7 +91,7 @@ export async function notifyStep(
     incident._id,
     step.level === "emergency_simulated"
       ? { at, kind: "escalation", text: "Escalated to simulated emergency services. No real call or message was placed.", simulated: true }
-      : { at, kind: "notification", text: `Alert sent to ${names} (${step.level === "host" ? "session host" : "backup contacts"}).` },
+      : { at, kind: "notification", text: `Alert sent to ${names} (${step.level === "host" ? "session host" : step.level === "group" ? "group and backup contacts" : "backup contacts"}).` },
   );
   return true;
 }

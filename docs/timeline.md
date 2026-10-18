@@ -322,8 +322,8 @@ and the UI; open `http://localhost:5173/#operator` and play the operator.
 
 ```
  browser (operator console)              YTC backend (npm run server)
- hold-to-talk mic ──base64──► POST /api/calls/:id/speech ─► ElevenLabs scribe_v2 (speech-to-text)
- or typed text ──────────► POST /api/calls/:id/turns  ─► OperatorCallAgent.respond() (pipeline above)
+ hold Space or the mic ──base64──► POST /api/calls/:id/speech ─► ElevenLabs scribe_v2 (speech-to-text)
+ internal/test text ─────────────► POST /api/calls/:id/turns  ─► OperatorCallAgent.respond() (pipeline above)
  ◄── reply JSON (text, cited facts, rejected drafts, latency)
  <audio> ◄──────────────── GET /api/calls/:id/turns/:n/audio ─► ElevenLabs eleven_flash_v2_5 (streamed)
 ```
@@ -338,9 +338,11 @@ and the UI; open `http://localhost:5173/#operator` and play the operator.
   alert opened, the impact, the last-known location, their note, and that
   nobody has acknowledged it. No model is involved.
 - Speech never changes the pipeline. Operator audio is transcribed, then
-  handled exactly like typed text. Audio is made only from the text of an
-  agent turn already logged in the timeline; no route speaks arbitrary
-  text. `forSpeech` changes pronunciation only (`m/s²`, minus signs, `UTC`).
+  handled exactly like an internal text turn. The console has no text
+  composer: holding Space or the microphone button records, and release sends
+  the turn. Audio is made only from the text of an agent turn already logged
+  in the timeline; no route speaks arbitrary text. `forSpeech` changes
+  pronunciation only (`m/s²`, minus signs, `UTC`).
 - Only ElevenLabs' speech-to-text and text-to-speech endpoints are used,
   never its Agents platform, which can connect to phone networks.
 - Holding the talk button while the agent speaks stops playback and logs

@@ -62,6 +62,40 @@ export function ToggleRow({
   );
 }
 
+export function CheckRow({
+  label,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  checked: boolean;
+  onChange(v: boolean): void;
+  disabled?: boolean;
+}) {
+  const id = useId();
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-labelledby={id}
+      className={`btn check-row ${checked ? 'is-checked' : ''}`}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="stack grow" style={{ gap: 4 }}>
+        <span className="t-name" id={id}>
+          {label}
+        </span>
+      </span>
+      <span className="check-box" aria-hidden="true">
+        <Icon name="check" />
+      </span>
+    </button>
+  );
+}
+
 export interface Option<T extends string> {
   value: T;
   label: string;

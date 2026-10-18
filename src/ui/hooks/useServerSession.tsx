@@ -164,14 +164,13 @@ export function LiveLocationProvider({ children }: { children: ReactNode }) {
 
   // Incidents keep escalating after a session ends, so alerts sync for as long as you're in it.
   const alertsOn = !!serverId && !!me;
-  const isHost = !!me && me.id === session?.hostId;
   const meId = me?.id;
   const refreshAlerts = useCallback(async () => {
     if (!alertsOn || !meId) return;
-    const [timeline, alerts] = await Promise.all([fetchServerTimeline(serverId!), isHost ? fetchServerAlerts() : Promise.resolve([])]);
+    const [timeline, alerts] = await Promise.all([fetchServerTimeline(serverId!), fetchServerAlerts()]);
     if (!timeline) return;
     store.dispatch((d) => applyServerTimeline(d, { ...timeline, alerts: alerts ?? [] }, meId));
-  }, [alertsOn, serverId, isHost, meId, store]);
+  }, [alertsOn, serverId, meId, store]);
 
   // Report this device's check-ins and answers. Retried on every pass until the server has them.
   const inFlight = useRef(new Set<string>());

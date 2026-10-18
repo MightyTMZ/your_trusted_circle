@@ -18,8 +18,8 @@ export function ParticipantCheckInScreen({ checkIn }: { checkIn: CheckIn }) {
   // Name the person who will be alerted, so the deadline has a face.
   const whoIsAlerted = isHost
     ? backups
-      ? `your backup contacts (${backups}) are`
-      : 'your backup contacts are'
+      ? `your group and backup contacts (${backups}) are`
+      : 'your group and backup contacts are'
     : hostName
       ? `${hostName} (your host) is`
       : 'your host is';

@@ -42,7 +42,12 @@ function setup() {
   const s: AppState = emptyState();
   const { host, session } = createSession(
     s,
-    { sessionName: 'Test', durationMin: 240, hostCommitment: true, host: input('Ava', { motionMonitoring: false, backupContacts: [] }) },
+    {
+      sessionName: 'Test',
+      durationMin: 240,
+      hostCommitment: true,
+      host: input('Ava', { motionMonitoring: false, backupContacts: [{ name: 'Jo', relation: 'Friend' }] }),
+    },
     clock.now(),
   );
   const sam = joinSession(s, session.code, input('Sam'), clock.now());
@@ -63,6 +68,19 @@ describe('session and consent', () => {
     expect(() =>
       createSession(emptyState(), { sessionName: 'x', durationMin: 60, hostCommitment: false, host: input('A') }, 0),
     ).toThrow();
+  });
+
+  it('requires a complete backup contact for every participant', () => {
+    expect(() =>
+      createSession(emptyState(), { sessionName: 'x', durationMin: 60, hostCommitment: true, host: input('A', { backupContacts: [] }) }, 0),
+    ).toThrow(/backup contact is required/);
+    expect(() =>
+      createSession(
+        emptyState(),
+        { sessionName: 'x', durationMin: 60, hostCommitment: true, host: input('A', { backupContacts: [{ name: 'Rin', relation: '' }] }) },
+        0,
+      ),
+    ).toThrow(/needs a name and relation/);
   });
 
   it('accepts any whole number of minutes from 30 minutes to 24 hours, and sets the end time from it', () => {

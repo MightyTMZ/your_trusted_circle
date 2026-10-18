@@ -15,6 +15,11 @@ export function defaultParticipantInput(): ParticipantInput {
   };
 }
 
+export function backupContactsReady(contacts: ParticipantInput['backupContacts']): boolean {
+  const entered = contacts.filter((c) => c.name.trim() || c.relation.trim());
+  return entered.length > 0 && entered.every((c) => c.name.trim() && c.relation.trim());
+}
+
 /**
  * The consent choices a person makes for themself. Never shown to anyone acting on their behalf.
  * Split into two parts so join and host setup can show them as separate steps.
@@ -58,7 +63,7 @@ export function ParticipantConsentFields({
         <div className="surface card card-list">
           <ToggleRow
             label="Movement check-ins"
-            sub={`You get a private check-in first. No answer within ${checkInWindowSec}s alerts ${forHost ? 'your backup contacts' : 'the host'}.`}
+            sub={`You get a private check-in first. No answer within ${checkInWindowSec}s alerts ${forHost ? 'the group and your backup contacts' : 'the host'}.`}
             checked={value.motionMonitoring}
             onChange={(v) => set('motionMonitoring', v)}
           />
@@ -70,12 +75,14 @@ export function ParticipantConsentFields({
   return (
     <>
       <div className="fgroup">
-        <span className="lbl">Backup contacts if an alert isn't acknowledged</span>
+        <span className="lbl">Backup contacts if an alert isn't acknowledged · required</span>
+        <p className="t-sub">Add at least one contact with a name and relation.</p>
         {value.backupContacts.map((c, i) => (
           <div key={i} className="field-row">
             <input
               className="field"
               aria-label={`Backup contact ${i + 1} name`}
+              aria-required="true"
               placeholder="Name (synthetic)"
               value={c.name}
               onChange={(e) =>
@@ -85,6 +92,7 @@ export function ParticipantConsentFields({
             <input
               className="field"
               aria-label={`Backup contact ${i + 1} relation`}
+              aria-required="true"
               placeholder="Relation"
               value={c.relation}
               onChange={(e) =>

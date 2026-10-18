@@ -58,8 +58,8 @@ const parId = () => v.id("par");
 const shortText = (max = 80) => v.string({ minLength: 1, maxLength: max });
 const ms = () => v.number({ min: 0, integer: true });
 
-const RECIPIENT_ROLES = ["host", "backup_contact", "emergency_service_sim"] as const;
-const RESPONDER_ROLES = ["host", "backup_contact"] as const;
+const RECIPIENT_ROLES = ["host", "participant", "backup_contact", "emergency_service_sim"] as const;
+const RESPONDER_ROLES = ["host", "participant", "backup_contact"] as const;
 
 /** Formats a number for summaries without float noise (max 3 decimals). */
 function num(n: number): string {

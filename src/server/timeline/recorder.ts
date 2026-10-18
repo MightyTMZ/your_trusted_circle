@@ -13,7 +13,7 @@
 import { MOCK_OPERATOR_ENDPOINT_ID, type ConsentScope } from "../../timeline/schema/envelope.js";
 import type { TimelineEvent } from "../../timeline/schema/catalog.js";
 import type { Deps } from "../context.js";
-import type { CheckInDoc, IncidentDoc, NotificationJobDoc, ParticipantConsent, ParticipantDoc, Recipient, SessionDoc } from "../types.js";
+import type { CheckInDoc, EscalationLevel, IncidentDoc, NotificationJobDoc, ParticipantConsent, ParticipantDoc, Recipient, SessionDoc } from "../types.js";
 import { prov } from "./record.js";
 
 export const CONSENT_TEXT_VERSIONS = ["consent-v1"] as const;
@@ -28,9 +28,17 @@ export function consentScopes(c: ParticipantConsent): ConsentScope[] {
   return scopes;
 }
 
-export function recipientRef(session: SessionDoc, r: Recipient): { id: string; role: "host" | "backup_contact" | "emergency_service_sim" } {
+export function recipientRef(
+  session: SessionDoc,
+  r: Recipient,
+  level?: EscalationLevel,
+): { id: string; role: "host" | "participant" | "backup_contact" | "emergency_service_sim" } {
   if (r.kind === "emergency_simulated") return { id: "emergency_service_sim", role: "emergency_service_sim" };
   if (r.kind === "backup_contact") return { id: r.contactId, role: "backup_contact" };
+  if (level === "group") {
+    const participant = session.participants.find((p) => p.userId === r.userId);
+    if (participant) return { id: participant.participantId, role: "participant" };
+  }
   const host = session.participants.find((p) => p.role === "host" && p.userId === r.userId);
   if (host) return { id: host.participantId, role: "host" };
   // A backup contact who has a YTC account.
@@ -60,7 +68,7 @@ export function recorder(deps: Deps) {
           checkin_response_window_ms: session.rules.checkInWindowSec * 1000,
           escalation_steps: [
             { step: 1, target_role: "host", ack_window_ms: session.rules.hostAckWindowSec * 1000, max_repeats: MAX_REPEATS },
-            { step: 2, target_role: "backup_contact", ack_window_ms: session.rules.backupAckWindowSec * 1000, max_repeats: MAX_REPEATS },
+            { step: 2, target_role: "participant", ack_window_ms: session.rules.backupAckWindowSec * 1000, max_repeats: MAX_REPEATS },
             { step: 3, target_role: "emergency_service_sim", ack_window_ms: 0, max_repeats: 0 },
           ],
           thresholds_validated: false,
@@ -184,7 +192,7 @@ export function recorder(deps: Deps) {
     },
 
     notificationSent(session: SessionDoc, incident: IncidentDoc, job: NotificationJobDoc) {
-      const r = recipientRef(session, job.recipient);
+      const r = recipientRef(session, job.recipient, job.level);
       return tl.append(session._id, {
         type: "notification.sent",
         incident_id: incident._id,
@@ -211,7 +219,7 @@ export function recorder(deps: Deps) {
         incident_id: job.incidentId,
         actor: { kind: "transport_sim", id: null },
         provenance: prov("transport_sim", { simulated: true }),
-        data: { notification_id: job._id, recipient_id: recipientRef(session, job.recipient).id },
+        data: { notification_id: job._id, recipient_id: recipientRef(session, job.recipient, job.level).id },
       });
     },
 
@@ -221,7 +229,7 @@ export function recorder(deps: Deps) {
         incident_id: job.incidentId,
         actor: { kind: "transport_sim", id: null },
         provenance: prov("transport_sim", { simulated: true }),
-        data: { notification_id: job._id, recipient_id: recipientRef(session, job.recipient).id, reason: "transport_error", will_retry: willRetry },
+        data: { notification_id: job._id, recipient_id: recipientRef(session, job.recipient, job.level).id, reason: "transport_error", will_retry: willRetry },
       });
     },
 
@@ -229,9 +237,9 @@ export function recorder(deps: Deps) {
       return tl.append(session._id, {
         type: "notification.viewed",
         incident_id: job.incidentId,
-        actor: { kind: recipientRef(session, job.recipient).role === "host" ? "host" : "backup_contact", id: recipientRef(session, job.recipient).id },
+        actor: { kind: recipientRef(session, job.recipient, job.level).role === "host" ? "host" : recipientRef(session, job.recipient, job.level).role === "participant" ? "participant" : "backup_contact", id: recipientRef(session, job.recipient, job.level).id },
         provenance: prov("ui", { origin: "live_device" }),
-        data: { notification_id: job._id, recipient_id: recipientRef(session, job.recipient).id },
+        data: { notification_id: job._id, recipient_id: recipientRef(session, job.recipient, job.level).id },
       });
     },
 
@@ -246,7 +254,7 @@ export function recorder(deps: Deps) {
         data: {
           escalation_id: step.escalationId,
           step: index + 1,
-          target_role: step.level === "host" ? "host" : step.level === "backup" ? "backup_contact" : "emergency_service_sim",
+          target_role: step.level === "host" ? "host" : step.level === "group" ? "participant" : step.level === "backup" ? "backup_contact" : "emergency_service_sim",
           due_at: t(dueAt),
           deadline_basis_event_id: basisEventId,
         },
@@ -265,7 +273,7 @@ export function recorder(deps: Deps) {
         data: {
           escalation_id: step.escalationId,
           step: index + 1,
-          target_role: step.level === "host" ? "host" : step.level === "backup" ? "backup_contact" : "emergency_service_sim",
+          target_role: step.level === "host" ? "host" : step.level === "group" ? "participant" : step.level === "backup" ? "backup_contact" : "emergency_service_sim",
           scheduled_due_at: t(dueAt),
           fired_late_ms: Math.max(0, now.getTime() - dueAt.getTime()),
         },
@@ -295,18 +303,19 @@ export function recorder(deps: Deps) {
     },
 
     acknowledged(session: SessionDoc, incident: IncidentDoc, job: NotificationJobDoc) {
-      const r = recipientRef(session, job.recipient);
+      const r = recipientRef(session, job.recipient, job.level);
+      const actorKind = r.role === "host" ? "host" : r.role === "participant" ? "participant" : "backup_contact";
       return tl.append(session._id, {
         type: "incident.acknowledged",
         incident_id: incident._id,
         participant_id: incident.participantId,
-        actor: { kind: r.role === "host" ? "host" : "backup_contact", id: r.id },
+        actor: { kind: actorKind, id: r.id },
         provenance: prov("ui", { origin: "live_device" }),
-        data: { acknowledged_by_role: r.role === "host" ? "host" : "backup_contact", acknowledged_by_id: r.id, notification_id: job._id },
+        data: { acknowledged_by_role: actorKind, acknowledged_by_id: r.id, notification_id: job._id },
       });
     },
 
-    resolved(session: SessionDoc, incident: IncidentDoc, by: { role: "host" | "backup_contact"; id: string }, outcome: "false_alarm" | "assistance_reached" | "other") {
+    resolved(session: SessionDoc, incident: IncidentDoc, by: { role: "host" | "participant" | "backup_contact"; id: string }, outcome: "false_alarm" | "assistance_reached" | "other") {
       return tl.append(session._id, {
         type: "incident.resolved",
         incident_id: incident._id,

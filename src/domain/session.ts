@@ -94,7 +94,10 @@ export function hydrateServerSession(state: AppState, input: ServerHydrateInput,
         : { joinedAt: now, locationSharing: 'off', motionMonitoring: false, shareLocationWithResponders: false, shareNoteWithResponders: false },
       emergencyNote: isMe ? myInput.emergencyNote : '',
       backupContacts: isMe
-        ? myInput.backupContacts.filter((c) => c.name.trim()).slice(0, MAX_BACKUP_CONTACTS).map((c) => ({ id: makeId('bkc'), name: c.name.trim(), relation: c.relation.trim() }))
+        ? myInput.backupContacts
+            .filter((c) => c.name.trim() && c.relation.trim())
+            .slice(0, MAX_BACKUP_CONTACTS)
+            .map((c) => ({ id: makeId('bkc'), name: c.name.trim(), relation: c.relation.trim() }))
         : [],
       device: { online: sp.deviceOnline, changedAt: now },
       locations: [],
@@ -228,6 +231,11 @@ function makeParticipant(
 ): Participant {
   const name = input.displayName.trim();
   if (!name) throw new SessionError('A display name is required.');
+  const enteredContacts = input.backupContacts.filter((c) => c.name.trim() || c.relation.trim());
+  if (enteredContacts.length === 0) throw new SessionError('At least one backup contact is required.');
+  if (enteredContacts.some((c) => !c.name.trim() || !c.relation.trim())) {
+    throw new SessionError('Each backup contact needs a name and relation.');
+  }
   return {
     id: makeId('ptc'),
     sessionId,

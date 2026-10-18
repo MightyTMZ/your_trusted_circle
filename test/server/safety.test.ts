@@ -98,20 +98,50 @@ test("unacknowledged alerts escalate one step per deadline, ending in a simulate
   await tick();
   const incidentId = (await alertsFor(maya))[0].incidentId as string;
 
-  advance(119 * SEC);
+  advance(59 * SEC);
   await tick();
   assert.deepEqual((await store.listJobsForIncident(incidentId)).map((j) => j.level), ["host"]);
 
   advance(1 * SEC);
   await tick();
-  assert.deepEqual((await store.listJobsForIncident(incidentId)).map((j) => j.level), ["host", "backup"]);
+  assert.deepEqual([...new Set((await store.listJobsForIncident(incidentId)).map((j) => j.level))], ["host", "group"]);
+  const groupJobs = (await store.listJobsForIncident(incidentId)).filter((j) => j.level === "group");
+  assert.ok(groupJobs.some((j) => j.recipient.kind === "user" && j.recipient.name === "Sam"));
+  assert.ok(groupJobs.some((j) => j.recipient.kind === "backup_contact" && j.recipient.name === "Priya"));
 
-  advance(180 * SEC);
+  advance(60 * SEC);
   await tick();
   const incident = (await store.getIncident(incidentId))!;
-  assert.deepEqual((await store.listJobsForIncident(incidentId)).map((j) => j.level), ["host", "backup", "emergency_simulated"]);
+  assert.deepEqual([...new Set((await store.listJobsForIncident(incidentId)).map((j) => j.level))], ["host", "group", "emergency_simulated"]);
   assert.ok(incident.log.some((e) => e.simulated && /simulated emergency services/.test(e.text)));
   assert.equal((await alertsFor(maya)).length, 1, "the host is never alerted twice for one incident");
+});
+
+test("a group participant can acknowledge and resolve the group step", async () => {
+  const { app, store, advance, tick, maya, sam, session, code } = await group();
+  const jo = await signIn(app, "jo");
+  await jo.call("POST", "/api/sessions/join", {
+    code,
+    consent: CONSENT,
+    consentTextVersion: "consent-v1",
+    backupContacts: [{ name: "Priya", relation: "Sister" }],
+  });
+  await jo.call("POST", `/api/sessions/${session.id}/help`);
+  await tick();
+  const incidentId = (await alertsFor(maya))[0].incidentId as string;
+
+  advance(60 * SEC);
+  await tick();
+  const groupAlert = (await alertsFor(sam)).find((a) => a.incidentId === incidentId);
+  assert.ok(groupAlert);
+  const acknowledged = await sam.call("POST", `/api/alerts/${groupAlert.id}/acknowledge`);
+  assert.equal(acknowledged.status, 200);
+  assert.equal(acknowledged.body.incident.status, "acknowledged");
+
+  const resolved = await sam.call("POST", `/api/incidents/${incidentId}/resolve`, { outcome: "assistance_reached" });
+  assert.equal(resolved.status, 200);
+  assert.equal(resolved.body.incident.status, "resolved");
+  assert.equal((await store.listJobsForIncident(incidentId)).some((j) => j.level === "emergency_simulated"), false);
 });
 
 test("a failing delivery is retried with backoff and never moves the escalation deadline", async () => {
@@ -187,7 +217,7 @@ test("the host's own missed check-in goes to their backup contacts, not to thems
   env.advance(61 * SEC);
   await env.tick();
   const [incident] = [...env.store.incidents.values()];
-  assert.deepEqual(incident!.steps.map((s) => s.level), ["backup", "emergency_simulated"]);
+  assert.deepEqual(incident!.steps.map((s) => s.level), ["group", "emergency_simulated"]);
   assert.equal((await alertsFor(maya)).length, 0);
 });
 

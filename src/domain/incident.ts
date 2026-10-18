@@ -12,6 +12,7 @@ import type {
 } from './types';
 
 export const HOST_RECIPIENT_PREFIX = 'rcp_host_';
+export const GROUP_RECIPIENT_PREFIX = 'rcp_group_';
 export const BACKUP_RECIPIENT_PREFIX = 'rcp_bk_';
 export const EMERGENCY_SIM_RECIPIENT_ID = 'rcp_emergency_simulated';
 
@@ -65,7 +66,7 @@ export function notifyStep(state: AppState, incident: Incident, index: number, a
       kind: 'notification',
       source: 'transport',
       simulated: true,
-      text: `Alert sent to ${levelLabel(state, step)} (${step.level === 'host' ? 'session host' : 'backup contacts'}).`,
+      text: `Alert sent to ${levelLabel(state, step)} (${step.level === 'host' ? 'session host' : step.level === 'group' ? 'group and backup contacts' : 'backup contacts'}).`,
     });
   }
 
@@ -89,8 +90,16 @@ export function openIncident(
   if (participantId !== session.hostId) {
     steps.push({ key: 'host', level: 'host', recipientIds: [HOST_RECIPIENT_PREFIX + session.hostId] });
   }
-  if (p.backupContacts.length > 0) {
-    steps.push({ key: 'backup', level: 'backup', recipientIds: p.backupContacts.map((c) => BACKUP_RECIPIENT_PREFIX + c.id) });
+  const groupRecipientIds = Object.values(state.participants)
+    .filter((person) => person.status === 'active' && person.id !== participantId && person.id !== session.hostId)
+    .map((person) => {
+      const id = GROUP_RECIPIENT_PREFIX + person.id;
+      state.recipients[id] ??= { id, kind: 'group_member', name: person.displayName, participantId: person.id };
+      return id;
+    });
+  const backupRecipientIds = p.backupContacts.map((c) => BACKUP_RECIPIENT_PREFIX + c.id);
+  if (groupRecipientIds.length > 0 || backupRecipientIds.length > 0) {
+    steps.push({ key: 'group', level: 'group', recipientIds: [...groupRecipientIds, ...backupRecipientIds] });
   }
   steps.push({ key: 'emergency_simulated', level: 'emergency_simulated', recipientIds: [EMERGENCY_SIM_RECIPIENT_ID] });
 

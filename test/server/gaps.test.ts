@@ -301,7 +301,12 @@ test("deleting an account removes the person from other sessions' timelines and 
   const n = await night();
   await missCheckIn(n);
   const jo = await signIn(n.app, "jo");
-  await jo.call("POST", "/api/sessions/join", { code: n.code, consent: CONSENT, consentTextVersion: V });
+  await jo.call("POST", "/api/sessions/join", {
+    code: n.code,
+    consent: CONSENT,
+    consentTextVersion: V,
+    backupContacts: [{ name: "Rin", relation: "Friend" }],
+  });
   // Maya resolves Sam's alert so Sam's data can go; then Sam deletes their account.
   const [alert] = (await n.maya.call("GET", "/api/alerts")).body.alerts;
   await n.maya.call("POST", `/api/alerts/${alert.id}/acknowledge`);

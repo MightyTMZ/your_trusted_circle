@@ -2,21 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { activeIncidentFor, alertedNames } from '../../domain/incident';
 import { applyServerIncident } from '../../domain/serverAlerts';
-import { cancelOwnAlert, participantUpdate } from '../../domain/session';
+import { cancelOwnAlert } from '../../domain/session';
 import { COPY } from '../copy';
 import { useApp } from '../context';
 import { fmtTime } from '../format';
 import { useFirstContact } from './HelpSheet';
 import { Icon } from './Icon';
 import { useLive } from '../hooks/useServerSession';
-import { cancelOwnAlertOnServer, sendImOkOnServer } from '../api';
+import { cancelOwnAlertOnServer } from '../api';
 
 /**
- * Full-screen blocking overlay shown to a participant who has an open alert
- * about them. Portalled to <body> at z-index 200 so it sits above everything
- * including the tab bar and sheets. The main action is cancelling the alert
- * as a false alarm (confirmed here, since a sheet would sit underneath);
- * "Tell responders I'm OK" only adds to the record.
+ * full-screen blocking overlay shown to a participant who has an open alert
+ * about them. the main action is cancelling the alert as a false alarm,
+ * confirmed here because a sheet would sit underneath
  */
 export function AlertOverlay() {
   const { state, me } = useApp();
@@ -37,7 +35,6 @@ function AlertOverlayInner() {
   const firstContact = useFirstContact();
   const live = useLive();
 
-  const [sent, setSent] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,29 +44,9 @@ function AlertOverlayInner() {
   useEffect(() => {
     if (myIncident.id !== prevId.current) {
       prevId.current = myIncident.id;
-      setSent(false);
       setConfirming(false);
     }
   }, [myIncident.id]);
-
-  const sendImOk = async () => {
-    if (busy || sent) return;
-    setBusy(true);
-    if (!myIncident.server || !session.serverId) {
-      store.dispatch((d, t) => participantUpdate(d, viewer.id, t));
-      setSent(true);
-      setBusy(false);
-      return;
-    }
-    const r = await sendImOkOnServer(session.serverId);
-    setBusy(false);
-    if (r.ok) {
-      setSent(true);
-      await live.refreshAlerts();
-    } else {
-      setError(r.message);
-    }
-  };
 
   const cancelAlert = async () => {
     if (busy) return;
@@ -141,16 +118,6 @@ function AlertOverlayInner() {
         <button type="button" className="btn pbtn on-danger" onClick={() => setConfirming(true)}>
           {COPY.cancelAlert}
         </button>
-        {sent ? (
-          <p className="t-body" role="status" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Icon name="check" /> Sent — responders can see you responded
-          </p>
-        ) : (
-          <button type="button" className={`btn pbtn fill${busy ? ' btn-sent' : ''}`} disabled={busy} onClick={sendImOk}>
-            {busy ? 'Sending…' : "Tell responders I'm OK"}
-          </button>
-        )}
-        <span className="t-cap">"I'm OK" adds to the alert record. It does not close the alert.</span>
         {error && (
           <p className="error" role="alert">
             <Icon name="alert" />

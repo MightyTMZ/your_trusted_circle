@@ -147,7 +147,7 @@ export type Recipient =
   | { kind: "backup_contact"; contactId: string; name: string }
   | { kind: "emergency_simulated"; name: string };
 
-export type EscalationLevel = "host" | "backup" | "emergency_simulated";
+export type EscalationLevel = "host" | "group" | "backup" | "emergency_simulated";
 
 export interface EscalationStep {
   /** esc_<uuid>, the id timeline escalation events use for this step. */

@@ -20,7 +20,7 @@ const input = (name: string): ParticipantInput => ({
   shareLocationWithResponders: true,
   shareNoteWithResponders: false,
   emergencyNote: '',
-  backupContacts: [],
+  backupContacts: [{ name: 'Rin', relation: 'Friend' }],
 });
 
 async function twoDevices() {

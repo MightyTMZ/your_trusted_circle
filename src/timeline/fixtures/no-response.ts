@@ -145,7 +145,7 @@ export function buildNoResponseScenario(opts: { voiceCall?: boolean } = {}) {
       checkin_response_window_ms: 120_000,
       escalation_steps: [
         { step: 1, target_role: "host", ack_window_ms: 300_000, max_repeats: 1 },
-        { step: 2, target_role: "backup_contact", ack_window_ms: 300_000, max_repeats: 1 },
+        { step: 2, target_role: "participant", ack_window_ms: 300_000, max_repeats: 1 },
         { step: 3, target_role: "emergency_service_sim", ack_window_ms: 0, max_repeats: 0 },
       ],
       thresholds_validated: false,
@@ -256,16 +256,16 @@ export function buildNoResponseScenario(opts: { voiceCall?: boolean } = {}) {
   // Exactly what each recipient is told; recipients may act only on these.
   const delivered = [impactPattern.event_id, anomaly.event_id, missed.event_id, offline.event_id, lastFix.event_id];
 
-  const alert = (id: string, recipient: string, role: "host" | "backup_contact", step: number, attempt: number, cause: TimelineEvent) =>
+  const alert = (id: string, recipient: string, role: "host" | "participant" | "backup_contact", step: number, attempt: number, cause: TimelineEvent) =>
     timeline.append({
       ...scope,
       type: "notification.sent",
       actor: { kind: "transport_sim", id: null },
       provenance: prov("transport_sim", true),
       caused_by: [cause.event_id],
-      data: { notification_id: id, recipient_id: recipient, recipient_role: role, channel: role === "host" ? "in_app_sim" : "push_sim", escalation_step: step, attempt, is_repeat: attempt > 1, delivered_fact_event_ids: delivered },
+      data: { notification_id: id, recipient_id: recipient, recipient_role: role, channel: role === "host" || role === "participant" ? "in_app_sim" : "push_sim", escalation_step: step, attempt, is_repeat: attempt > 1, delivered_fact_event_ids: delivered },
     });
-  const schedule = (step: number, target: "backup_contact" | "emergency_service_sim", dueMs: number, basis: TimelineEvent) =>
+  const schedule = (step: number, target: "participant" | "emergency_service_sim", dueMs: number, basis: TimelineEvent) =>
     timeline.append({
       ...scope,
       type: "escalation.step_scheduled",
@@ -274,7 +274,7 @@ export function buildNoResponseScenario(opts: { voiceCall?: boolean } = {}) {
       caused_by: [basis.event_id],
       data: { escalation_id: "esc_0001", step, target_role: target, due_at: toIso(dueMs), deadline_basis_event_id: basis.event_id },
     });
-  const fire = (step: number, target: "backup_contact" | "emergency_service_sim", dueMs: number) => {
+  const fire = (step: number, target: "participant" | "emergency_service_sim", dueMs: number) => {
     advanceTo(dueMs);
     return timeline.append({
       ...scope,
@@ -290,14 +290,15 @@ export function buildNoResponseScenario(opts: { voiceCall?: boolean } = {}) {
   };
 
   const toHost = alert("ntf_0001", HOST, "host", 1, 1, opened);
-  schedule(2, "backup_contact", at(239, 2), toHost);
+  schedule(2, "participant", at(239, 2), toHost);
   transport("notification.delivered", "ntf_0001", HOST, at(234, 3));
   transport("notification.viewed", "ntf_0001", HOST, at(235, 30));
   advanceTo(at(236, 2));
   alert("ntf_0001", HOST, "host", 1, 2, toHost); // repeat; the step-2 deadline does not move
 
-  // ── 23:59:02 Host never acknowledged: backup contact. ──────────────────
-  const step2 = fire(2, "backup_contact", at(239, 2));
+  // ── 23:59:02 host never acknowledged: group and backup contacts. ───────
+  const step2 = fire(2, "participant", at(239, 2));
+  alert("ntf_0003", ALEX, "participant", 2, 1, step2);
   const toBackup = alert("ntf_0002", BACKUP, "backup_contact", 2, 1, step2);
   schedule(3, "emergency_service_sim", at(244, 2), toBackup);
   advanceTo(at(239, 4));

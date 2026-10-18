@@ -15,7 +15,7 @@
  */
 import { Hono } from "hono";
 import { categoryOf, isEventType, specFor, type TimelineEvent } from "../../timeline/schema/catalog.js";
-import { incidentView } from "../alerts/routes.js";
+import { incidentView, recipientIncidentView } from "../alerts/routes.js";
 import { anyParticipant, isHost } from "../auth/authz.js";
 import { requireAuth } from "../auth/session.js";
 import { fail, type AppEnv, type Deps } from "../context.js";
@@ -52,13 +52,25 @@ export function dataRoutes(deps: Deps) {
     if (!session || !viewer) return fail(c, 404, "no_session", "Session not found.");
     const host = isHost(session, viewer.userId);
 
-    const incidents = (await deps.store.listIncidentsForSession(session._id)).filter((i) => host || i.participantId === viewer.participantId);
+    const allIncidents = await deps.store.listIncidentsForSession(session._id);
+    const incidents = await Promise.all(
+      allIncidents
+        .map(async (incident) => {
+          if (host || incident.participantId === viewer.participantId) {
+            return incidentView(incident, session, await deps.store.listJobsForIncident(incident._id));
+          }
+          const job = (await deps.store.listJobsForIncident(incident._id)).find(
+            (candidate) => candidate.recipient.kind === "user" && candidate.recipient.userId === viewer.userId && candidate.status === "delivered",
+          );
+          return job ? recipientIncidentView(incident, session, job) : null;
+        }),
+    );
     const checkIns = (await deps.store.listCheckInsForSession(session._id)).filter((x) => x.participantId === viewer.participantId);
     const events = (await deps.timeline.events(session._id)).filter((e) => canSeeEvent(session, viewer, e)).slice(-500);
 
     return c.json({
       sessionId: session._id,
-      incidents: await Promise.all(incidents.map(async (i) => incidentView(i, session, await deps.store.listJobsForIncident(i._id)))),
+      incidents: incidents.filter((incident): incident is NonNullable<typeof incident> => incident !== null),
       checkIns: checkIns.map(checkInView),
       events: events.map((e) => ({ id: e.event_id, seq: e.seq, type: e.type, occurredAt: e.occurred_at, summary: e.summary, simulated: e.provenance.simulated })),
     });

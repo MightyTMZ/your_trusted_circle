@@ -10,5 +10,7 @@ describe("operator console", () => {
     expect(html).toContain("Operator line");
     expect(html).toContain("Standing by");
     expect(html).toContain("No real phone line or emergency service is connected");
+    expect(html).not.toContain("textarea");
+    expect(html).not.toContain("Type a question");
   });
 });

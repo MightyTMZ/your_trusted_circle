@@ -4,9 +4,9 @@ import { createSession, type ParticipantInput } from '../../domain/session';
 import { COPY } from '../copy';
 import { useApp } from '../context';
 import { createSessionOnServer } from '../api';
-import { ChipChoice, ScreenHeader, StepBar, Stepper, ToggleRow } from '../components/Controls';
+import { CheckRow, ChipChoice, ScreenHeader, StepBar, Stepper } from '../components/Controls';
 import { Icon } from '../components/Icon';
-import { ParticipantConsentFields, defaultParticipantInput } from '../components/ParticipantConsentFields';
+import { ParticipantConsentFields, backupContactsReady, defaultParticipantInput } from '../components/ParticipantConsentFields';
 
 const DURATIONS = [120, 240, 360];
 const STEPS = 4;
@@ -103,7 +103,12 @@ export function HostSetupScreen() {
 
   if (!account) return null;
 
-  const blocked = creating || (step === 1 && customError !== null) || (step === 2 && !commitment) || (step === 3 && !host.displayName.trim());
+  const blocked =
+    creating ||
+    (step === 1 && customError !== null) ||
+    (step === 2 && !commitment) ||
+    (step === 3 && !host.displayName.trim()) ||
+    (step === 4 && !backupContactsReady(host.backupContacts));
   const next = () => (step < STEPS ? setStep(step + 1) : create());
 
   return (
@@ -194,7 +199,7 @@ export function HostSetupScreen() {
               ))}
             </ul>
             <div className="surface card card-list">
-              <ToggleRow label={COPY.hostCommitmentCheck} checked={commitment} onChange={setCommitment} />
+              <CheckRow label={COPY.hostCommitmentCheck} checked={commitment} onChange={setCommitment} />
             </div>
           </div>
         )}

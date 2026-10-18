@@ -106,6 +106,9 @@ test("demo: impact, unanswered check-in, escalation, then a ringing call grounde
   assert.equal(incoming.length, 1);
   assert.equal(incoming[0]!.incident_id, demo.incidentId);
   assert.equal(incoming[0]!.about, "Sam");
+  const run = demos.get(session.id)!;
+  const dispatch = run.timeline.events.find((e) => e.type === "emergency.simulated_dispatch_requested");
+  assert.equal(incoming[0]!.ringing_since, dispatch!.occurred_at);
 
   // The agent says nothing until the operator answers; then it reads this incident's record.
   const answered = calls.answer(demo.call.id);
@@ -127,7 +130,6 @@ test("demo: impact, unanswered check-in, escalation, then a ringing call grounde
   assert.ok(log.some((l) => /operator answered/.test(l.text)));
 
   // The record is a valid hash-chained timeline, rebuilt from scratch.
-  const run = demos.get(session.id)!;
   assert.doesNotThrow(() => Timeline.restore(run.timeline.events, { sessionId: session.id, clock: { now: () => Date.now() } }));
   const types = run.timeline.events.map((e) => e.type);
   for (const t of ["checkin.prompted", "checkin.missed", "incident.opened", "notification.sent", "escalation.step_fired", "emergency.simulated_dispatch_requested", "voice.call_started", "voice.utterance"]) {
@@ -230,7 +232,17 @@ test("story: the demo person's movements as sentences, shown only to those they 
   const { app, maya, sam, session, samId, until } = await demoGroup({ ...CONSENT, locationSharing: "host", shareNoteWithResponders: true });
   const code = (await maya.call("GET", `/api/sessions/${session.id}`)).body.session.code as string;
   const alex = await signIn(app, "alex");
-  assert.equal((await alex.call("POST", "/api/sessions/join", { code, consent: CONSENT, consentTextVersion: "consent-v1" })).status, 201);
+  assert.equal(
+    (
+      await alex.call("POST", "/api/sessions/join", {
+        code,
+        consent: CONSENT,
+        consentTextVersion: "consent-v1",
+        backupContacts: [{ name: "Rin", relation: "Friend" }],
+      })
+    ).status,
+    201,
+  );
   assert.equal((await maya.call("POST", `/api/sessions/${session.id}/demo`, { participantId: samId })).status, 201);
 
   const story = async (c: Client) => (await c.call("GET", `/api/sessions/${session.id}/story`)).body as { items: { kind: string; text: string }[]; noMovementRecord: string[] };

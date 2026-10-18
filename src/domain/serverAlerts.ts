@@ -1,4 +1,4 @@
-import { BACKUP_RECIPIENT_PREFIX, EMERGENCY_SIM_RECIPIENT_ID, HOST_RECIPIENT_PREFIX } from './incident';
+import { BACKUP_RECIPIENT_PREFIX, EMERGENCY_SIM_RECIPIENT_ID, GROUP_RECIPIENT_PREFIX, HOST_RECIPIENT_PREFIX } from './incident';
 import type {
   AppState,
   CheckIn,
@@ -70,10 +70,28 @@ export function participantForServerId(state: AppState, serverParticipantId: str
   return Object.values(state.participants).find((p) => p.serverId === serverParticipantId || p.id === serverParticipantId);
 }
 
-function stepRecipients(state: AppState, incidentId: string, step: ServerIncidentInput['steps'][number], index: number): string[] {
+function stepRecipients(state: AppState, incidentId: string, subjectId: string, step: ServerIncidentInput['steps'][number], index: number): string[] {
   const session = state.session!;
   if (step.level === 'host') return [HOST_RECIPIENT_PREFIX + session.hostId];
   if (step.level === 'emergency_simulated') return [EMERGENCY_SIM_RECIPIENT_ID];
+  if (step.level === 'group') {
+    const subject = participantForServerId(state, subjectId);
+    const groupIds = Object.values(state.participants)
+      .filter((p) => p.status === 'active' && p.id !== subject?.id && p.id !== session.hostId)
+      .map((p) => {
+        const id = GROUP_RECIPIENT_PREFIX + p.id;
+        state.recipients[id] ??= { id, kind: 'group_member', name: p.displayName, participantId: p.id };
+        return id;
+      });
+    const backupIds = step.recipients
+      .filter((name) => !Object.values(state.participants).some((p) => p.displayName === name))
+      .map((name, i) => {
+        const id = `${BACKUP_RECIPIENT_PREFIX}srv_${incidentId}_${index}_${i}`;
+        state.recipients[id] ??= { id, kind: 'backup_contact', name, participantId: subject?.id };
+        return id;
+      });
+    return [...groupIds, ...backupIds];
+  }
   // Backup contacts are known to this device only by the names the server shows.
   return step.recipients.map((name, i) => {
     const id = `${BACKUP_RECIPIENT_PREFIX}srv_${incidentId}_${index}_${i}`;
@@ -91,7 +109,7 @@ export function incidentFromServer(state: AppState, view: ServerIncidentInput, a
   const steps: EscalationStep[] = view.steps.map((s, i) => ({
     key: s.level,
     level: s.level,
-    recipientIds: stepRecipients(state, view.id, s, i),
+    recipientIds: stepRecipients(state, view.id, view.participant.participantId, s, i),
     dueAt: ms(s.dueAt),
     notifiedAt: ms(s.notifiedAt),
   }));
@@ -140,7 +158,7 @@ export function incidentFromServer(state: AppState, view: ServerIncidentInput, a
  * of a server alert, so none are shown as delivered.
  */
 function recordDelivery(state: AppState, incident: Incident, alert: ServerAlertInput, viewerId: string): void {
-  const recipientId = HOST_RECIPIENT_PREFIX + viewerId;
+  const recipientId = viewerId === state.session!.hostId ? HOST_RECIPIENT_PREFIX + viewerId : GROUP_RECIPIENT_PREFIX + viewerId;
   if (state.notifications.some((n) => n.id === alert.id)) return;
   const subject = state.participants[incident.participantId];
   const at = ms(alert.deliveredAt) ?? incident.openedAt;
@@ -149,7 +167,7 @@ function recordDelivery(state: AppState, incident: Incident, alert: ServerAlertI
     id: alert.id,
     incidentId: incident.id,
     recipientId,
-    stepKey: 'host',
+    stepKey: 'group',
     deliveredAt: at,
     repeat: false,
     transport: 'simulated',

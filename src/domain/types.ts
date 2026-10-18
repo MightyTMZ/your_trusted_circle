@@ -172,7 +172,7 @@ export interface TimelineEntry {
   simulated?: boolean;
 }
 
-export type EscalationLevel = 'host' | 'backup' | 'emergency_simulated';
+export type EscalationLevel = 'host' | 'group' | 'backup' | 'emergency_simulated';
 
 export interface EscalationStep {
   key: string;
@@ -223,7 +223,7 @@ export interface Incident {
   server?: { alertId?: string };
 }
 
-export type RecipientKind = 'host' | 'backup_contact' | 'emergency_simulated';
+export type RecipientKind = 'host' | 'group_member' | 'backup_contact' | 'emergency_simulated';
 
 export interface Recipient {
   id: string;

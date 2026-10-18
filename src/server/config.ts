@@ -73,8 +73,8 @@ export function isLocalUrl(url: string): boolean {
 /** Mirrors src/domain/config.ts. All values are unvalidated demo defaults. */
 export const DEFAULT_RULES: SessionRules = {
   checkInWindowSec: 60,
-  hostAckWindowSec: 120,
-  backupAckWindowSec: 180,
+  hostAckWindowSec: 60,
+  backupAckWindowSec: 60,
   locationStaleAfterSec: 90,
   heartbeatTimeoutSec: 120,
   maxParticipants: 20,

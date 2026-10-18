@@ -93,13 +93,24 @@ export async function signIn(app: App, subject: string): Promise<Client> {
 }
 
 export async function hostSession(host: Client, consent = { monitoring: true, locationSharing: "group", shareLocationWithResponders: true }) {
-  const res = await host.call("POST", "/api/sessions", { name: "Friday at Ridgeway Hall", durationMin: 240, consent, consentTextVersion: "consent-v1" });
+  const res = await host.call("POST", "/api/sessions", {
+    name: "Friday at Ridgeway Hall",
+    durationMin: 240,
+    consent,
+    consentTextVersion: "consent-v1",
+    backupContacts: [{ name: "Rin", relation: "Friend" }],
+  });
   assert.equal(res.status, 201, JSON.stringify(res.body));
   return res.body.session as { id: string; code: string; me: { participantId: string } };
 }
 
 export async function join(client: Client, code: string, consent = { monitoring: true, locationSharing: "group", shareLocationWithResponders: true }) {
-  const res = await client.call("POST", "/api/sessions/join", { code, consent, consentTextVersion: "consent-v1" });
+  const res = await client.call("POST", "/api/sessions/join", {
+    code,
+    consent,
+    consentTextVersion: "consent-v1",
+    backupContacts: [{ name: "Rin", relation: "Friend" }],
+  });
   assert.ok(res.status === 201 || res.status === 200, JSON.stringify(res.body));
   return res.body.session as { id: string; me: { participantId: string } };
 }

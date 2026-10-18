@@ -34,7 +34,7 @@ export const COPY = {
     other: 'Other',
   },
 
-  cancelAlert: 'Cancel alert: false alarm',
+  cancelAlert: 'Confirm cancel',
   cancelAlertTitle: 'Cancel this alert?',
   cancelAlertKeep: 'Keep the alert open',
   cancelAlertConfirm: 'Yes, cancel it',

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { activeIncidentFor } from '../../domain/incident';
+import { GROUP_RECIPIENT_PREFIX, activeIncidentFor } from '../../domain/incident';
 import { COPY } from '../copy';
 import { useApp } from '../context';
 import { HelpSheet } from './HelpSheet';
@@ -36,8 +36,18 @@ export function useNav(): Nav | null {
   const hostAlerts = isHost
     ? state.incidents.filter((i) => i.participantId !== me.id && i.status !== 'resolved').sort((a, b) => b.openedAt - a.openedAt)
     : [];
+  const responderAlerts = !isHost
+    ? state.incidents
+        .filter(
+          (i) =>
+            i.participantId !== me.id &&
+            i.status !== 'resolved' &&
+            state.notifications.some((n) => n.incidentId === i.id && n.recipientId === GROUP_RECIPIENT_PREFIX + me.id),
+        )
+        .sort((a, b) => b.openedAt - a.openedAt)
+    : [];
   const mine = activeIncidentFor(state, me.id);
-  const alertTarget = hostAlerts[0];
+  const alertTarget = hostAlerts[0] ?? responderAlerts[0];
   const inAlert = route.name === 'alert' || route.name === 'card' || route.name === 'call';
 
   const items: NavItem[] = [
@@ -56,7 +66,7 @@ export function useNav(): Nav | null {
       label: 'Alert',
       icon: 'bell',
       on: inAlert,
-      badge: !inAlert && hostAlerts.some((i) => i.status === 'open'),
+      badge: !inAlert && [...hostAlerts, ...responderAlerts].some((i) => i.status === 'open'),
       go: () => alertTarget && go({ name: 'alert', id: alertTarget.id }),
     });
   }

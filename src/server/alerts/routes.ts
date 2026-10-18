@@ -89,6 +89,41 @@ export function deliveredView(incident: IncidentDoc, mine: NotificationJobDoc[])
   };
 }
 
+export function recipientIncidentView(incident: IncidentDoc, session: SessionDoc, job: NotificationJobDoc) {
+  return {
+    id: incident._id,
+    sessionId: incident.sessionId,
+    sessionName: session.name,
+    participant: { participantId: incident.participantId, displayName: job.payload.about },
+    trigger: incident.trigger,
+    openedAt: incident.openedAt,
+    status: incident.status,
+    nextEscalationAt: nextDeadline(incident),
+    acknowledged: ackView(incident),
+    resolved: resolvedView(incident),
+    steps: incident.steps.map((s) => ({
+      level: s.level,
+      recipients: s.level === "host" ? ["Session host"] : s.level === "group" ? ["Group participants and backup contacts"] : [s.level === "emergency_simulated" ? "Simulated emergency services" : "Backup contacts"],
+      notifiedAt: s.notifiedAt,
+      dueAt: s.dueAt,
+      repeats: s.repeats,
+    })),
+    deliveries: [
+      {
+        recipient: job.recipient.name,
+        level: job.level,
+        repeat: job.repeat,
+        status: job.status,
+        attempts: job.attempts,
+        deliveredAt: job.deliveredAt,
+        viewedAt: job.viewedAt,
+        simulated: false,
+      },
+    ],
+    log: [],
+  };
+}
+
 export function alertRoutes(deps: Deps) {
   const r = new Hono<AppEnv>();
   const auth = requireAuth(deps);
@@ -205,7 +240,10 @@ export function alertRoutes(deps: Deps) {
     const subject = session?.participants.find((p) => p.participantId === incident.participantId);
     if (session && isHost(session, userId) && subject?.userId !== userId) return { role: "host" as const, session };
     const mine = jobs.find((j) => j.recipient.kind === "user" && j.recipient.userId === userId && j.status === "delivered");
-    if (session && mine) return { role: recipientRef(session, mine.recipient).role === "host" ? ("host" as const) : ("backup_contact" as const), session, job: mine };
+    if (session && mine) {
+      const role = recipientRef(session, mine.recipient, mine.level).role;
+      return { role: role === "host" || role === "participant" ? role : ("backup_contact" as const), session, job: mine };
+    }
     return null;
   }
 
@@ -254,7 +292,7 @@ export function alertRoutes(deps: Deps) {
     const byId =
       who.role === "host"
         ? (who.session.participants.find((p) => p.userId === user._id)?.participantId ?? user._id)
-        : recipientRef(who.session, who.job!.recipient).id;
+        : recipientRef(who.session, who.job!.recipient, who.job!.level).id;
     await rec.resolved(who.session, incident, { role: who.role, id: byId }, outcome);
     const label = outcome === "false_alarm" ? "False alarm" : outcome === "assistance_reached" ? "Someone reached them in person" : "Other";
     await deps.store.appendIncidentLog(incident._id, { at: now, kind: "resolution", text: `Resolved by ${user.displayName}: ${label}.` });

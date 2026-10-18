@@ -21,6 +21,24 @@ test("session creation validates input", async () => {
   assert.equal((await maya.call("POST", "/api/sessions", { name: "x", durationMin: 24 * 60 + 1, consent, consentTextVersion: "consent-v1" })).status, 400, "longer than 24 hours");
   assert.equal((await maya.call("POST", "/api/sessions", { name: "x", durationMin: 90.5, consent, consentTextVersion: "consent-v1" })).status, 400, "whole minutes only");
   assert.equal((await maya.call("POST", "/api/sessions", { name: "", durationMin: 240, consent, consentTextVersion: "consent-v1" })).status, 400);
+  assert.equal(
+    (await maya.call("POST", "/api/sessions", { name: "x", durationMin: 240, consent, consentTextVersion: "consent-v1" })).status,
+    400,
+    "a backup contact is required",
+  );
+  assert.equal(
+    (
+      await maya.call("POST", "/api/sessions", {
+        name: "x",
+        durationMin: 240,
+        consent,
+        consentTextVersion: "consent-v1",
+        backupContacts: [{ name: "  ", relation: "Friend" }],
+      })
+    ).status,
+    400,
+    "whitespace-only contact names are rejected",
+  );
   const extra = await maya.call("POST", "/api/sessions", { name: "x", durationMin: 240, consent, consentTextVersion: "consent-v1", hostUserId: "usr_x" });
   assert.equal(extra.status, 400, "unknown fields are rejected");
 });
@@ -29,12 +47,23 @@ test("the host can set a custom time limit, and the session ends when it says", 
   const { app, advance, tick } = setup();
   const maya = await signIn(app, "maya");
   const consent = { monitoring: true, locationSharing: "group", shareLocationWithResponders: true };
-  const created = await maya.call("POST", "/api/sessions", { name: "Short one", durationMin: 90, consent, consentTextVersion: "consent-v1" });
+  const backupContacts = [{ name: "Rin", relation: "Friend" }];
+  const created = await maya.call("POST", "/api/sessions", {
+    name: "Short one",
+    durationMin: 90,
+    consent,
+    consentTextVersion: "consent-v1",
+    backupContacts,
+  });
   assert.equal(created.status, 201, "90 minutes is not one of the old 2/4/6 hour choices");
   const { id, expiresAt, createdAt } = created.body.session;
   assert.equal(new Date(expiresAt).getTime() - new Date(createdAt).getTime(), 90 * 60_000);
   for (const edge of [30, 24 * 60]) {
-    assert.equal((await maya.call("POST", "/api/sessions", { name: `edge ${edge}`, durationMin: edge, consent, consentTextVersion: "consent-v1" })).status, 201, `${edge} min is allowed`);
+    assert.equal(
+      (await maya.call("POST", "/api/sessions", { name: `edge ${edge}`, durationMin: edge, consent, consentTextVersion: "consent-v1", backupContacts })).status,
+      201,
+      `${edge} min is allowed`,
+    );
   }
   advance(89 * 60_000);
   await tick();
@@ -84,9 +113,10 @@ test("an unknown or expired code cannot be joined", async () => {
   const s = await hostSession(maya);
   const code = (await maya.call("GET", `/api/sessions/${s.id}`)).body.session.code as string;
   const consent = { monitoring: true, locationSharing: "off", shareLocationWithResponders: false };
-  assert.equal((await sam.call("POST", "/api/sessions/join", { code: "ZZZZZZ", consent, consentTextVersion: "consent-v1" })).status, 404);
+  const backupContacts = [{ name: "Rin", relation: "Friend" }];
+  assert.equal((await sam.call("POST", "/api/sessions/join", { code: "ZZZZZZ", consent, consentTextVersion: "consent-v1", backupContacts })).status, 404);
   advance(5 * 60 * 60 * 1000);
-  assert.equal((await sam.call("POST", "/api/sessions/join", { code, consent, consentTextVersion: "consent-v1" })).status, 404);
+  assert.equal((await sam.call("POST", "/api/sessions/join", { code, consent, consentTextVersion: "consent-v1", backupContacts })).status, 404);
 });
 
 test("joining needs a sign-in", async () => {
@@ -112,7 +142,12 @@ test("only the host sets rules; a full session refuses new people", async () => 
   assert.equal((await maya.call("PATCH", `/api/sessions/${s.id}/rules`, { maxParticipants: 2 })).status, 200);
 
   const consent = { monitoring: true, locationSharing: "group", shareLocationWithResponders: true };
-  const full = await jo.call("POST", "/api/sessions/join", { code, consent, consentTextVersion: "consent-v1" });
+  const full = await jo.call("POST", "/api/sessions/join", {
+    code,
+    consent,
+    consentTextVersion: "consent-v1",
+    backupContacts: [{ name: "Rin", relation: "Friend" }],
+  });
   assert.equal(full.status, 409);
   assert.equal(full.body.error.code, "session_full");
 });

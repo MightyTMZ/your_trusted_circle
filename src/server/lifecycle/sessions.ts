@@ -49,7 +49,7 @@ const responderNoteSchema = v.optional(v.string({ minLength: 1, maxLength: 500 }
 /** Synthetic names only in demos (CLAUDE.md). Two at most, as in the client. */
 const backupContactsSchema = v.array(
   v.object({ name: v.string({ minLength: 1, maxLength: 40 }), relation: v.string({ minLength: 1, maxLength: 40 }) }),
-  { maxLength: 2 },
+  { minLength: 1, maxLength: 2 },
 );
 
 const rulesPatchSchema = v.object({
@@ -76,7 +76,7 @@ const createSchema = v.object({
   durationMin: v.number({ integer: true }),
   consent: consentSchema,
   consentTextVersion,
-  backupContacts: v.optional(backupContactsSchema),
+  backupContacts: backupContactsSchema,
   responderNote: responderNoteSchema,
   rules: v.optional(rulesPatchSchema),
 });
@@ -85,14 +85,32 @@ const joinSchema = v.object({
   code: v.string({ minLength: 6, maxLength: 12 }),
   consent: consentSchema,
   consentTextVersion,
-  backupContacts: v.optional(backupContactsSchema),
+  backupContacts: backupContactsSchema,
   responderNote: responderNoteSchema,
   /** How the code arrived: typed or from a link ("code"), or scanned ("qr"). */
   joinedVia: v.optional(v.enum(["code", "qr"] as const)),
 });
 
 type RulesPatch = Infer<typeof rulesPatchSchema>;
-type ContactsInput = Infer<typeof backupContactsSchema> | undefined;
+type ContactsInput = Infer<typeof backupContactsSchema>;
+
+function trimBackupContacts(body: unknown): unknown {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return body;
+  const record = body as Record<string, unknown>;
+  if (!Array.isArray(record.backupContacts)) return body;
+  return {
+    ...record,
+    backupContacts: record.backupContacts.map((entry) => {
+      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return entry;
+      const contact = entry as Record<string, unknown>;
+      return {
+        ...contact,
+        ...(typeof contact.name === "string" ? { name: contact.name.trim() } : {}),
+        ...(typeof contact.relation === "string" ? { relation: contact.relation.trim() } : {}),
+      };
+    }),
+  };
+}
 
 /** The session rules cap what any one person can share. */
 function capConsent(consent: ParticipantConsent, rules: SessionRules): ParticipantConsent {
@@ -124,7 +142,7 @@ function newParticipant(
     consent,
     consentTextVersion: textVersion,
     consentUpdatedAt: now,
-    backupContacts: (contacts ?? []).map((c) => ({ id: newId("con"), name: c.name.trim(), relation: c.relation.trim(), userId: null })),
+    backupContacts: contacts.map((c) => ({ id: newId("con"), name: c.name, relation: c.relation, userId: null })),
     responderNote: note?.trim() || null,
     lastHeartbeatAt: now,
     deviceOnline: true,
@@ -205,9 +223,10 @@ export function sessionRoutes(deps: Deps) {
 
   r.post("/", async (c) => {
     const body = await c.req.json().catch(() => undefined);
-    const issues = validate(createSchema, body);
+    const normalized = trimBackupContacts(body);
+    const issues = validate(createSchema, normalized);
     if (issues.length > 0) return fail(c, 400, "invalid_request", "Check the session details.", issues);
-    const input = body as Infer<typeof createSchema>;
+    const input = normalized as Infer<typeof createSchema>;
     const { minDurationMin, maxDurationMin } = deps.config;
     if (input.durationMin < minDurationMin || input.durationMin > maxDurationMin) {
       return fail(c, 400, "invalid_duration", `A session must last between ${minDurationMin} and ${maxDurationMin} minutes.`);
@@ -253,9 +272,10 @@ export function sessionRoutes(deps: Deps) {
 
   r.post("/join", async (c) => {
     const body = await c.req.json().catch(() => undefined);
-    const issues = validate(joinSchema, body);
+    const normalized = trimBackupContacts(body);
+    const issues = validate(joinSchema, normalized);
     if (issues.length > 0) return fail(c, 400, "invalid_request", "Check the join details.", issues);
-    const input = body as Infer<typeof joinSchema>;
+    const input = normalized as Infer<typeof joinSchema>;
     const code = normalizeJoinCode(input.code);
     const now = deps.now();
     const user = c.var.user;

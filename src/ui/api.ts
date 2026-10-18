@@ -232,7 +232,7 @@ export async function createSessionOnServer(input: {
   durationMin: number;
   consent: ServerConsent;
   consentTextVersion: string;
-  backupContacts?: { name: string; relation: string }[];
+  backupContacts: { name: string; relation: string }[];
   /** Self-reported note for responders; disclosed only under consent.shareNoteWithResponders. */
   responderNote?: string;
   rules?: Record<string, number | boolean>;
@@ -245,7 +245,7 @@ export async function joinSessionOnServer(input: {
   code: string;
   consent: ServerConsent;
   consentTextVersion: string;
-  backupContacts?: { name: string; relation: string }[];
+  backupContacts: { name: string; relation: string }[];
   /** Self-reported note for responders; disclosed only under consent.shareNoteWithResponders. */
   responderNote?: string;
 }): Promise<ServerSessionView | string> {
@@ -342,7 +342,7 @@ export interface ServerIncidentView {
   nextEscalationAt: string | null;
   acknowledged: { by: string; at: string; note: string } | null;
   resolved: { by: string; at: string; outcome: 'false_alarm' | 'assistance_reached' | 'other'; bySubject?: boolean } | null;
-  steps: { level: 'host' | 'backup' | 'emergency_simulated'; recipients: string[]; notifiedAt: string | null; dueAt: string | null }[];
+  steps: { level: 'host' | 'group' | 'backup' | 'emergency_simulated'; recipients: string[]; notifiedAt: string | null; dueAt: string | null }[];
   log: { at: string; kind: string; text: string; simulated?: boolean }[];
 }
 

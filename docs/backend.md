@@ -38,9 +38,9 @@ All bodies are JSON. Browser requests need the `ytc_session` cookie, and every w
 | `GET\|POST /api/auth/:provider/callback` | provider | Signs in; creates the account on first sign-in |
 | `POST /api/auth/test/signin` | anyone on this computer | Development only: signs in as a made-up name, no password. Off unless `TEST_SIGN_IN=true`, the app and API origins are localhost, and `NODE_ENV` is not `production`; also refuses requests not addressed to localhost. `localhost` and `127.0.0.1` keep separate cookies, so they act as two phones. |
 | `POST /api/auth/logout` | signed in | Ends this browser's sign-in |
-| `POST /api/sessions` | signed in | Create a session; you are its host. Needs `consentTextVersion` |
+| `POST /api/sessions` | signed in | Create a session; you are its host. Needs `consentTextVersion` and at least one complete `backupContacts` entry |
 | `GET /api/sessions/join/:code` | signed in | Preview before joining |
-| `POST /api/sessions/join` | signed in | Join with a code (typed or from the QR link `#join=CODE`). Needs `consentTextVersion`; `joinedVia`: `code` or `qr`; optional `responderNote` reaches responders only if `consent.shareNoteWithResponders` is on |
+| `POST /api/sessions/join` | signed in | Join with a code (typed or from the QR link `#join=CODE`). Needs `consentTextVersion` and at least one complete `backupContacts` entry; `joinedVia`: `code` or `qr`; optional `responderNote` reaches responders only if `consent.shareNoteWithResponders` is on |
 | `GET /api/sessions/:id` | member | Session as you may see it |
 | `GET /api/sessions/:id/invite` | host | Code, join link, QR as SVG |
 | `PATCH /api/sessions/:id/rules` | host | Check-in, acknowledgment and heartbeat windows; size; location on/off |
@@ -77,7 +77,7 @@ All bodies are JSON. Browser requests need the `ytc_session` cookie, and every w
 | `POST /api/sessions/:id/demo` | host | Demo mode only. `{ participantId }`: start the live incident demo (see below) |
 | `GET /api/sessions/:id/demo` / `DELETE` | host | Demo mode only. Where the demo is; stop it (open alerts stay open) |
 | `GET /api/calls/:id` | session member for live calls | Transcript, fact sheet and voice log |
-| `POST /api/calls/:id/turns` / `.../speech` | session member for live calls | An operator turn, typed (`text`) or recorded (`audio_base64`, `mime_type`) |
+| `POST /api/calls/:id/turns` / `.../speech` | session member for live calls | An operator turn; the console uses recorded speech (`audio_base64`, `mime_type`), while the typed route remains for internal and test compatibility |
 | `POST /api/calls/:id/silence` / `.../interrupt` / `.../end` | session member for live calls | Silence, barge-in, hang up |
 | `GET /api/calls/:id/turns/:n/audio` | session member for live calls | Speech (MP3) for an agent turn already in the timeline |
 | `GET /api/service/incidents/:id/briefing` | voice-agent service | Consent-filtered operator briefing and evidence |
@@ -98,7 +98,7 @@ localhost or restrict access before exposing it. Details:
   - Each job has a unique `dedupeKey`.
   - A worker must claim a job before sending it.
   - The store contract test checks all of this on MongoDB too.
-- **Deadlines don't move.** The next step is due a fixed time after the current step was notified. Failed deliveries, retries, repeats, missed heartbeats and suspending the session never move or cancel it.
+- **Deadlines don't move.** The next step is due a fixed time after the current step was notified. Failed deliveries, retries, repeats, missed heartbeats and suspending the session never move or cancel it. The default path is the host for 60 seconds, then every eligible active group participant and the subject's backup contacts in parallel for 60 seconds, then simulated emergency services.
 - **Acknowledgment stops escalation. It does not confirm wellbeing.** Resolving is a separate step.
 - **Recipients see only what was delivered.** Each alert job freezes its message and the timeline events it is based on. A backup contact who was alerted sees only that, plus whether someone acknowledged or resolved. The host and the person the incident is about see the full incident.
 - **Location is stored only during an active server incident.** Live group location is relayed in memory and never stored (see below).
@@ -166,10 +166,12 @@ movement check-ins themself; the demo refuses otherwise.
   and detectors with 15 s windows.
 - **The server does the rest.** When the detector fires, the server opens the
   person's private check-in (their phone shows it). If nobody answers, the
-  scheduler opens the incident, alerts the host, then backup contacts, then
-  simulated emergency services, exactly as for any other incident. Starting
-  the demo sets the session's windows to 20 s (check-in) and 30 s (each
-  alert step), unvalidated values chosen to fit a short demo.
+  scheduler opens the incident, alerts the host, then the group and backup
+  contacts in parallel, then simulated emergency services, exactly as for any
+  other incident. Starting the demo sets the session's windows to 20 s
+  (check-in) and 30 s (each alert step), unvalidated values chosen to fit a
+  short demo. The simulated operator call starts ringing at the same timestamp
+  as the emergency step and still requires an explicit Accept action.
 - **The call reads this incident.** The demo keeps the incident's timeline in
   memory: the synthetic history, the detections, and a mirror of the
   server's check-in, alerts, acknowledgment and resolution. When escalation
@@ -210,6 +212,7 @@ The service then calls those paths with `Authorization: Bearer VOICE_AGENT_TOKEN
 - **It reads the consent-filtered briefing**, which only exists for incidents that actually reached the emergency step.
 - **It records each call turn** as a catalog `voice.*` event. Agent utterances must cite timeline events that exist, or they're refused.
 - **Failed triggers are retried** like any other alert.
+- **The operator console is voice-only.** Hold Space or the microphone button to speak; release sends the recording. The typed route is retained only for internal and test compatibility.
 
 Without `VOICE_AGENT_URL` and `VOICE_AGENT_TOKEN`, the step is recorded as simulated and nothing is sent.
 

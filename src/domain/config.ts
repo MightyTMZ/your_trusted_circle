@@ -7,8 +7,8 @@ import type { SessionConfig } from './types';
 export const DEFAULT_CONFIG: SessionConfig = {
   durationMin: 240,
   checkInWindowSec: 60,
-  hostAckWindowSec: 120,
-  backupAckWindowSec: 180,
+  hostAckWindowSec: 60,
+  backupAckWindowSec: 60,
   locationStaleAfterSec: 90,
   locationUpdateEverySec: 15,
   detector: {
