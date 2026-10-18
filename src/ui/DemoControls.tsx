@@ -5,7 +5,7 @@ import { useApp, useNow } from './context';
 import { fmtTime } from './format';
 import { Icon } from './components/Icon';
 import { joinUrl } from './screens/SessionInviteScreen';
-import { setSessionVenueOnServer } from './api';
+import { fetchDemo, setSessionVenueOnServer, startDemo, stopDemo, type DemoView } from './api';
 import { applySessionVenue, resolveVenue, setLocalVenue, useDemoVenue, type Venue } from './venue';
 
 const POS_KEY = 'ytc.demoFab';
@@ -250,6 +250,8 @@ function DemoPanel({ style }: { style: CSSProperties }) {
 
       <VenuePicker />
 
+      <IncidentDemo />
+
       <div>
         <h3>Voice agent</h3>
         <div className="btns">
@@ -282,6 +284,144 @@ function DemoPanel({ style }: { style: CSSProperties }) {
         own phone for now. Thresholds are unvalidated.
       </p>
     </aside>
+  );
+}
+
+const DEMO_STEP: Record<DemoView['phase'], string> = {
+  before_impact: 'Evening loaded. Waiting for the impact',
+  watching: 'Impact sent. Waiting for the detector',
+  checkin_pending: 'Check-in on their phone. Leave it unanswered',
+  answered_ok: 'They answered OK. No alert was sent',
+  incident_open: 'No answer. The host is alerted; escalating',
+  acknowledged: 'Acknowledged. Escalation stopped',
+  calling: 'Calling the simulated operator',
+  on_call: 'Operator on the line',
+  resolved: 'Resolved',
+  stopped: 'Stopped',
+};
+
+/**
+ * The live incident demo (server sessions, host only). The server writes a
+ * synthetic evening for one person, then sends a hard impact a few seconds
+ * later. From there the real detector, check-in, escalation and simulated
+ * call take over; nothing here sets an outcome.
+ */
+function IncidentDemo() {
+  const { state, me } = useApp();
+  const now = useNow();
+  const serverId = state.session?.serverId;
+  const isHost = !!me && me.id === state.session?.hostId;
+  const people = Object.values(state.participants).filter((p) => p.status === 'active' && p.serverId);
+  const [targetId, setTargetId] = useState('');
+  const target = people.find((p) => p.id === targetId) ?? people.find((p) => p.role === 'participant') ?? people[0];
+  const [demo, setDemo] = useState<DemoView | null | 'unavailable'>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!serverId || !isHost) return;
+    let alive = true;
+    const poll = async () => {
+      const next = await fetchDemo(serverId);
+      if (alive) setDemo(next);
+    };
+    poll();
+    const id = setInterval(poll, 1000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [serverId, isHost]);
+
+  if (!serverId || !isHost) return null;
+  if (demo === 'unavailable') {
+    return (
+      <div>
+        <h3>Incident demo</h3>
+        <p className="t-cap">Off on this server. Start it with DEMO_INCIDENTS=true (it is on with the localhost test sign-in).</p>
+      </div>
+    );
+  }
+
+  const running = !!demo && !['answered_ok', 'resolved', 'stopped'].includes(demo.phase);
+  const start = async () => {
+    if (!target?.serverId) return;
+    setBusy(true);
+    setError(null);
+    const r = await startDemo(serverId, target.serverId);
+    setBusy(false);
+    if (r.ok) setDemo(r.data.demo);
+    else setError(r.message);
+  };
+  const secs = (iso: string) => Math.max(0, Math.ceil((Date.parse(iso) - now) / 1000));
+  const detail = !demo
+    ? null
+    : demo.phase === 'before_impact'
+      ? `${demo.timelineEvents} events in their record. Impact in ${secs(demo.impactAt)} s.`
+      : demo.phase === 'checkin_pending' && demo.checkIn
+        ? `Due in ${secs(demo.checkIn.dueAt)} s.`
+        : demo.phase === 'stopped'
+          ? demo.stoppedReason
+          : null;
+  const callHref = demo?.call ? `#operator?call=${demo.call.id}` : null;
+
+  return (
+    <div>
+      <h3>Incident demo</h3>
+      {running && demo ? (
+        <>
+          <p className="t-name" role="status">
+            {demo.name}: {DEMO_STEP[demo.phase]}
+          </p>
+          {detail && <p className="t-cap num">{detail}</p>}
+          <div className="btns" style={{ marginTop: 8 }}>
+            {callHref && (demo.phase === 'calling' || demo.phase === 'on_call') && (
+              <button className="btn chip fill" onClick={() => (window.location.hash = callHref.slice(1))}>
+                {demo.phase === 'calling' ? 'Answer as the operator' : 'Open the operator console'}
+              </button>
+            )}
+            <button className="btn chip fill" onClick={() => serverId && stopDemo(serverId).then(() => fetchDemo(serverId).then(setDemo))}>
+              Stop demo
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="t-cap" style={{ marginBottom: 8 }}>
+            Loads about 90 minutes of synthetic evening for one person, then a hard impact about 5 s later. The real detector, check-in,
+            escalation and simulated call do the rest. Check-in 20 s, each alert step 30 s.
+          </p>
+          {demo && <p className="t-cap" style={{ marginBottom: 8 }}>Last run: {demo.name}: {DEMO_STEP[demo.phase]}.{detail ? ` ${detail}` : ''}</p>}
+          {people.length === 0 ? (
+            <p className="t-cap">Nobody has joined yet.</p>
+          ) : (
+            <>
+              <label className="sr-only" htmlFor="demo-person">
+                Who the demo is about
+              </label>
+              <select id="demo-person" className="field" value={target?.id ?? ''} onChange={(e) => setTargetId(e.target.value)} style={{ marginBottom: 8 }}>
+                {people.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.displayName}
+                    {p.role === 'host' ? ' (host)' : ''}
+                  </option>
+                ))}
+              </select>
+              <div className="btns">
+                <button className="btn chip fill" disabled={busy || !target} onClick={start}>
+                  {busy ? 'Starting…' : 'Start incident demo'}
+                </button>
+              </div>
+            </>
+          )}
+          {error && (
+            <p className="t-cap" role="alert" style={{ marginTop: 6 }}>
+              {error}
+            </p>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

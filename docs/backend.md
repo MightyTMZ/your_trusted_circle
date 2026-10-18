@@ -38,7 +38,7 @@ All bodies are JSON. Every request except sign-in needs the `ytc_session` cookie
 | `POST /api/auth/logout` | signed in | Ends this browser's sign-in |
 | `POST /api/sessions` | signed in | Create a session; you are its host |
 | `GET /api/sessions/join/:code` | signed in | Preview before joining |
-| `POST /api/sessions/join` | signed in | Join with a code (typed or from the QR link `#join=CODE`) |
+| `POST /api/sessions/join` | signed in | Join with a code (typed or from the QR link `#join=CODE`). Optional `responderNote`; it reaches responders only if `consent.shareNoteWithResponders` is on |
 | `GET /api/sessions/:id` | member | Session as you may see it |
 | `GET /api/sessions/:id/invite` | host | Code, join link, QR as SVG |
 | `PATCH /api/sessions/:id/rules` | host | Check-in, acknowledgment and heartbeat windows; size; location on/off |
@@ -62,7 +62,11 @@ All bodies are JSON. Every request except sign-in needs the `ytc_session` cookie
 | `GET /api/me/export` | signed in | Everything about you, as JSON |
 | `DELETE /api/me` | signed in | `{ "confirm": "DELETE" }` deletes your account and all your data |
 | `GET /api/calls/capabilities` | anyone | Which models reason, listen and speak on simulated calls |
-| `POST /api/calls` | anyone | Start a simulated call to the mock operator about the synthetic incident; returns the opening breakdown |
+| `POST /api/calls` | anyone | Start a practice call to the mock operator about the built-in synthetic incident; returns the opening breakdown |
+| `GET /api/calls/incoming` | anyone | Calls the live demo's escalation placed that are still ringing |
+| `POST /api/calls/:id/answer` | anyone | Pick up a ringing call; the agent speaks the opening breakdown from that incident's record |
+| `POST /api/sessions/:id/demo` | host | Demo mode only. `{ participantId }`: start the live incident demo (see below) |
+| `GET /api/sessions/:id/demo` / `DELETE` | host | Demo mode only. Where the demo is; stop it (open alerts stay open) |
 | `GET /api/calls/:id` | anyone | Transcript, fact sheet and voice log |
 | `POST /api/calls/:id/turns` / `.../speech` | anyone | An operator turn, typed (`text`) or recorded (`audio_base64`, `mime_type`) |
 | `POST /api/calls/:id/silence` / `.../interrupt` / `.../end` | anyone | Silence, barge-in, hang up |
@@ -102,6 +106,39 @@ live call".
 - **Limitation:** the relay lives in one process's memory. Running more than one API instance would need a shared in-memory cache with expiry (for example Redis TTL keys) instead.
 - **Accounts are not merged by email**, because that would let an unverified address at one provider take over another account.
 - **Nothing sensitive is kept.** No IP addresses, provider access tokens or raw session tokens are stored.
+
+## Live incident demo
+
+A presenter tool for a short demo (`src/server/demo/`). It is mounted only
+when `DEMO_INCIDENTS=true`, or with the localhost test sign-in. The host picks
+a participant in Demo > Incident demo. That person must have turned on
+movement check-ins themself; the demo refuses otherwise.
+
+- **Inputs only.** It writes about 90 minutes of synthetic evening for that
+  person (arriving, sitting, a phone left on a table and a check-in answered
+  OK, dancing, walking), then, live, a hard impact about 5 s after the
+  trigger and stillness. The samples go through the real `SensorPipeline`
+  and detectors with 15 s windows.
+- **The server does the rest.** When the detector fires, the server opens the
+  person's private check-in (their phone shows it). If nobody answers, the
+  scheduler opens the incident, alerts the host, then backup contacts, then
+  simulated emergency services, exactly as for any other incident. Starting
+  the demo sets the session's windows to 20 s (check-in) and 30 s (each
+  alert step), unvalidated values chosen to fit a short demo.
+- **The call reads this incident.** The demo keeps the incident's timeline in
+  memory: the synthetic history, the detections, and a mirror of the
+  server's check-in, alerts, acknowledgment and resolution. When escalation
+  reaches simulated emergency services, the voice agent places a call that
+  rings on the operator console (`#operator`) until someone answers. The
+  agent reads only that timeline; an acknowledgment during the call reaches
+  it within a second. The incident's log records that the call rang, was
+  answered and ended.
+- **Consent.** The call names the person and reads their note only if they
+  turned on "Share my name and note" (`consent.shareNoteWithResponders`).
+  Location is shared with the operator only under `shareLocationWithResponders`.
+- **Memory only**, like the location relay. Positions in the demo are
+  synthetic, around the session's demo venue (Toronto City Hall if none is
+  set).
 
 ## Not built yet
 

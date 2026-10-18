@@ -281,6 +281,16 @@ and the map and People list label those positions "Simulated". Sessions only
 on one device keep a per-browser venue, or the build's `DEMO_VENUE`. Google requires its logo, map data, Terms and
 "Report a map error" links on the map; never hide them.
 
+The Demo panel's "Incident demo" appears only for the host of a server
+session, and only when the server has the demo on (`GET
+/api/sessions/:id/demo` answers); otherwise it says how to turn it on. A
+check-in the server started appears on that person's phone like one their
+phone started. When escalation reaches simulated emergency services, the
+host's alert screen moves to the call screen, which shows whether the call
+is ringing or connected, its transcript, and one primary action to answer
+it on the operator console. The console shows a ringing call above the
+practice call, and makes it the primary action.
+
 Profile pictures are stored by the server (`avatar` on `GET`/`PATCH
 /api/me`) as a PNG, JPEG or WebP data URL of at most 100 KB. The app
 square-crops and resizes to 256×256 before upload (`toAvatarDataUrl`).

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { HOST_RECIPIENT_PREFIX, acknowledge, nextDeadline, repeatAlert, resolve } from '../../domain/incident';
 import { freshness } from '../../domain/location';
 import { applyServerIncident } from '../../domain/serverAlerts';
@@ -38,6 +38,14 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
   const isHost = !!me && me.id === state.session?.hostId;
   const payload = incident ? latestPayloadFor(state, incident.id, recipientId) : undefined;
   const back = () => go({ name: 'home' });
+
+  // Server alerts: when escalation reaches simulated emergency services while this screen is open, follow the call.
+  const calling = !!incident?.server && incident.steps.some((s) => s.level === 'emergency_simulated' && s.notifiedAt !== undefined);
+  const callingBefore = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (callingBefore.current === false && calling) go({ name: 'call', id: incidentId });
+    callingBefore.current = calling;
+  }, [calling, go, incidentId]);
 
   if (!incident || !payload) {
     return (

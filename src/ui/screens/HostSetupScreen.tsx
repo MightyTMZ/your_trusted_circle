@@ -49,7 +49,9 @@ export function HostSetupScreen() {
         monitoring: host.motionMonitoring,
         locationSharing: host.locationSharing,
         shareLocationWithResponders: host.shareLocationWithResponders,
+        shareNoteWithResponders: host.shareNoteWithResponders,
       },
+      ...(host.emergencyNote.trim() ? { responderNote: host.emergencyNote.trim().slice(0, 500) } : {}),
       backupContacts: host.backupContacts.filter((c) => c.name.trim() && c.relation.trim()).map((c) => ({ name: c.name.trim(), relation: c.relation.trim() })),
       rules: cfg,
     });

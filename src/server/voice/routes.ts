@@ -4,7 +4,9 @@
  * route can reach a real one.
  *
  *   GET  /api/calls/capabilities                 which models answer, speak and listen
- *   POST /api/calls                              start a call; returns the opening breakdown
+ *   POST /api/calls                              start a practice call; returns the opening breakdown
+ *   GET  /api/calls/incoming                     calls placed by escalation, still ringing
+ *   POST /api/calls/:id/answer                   pick up a ringing call; returns the opening breakdown
  *   GET  /api/calls/:id                          transcript, fact sheet, voice log
  *   POST /api/calls/:id/turns      {text}        operator turn, typed
  *   POST /api/calls/:id/speech     {audio_base64, mime_type}   operator turn, spoken
@@ -35,6 +37,8 @@ export function voiceRoutes(calls: CallService) {
 
   r.get("/capabilities", (c) => c.json(calls.capabilities()));
   r.post("/", (c) => c.json(calls.start(), 201));
+  r.get("/incoming", (c) => c.json({ calls: calls.incoming() }));
+  r.post(`/${ID}/answer`, (c) => c.json(calls.answer(c.req.param("id"))));
   r.get(`/${ID}`, (c) => c.json(calls.state(c.req.param("id"))));
 
   r.post(`/${ID}/turns`, small, async (c) => {

@@ -124,7 +124,7 @@ export function ParticipantConsentFields({
           onChange={(v) => set('shareLocationWithResponders', v)}
         />
         <ToggleRow
-          label="Share my note with alert recipients during an alert"
+          label="Share my name and note with alert recipients and simulated emergency services during an alert"
           checked={value.shareNoteWithResponders}
           onChange={(v) => set('shareNoteWithResponders', v)}
         />

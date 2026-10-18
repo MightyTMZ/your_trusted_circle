@@ -28,7 +28,11 @@ const consentSchema = v.object({
   monitoring: v.boolean(),
   locationSharing: v.enum(["group", "host", "off"] as const),
   shareLocationWithResponders: v.boolean(),
+  shareNoteWithResponders: v.optional(v.boolean()),
 });
+
+/** Self-reported, for responders. Synthetic in demos (CLAUDE.md). */
+const responderNoteSchema = v.optional(v.string({ minLength: 1, maxLength: 500 }));
 
 /** Synthetic names only in demos (CLAUDE.md). Two at most, as in the client. */
 const backupContactsSchema = v.array(
@@ -60,6 +64,7 @@ const createSchema = v.object({
   durationMin: v.number({ integer: true }),
   consent: consentSchema,
   backupContacts: v.optional(backupContactsSchema),
+  responderNote: responderNoteSchema,
   rules: v.optional(rulesPatchSchema),
 });
 
@@ -67,6 +72,7 @@ const joinSchema = v.object({
   code: v.string({ minLength: 6, maxLength: 12 }),
   consent: consentSchema,
   backupContacts: v.optional(backupContactsSchema),
+  responderNote: responderNoteSchema,
 });
 
 type RulesPatch = Infer<typeof rulesPatchSchema>;
@@ -83,7 +89,14 @@ function mergeRules(base: SessionRules, patch: RulesPatch | undefined): SessionR
   return next;
 }
 
-function newParticipant(user: UserDoc, role: ParticipantDoc["role"], consent: ParticipantConsent, contacts: ContactsInput, now: Date): ParticipantDoc {
+function newParticipant(
+  user: UserDoc,
+  role: ParticipantDoc["role"],
+  consent: ParticipantConsent,
+  contacts: ContactsInput,
+  note: string | undefined,
+  now: Date,
+): ParticipantDoc {
   return {
     participantId: newId("par"),
     userId: user._id,
@@ -93,6 +106,7 @@ function newParticipant(user: UserDoc, role: ParticipantDoc["role"], consent: Pa
     leftAt: null,
     consent,
     backupContacts: (contacts ?? []).map((c) => ({ id: newId("con"), name: c.name.trim(), relation: c.relation.trim() })),
+    responderNote: note?.trim() || null,
     lastHeartbeatAt: now,
     deviceOnline: true,
   };
@@ -188,7 +202,7 @@ export function sessionRoutes(deps: Deps) {
       expiresAt: new Date(now.getTime() + input.durationMin * 60_000),
       endedAt: null,
       rules,
-      participants: [newParticipant(user, "host", capConsent(input.consent, rules), input.backupContacts, now)],
+      participants: [newParticipant(user, "host", capConsent(input.consent, rules), input.backupContacts, input.responderNote, now)],
     };
     await deps.store.insertSession(session);
     return c.json({ session: sessionView(session, user, now), joinUrl: joinUrl(session.code) }, 201);
@@ -223,7 +237,7 @@ export function sessionRoutes(deps: Deps) {
     if (existing && existing.leftAt === null) return c.json({ session: sessionView(s, user, now) });
     if (existing) return fail(c, 409, "already_left", "You left this session. Ask the host for a new one.");
 
-    const participant = newParticipant(user, "participant", capConsent(input.consent, s.rules), input.backupContacts, now);
+    const participant = newParticipant(user, "participant", capConsent(input.consent, s.rules), input.backupContacts, input.responderNote, now);
     if (!(await deps.store.addParticipant(s._id, participant, s.rules.maxParticipants))) {
       return fail(c, 409, "session_full", "This session is full.");
     }

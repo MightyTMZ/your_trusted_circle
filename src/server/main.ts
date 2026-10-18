@@ -17,6 +17,7 @@ import { runSchedulerPass } from "./safety/scheduler.js";
 import { MemoryStore } from "./store/memory.js";
 import { MongoStore } from "./store/mongo.js";
 import type { Store } from "./store/store.js";
+import { DemoRegistry } from "./demo/live-demo.js";
 import { createCallService } from "./voice/calls.js";
 
 const config = loadConfig();
@@ -31,6 +32,7 @@ if (config.mongoUri) {
   console.warn("[api] MONGODB_URI is not set: using an in-memory store. Data is lost on restart.");
 }
 
+const calls = createCallService(process.env);
 const deps: Deps = {
   store,
   config,
@@ -38,7 +40,8 @@ const deps: Deps = {
   transport: defaultTransport,
   relay: new LocationRelay(),
   now,
-  calls: createCallService(process.env),
+  calls,
+  ...(config.demoIncidents ? { demos: new DemoRegistry(calls) } : {}),
 };
 const app = createApp(deps);
 
@@ -50,6 +53,8 @@ setInterval(async () => {
   running = true;
   try {
     await runSchedulerPass(deps);
+    // The demo feeds its next samples and mirrors what this pass decided.
+    await deps.demos?.tick(deps);
   } catch (err) {
     console.error(`[scheduler] pass failed: ${(err as Error).name}`);
   } finally {
@@ -67,4 +72,5 @@ serve({ fetch: app.fetch, port: config.port }, (info) => {
   console.log(`[calls] reasoning: ${voice.reasoning ?? "off (no GEMINI_API_KEY): facts read verbatim"}`);
   console.log(`[calls] speech: ${voice.speech_to_text ? `${voice.speech_to_text} / ${voice.text_to_speech}` : "off (no ELEVENLABS_API_KEY): text only"}`);
   console.log(`[calls] operator console: ${config.appOrigin}/#operator (simulation only; no real calls are possible)`);
+  if (deps.demos) console.log("[demo] live incident demo is on (host: Demo > Incident demo). Synthetic sensor input only.");
 });

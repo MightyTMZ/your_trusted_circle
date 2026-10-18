@@ -7,7 +7,7 @@ import './styles.css';
 
 applyTheme(loadTheme());
 
-/** #operator opens the simulated operator console; anything else is the app. */
+/** #operator (or #operator?call=<id>, a call to pick up) opens the simulated operator console; anything else is the app. */
 function Root() {
   const [hash, setHash] = useState(window.location.hash);
   useEffect(() => {
@@ -15,7 +15,7 @@ function Root() {
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
-  return hash === '#operator' ? <OperatorConsole /> : <App />;
+  return hash === '#operator' || hash.startsWith('#operator?') ? <OperatorConsole /> : <App />;
 }
 
 createRoot(document.getElementById('root')!).render(

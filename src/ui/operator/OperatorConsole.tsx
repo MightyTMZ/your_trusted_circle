@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CallView, CapabilitiesResponse, FactView, ReplyView, TurnResponse } from '../../server/voice/protocol';
+import type { CallView, CapabilitiesResponse, FactView, IncomingCall, ReplyView, StartCallResponse, TurnResponse } from '../../server/voice/protocol';
 import { Icon } from '../components/Icon';
 import { SimulatedTag } from '../components/SimulatedTag';
 import { callApi } from './api';
@@ -9,6 +9,10 @@ import { PushToTalk } from './recorder';
  * Operator console: the person at the keyboard plays the simulated emergency
  * operator. The agent calls in with the incident breakdown and answers
  * follow-up questions, spoken with ElevenLabs and checked against the record.
+ *
+ * Two kinds of call: one placed by escalation in the live demo (it rings here
+ * until answered, and the agent reads that incident's record), and a practice
+ * call about the built-in synthetic incident.
  */
 
 type Phase = 'idle' | 'starting' | 'ready' | 'listening' | 'thinking' | 'speaking' | 'ended';
@@ -17,6 +21,8 @@ type Phase = 'idle' | 'starting' | 'ready' | 'listening' | 'thinking' | 'speakin
 const SILENCE_MS = 25_000;
 /** Shorter holds are treated as accidental taps. */
 const MIN_HOLD_MS = 350;
+/** How often the console checks for a call placed by escalation. */
+const RING_POLL_MS = 1500;
 /** Empty WAV played inside the click that starts the call, so later playback is allowed (Safari). */
 const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
 
@@ -45,8 +51,15 @@ const TOPIC_LABEL: Record<string, string> = {
   escalation: 'Escalation',
 };
 
+/** The call id in #operator?call=<id>, from the app's "Answer as the operator". */
+function wantedCall(): string | null {
+  if (typeof window === 'undefined') return null;
+  return new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('call');
+}
+
 export function OperatorConsole() {
   const [caps, setCaps] = useState<CapabilitiesResponse | null>(null);
+  const [incoming, setIncoming] = useState<IncomingCall[]>([]);
   const [call, setCall] = useState<CallView | null>(null);
   const [replies, setReplies] = useState<Record<number, ReplyView>>({});
   const [phase, setPhase] = useState<Phase>('idle');
@@ -80,6 +93,37 @@ export function OperatorConsole() {
       mic.current?.close();
       window.clearTimeout(silenceTimer.current);
     };
+  }, []);
+
+  // Calls placed by escalation ring here until someone answers.
+  useEffect(() => {
+    if (call) return;
+    let alive = true;
+    const poll = () =>
+      callApi.incoming().then(
+        (r) => alive && setIncoming(r.calls),
+        () => alive && setIncoming([]),
+      );
+    poll();
+    const id = window.setInterval(poll, RING_POLL_MS);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [call]);
+
+  // Opened for a call someone already answered: show it so the operator can carry on.
+  useEffect(() => {
+    const id = wantedCall();
+    if (!id) return;
+    callApi.state(id).then(
+      (r) => {
+        if (r.call.status !== 'active') return;
+        setCall(r.call);
+        setPhase('ready');
+      },
+      () => {},
+    );
   }, []);
 
   useEffect(() => {
@@ -174,7 +218,11 @@ export function OperatorConsole() {
     if (res.reply) play(res.reply, res.call);
   };
 
-  const startCall = async () => {
+  const startCall = () => connect(() => callApi.start());
+  const answerCall = (id: string) => connect(() => callApi.answer(id));
+
+  /** Unlocks audio and the microphone inside the click, then places or answers the call. */
+  const connect = async (open: () => Promise<StartCallResponse>) => {
     const el = audio.current;
     if (el) {
       el.src = SILENT_WAV;
@@ -198,7 +246,7 @@ export function OperatorConsole() {
       }
     }
     try {
-      const res = await callApi.start();
+      const res = await open();
       setCall(res.call);
       play(res.reply, res.call);
     } catch (e) {
@@ -309,6 +357,9 @@ export function OperatorConsole() {
     };
   });
 
+  // The call the app asked for, else the one ringing longest.
+  const want = wantedCall();
+  const ringing = incoming.find((c) => c.call_id === want) ?? incoming[0] ?? null;
   const live = !!call && phase !== 'ended';
   const busySeconds = Math.max(0, Math.floor((performance.now() - busySince) / 1000));
   const status =
@@ -344,7 +395,7 @@ export function OperatorConsole() {
                 <SimulatedTag />
               </span>
               <h1 className="t-title">Simulated emergency operator</h1>
-              <p className="t-lead">You play the operator. The YTC voice agent calls about a synthetic incident and answers only from its record.</p>
+              <p className="t-lead">You play the operator. The YTC voice agent calls about an incident and answers only from its record.</p>
             </div>
             <a className="btn chip fill" href="#">
               Back to the app
@@ -353,7 +404,7 @@ export function OperatorConsole() {
 
           <section className="surface card stack" style={{ gap: 6 }}>
             <span className="t-name">Simulated call</span>
-            <p className="t-sub">No real emergency services or phone line are involved (simulated emergency services only). The incident, person and venue are synthetic.</p>
+            <p className="t-sub">No real emergency services or phone line are involved (simulated emergency services only). People, places and sensor data are synthetic.</p>
             <span className="t-cap num">
               Reasoning: {caps?.reasoning ?? 'off, facts read verbatim'} · Voice: {caps?.text_to_speech ?? 'off'} · Speech in: {caps?.speech_to_text ?? 'off, type instead'}
             </span>
@@ -367,15 +418,40 @@ export function OperatorConsole() {
           )}
 
           {!call ? (
-            <section className="surface card stack op-start" style={{ gap: 16 }}>
-              <p className="t-body">
-                When you answer, the agent opens with a breakdown of the incident read from its record. Then ask follow-ups out loud (hold the
-                button or the space bar) or by typing.
-              </p>
-              <button type="button" className="btn pbtn on-accent" disabled={phase === 'starting'} onClick={startCall}>
-                {phase === 'starting' ? 'Connecting…' : 'Answer the simulated call'}
-              </button>
-            </section>
+            <>
+              {ringing && (
+                <section className="surface card stack op-start" role="status" style={{ gap: 16 }}>
+                  <span className="header" style={{ gap: 10 }}>
+                    <span className="dot live" aria-hidden="true" />
+                    <span className="t-name grow">Incoming simulated call</span>
+                    <span className="t-cap num">{ringingFor(ringing)}</span>
+                  </span>
+                  <p className="t-body">
+                    The YTC automated assistant is calling about {ringing.about}. No one acknowledged the alert, so it escalated to
+                    simulated emergency services. When you answer, it reads the breakdown from this incident's record; then ask
+                    follow-ups out loud (hold the button or the space bar) or by typing.
+                  </p>
+                  <button type="button" className="btn pbtn on-accent" disabled={phase === 'starting'} onClick={() => answerCall(ringing.call_id)}>
+                    {phase === 'starting' ? 'Connecting…' : 'Answer'}
+                  </button>
+                </section>
+              )}
+              <section className="surface card stack op-start" style={{ gap: 16 }}>
+                <p className="t-body">
+                  {ringing
+                    ? 'Or practise with the built-in synthetic incident instead.'
+                    : 'No call from the live demo yet. Meanwhile you can practise: the agent opens with a breakdown of the built-in synthetic incident, then answers follow-ups out loud (hold the button or the space bar) or typed.'}
+                </p>
+                <button
+                  type="button"
+                  className={`btn pbtn ${ringing ? 'fill' : 'on-accent'}`}
+                  disabled={phase === 'starting'}
+                  onClick={startCall}
+                >
+                  {ringing ? 'Practice call (synthetic incident)' : phase === 'starting' ? 'Connecting…' : 'Answer the simulated call'}
+                </button>
+              </section>
+            </>
           ) : (
             <div className="cols">
               <div className="col">
@@ -455,8 +531,16 @@ export function OperatorConsole() {
                         End call
                       </button>
                     ) : (
-                      <button type="button" className="btn chip fill" onClick={startCall}>
-                        New call
+                      <button
+                        type="button"
+                        className="btn chip fill"
+                        onClick={() => {
+                          setCall(null);
+                          setPhase('idle');
+                          history.replaceState(null, '', '#operator');
+                        }}
+                      >
+                        Back to calls
                       </button>
                     )}
                   </div>
@@ -494,6 +578,11 @@ export function OperatorConsole() {
       </main>
     </div>
   );
+}
+
+function ringingFor(c: IncomingCall): string {
+  const s = Math.max(0, Math.round((Date.now() - Date.parse(c.ringing_since)) / 1000));
+  return s < 60 ? `Ringing ${s} s` : `Ringing ${Math.floor(s / 60)} min`;
 }
 
 function pendingTurn(text: string): CallView['transcript'][number] {

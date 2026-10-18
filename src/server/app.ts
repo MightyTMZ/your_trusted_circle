@@ -7,6 +7,7 @@
  * 4. Alert orchestration                         alerts/      notification jobs, results, retries, acknowledgment
  * 5. Data access and retention                   data/        permitted timelines, expiry, export, deletion
  * 6. Simulated voice-agent escalation            voice/       the agent's call to the mock operator (src/agent)
+ *    Live incident demo (presenter tool)         demo/        synthetic sensor input that runs 3, 4 and 6 for real
  *
  * Security defaults: cookie sign-in (httpOnly, SameSite=Lax), Origin check on
  * every state-changing request (except Apple's cross-site sign-in callback,
@@ -20,6 +21,7 @@ import { alertRoutes } from "./alerts/routes.js";
 import { authRoutes } from "./auth/routes.js";
 import { fail, type AppEnv, type Deps } from "./context.js";
 import { accountRoutes } from "./data/account.js";
+import { demoRoutes } from "./demo/routes.js";
 import { dataRoutes } from "./data/timeline.js";
 import { ingestRoutes } from "./lifecycle/events.js";
 import { relayRoutes } from "./lifecycle/relay.js";
@@ -70,6 +72,7 @@ export function createApp(deps: Deps) {
   app.route("/api/me", accountRoutes(deps));
   // 6. Simulated voice-agent escalation
   if (deps.calls) app.route("/api/calls", voiceRoutes(deps.calls));
+  if (deps.demos) app.route("/api", demoRoutes(deps, deps.demos));
 
   // Serve Vite build output for non-API routes (production only).
   // root is relative to the working directory (repo root); Vite outputs to dist/.
