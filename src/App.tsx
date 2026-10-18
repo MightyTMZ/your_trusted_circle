@@ -98,6 +98,13 @@ export function App() {
 /** Sidebar on tablet and desktop, tab bar on phones; both carry the session indicator. */
 function Shell() {
   const withNav = useNavItems() !== null;
+  const { go } = useApp();
+  // The route is read once at load, so typing #landing into an open tab needs this to switch screens.
+  useEffect(() => {
+    const onHash = () => window.location.hash === '#landing' && go({ name: 'landing' });
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, [go]);
   return (
     <div className={`app ${withNav ? 'with-nav' : ''}`}>
       <AppNav variant="rail" />

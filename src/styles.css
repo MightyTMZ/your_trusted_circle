@@ -761,7 +761,7 @@ textarea.field { height: 100px; padding: 13px 16px; resize: none; line-height: 1
 
 /* Cutting mat: landing hero with pictures you can move. Component: src/ui/components/CuttingMat.tsx. */
 .mat-frame { background: var(--mat-frame); border-radius: var(--r-mat); padding: 8px; overflow: hidden; }
-.mat { position: relative; background: var(--mat-bg); border-radius: calc(var(--r-mat) - 8px); aspect-ratio: 4 / 5; user-select: none; -webkit-user-select: none; }
+.mat { position: relative; isolation: isolate; background: var(--mat-bg); border-radius: calc(var(--r-mat) - 8px); aspect-ratio: 4 / 5; user-select: none; -webkit-user-select: none; }
 @media (min-width: 768px) { .mat { aspect-ratio: 16 / 11; } }
 @media (min-width: 1100px) { .mat { aspect-ratio: 16 / 10; } }
 .mat-rules { position: absolute; inset: 0; display: block; font-family: var(--font-mono); pointer-events: none; }
@@ -772,8 +772,8 @@ textarea.field { height: 100px; padding: 13px 16px; resize: none; line-height: 1
 .mat-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 0 24px; text-align: center; color: var(--mat-title); font-family: var(--font-mono); pointer-events: none; }
 .mat-title { margin: 0; font-size: clamp(30px, 6.4vw, 84px); font-weight: 400; letter-spacing: 0.16em; line-height: 1.1; text-transform: uppercase; text-wrap: balance; }
 .mat-sub { margin: 0; font-size: clamp(12px, 1.6vw, 22px); letter-spacing: clamp(0.08em, 0.6vw, 0.28em); text-transform: uppercase; }
-.mat-item { position: absolute; padding: 0; border: 0; background: none; cursor: grab; touch-action: none; transform: translate(-50%, -50%) rotate(var(--mat-rotate)); filter: var(--mat-shadow); transition: transform 200ms var(--ease), filter 200ms var(--ease); }
-.mat-item img { display: block; width: 100%; height: auto; pointer-events: none; }
+.mat-item { position: absolute; -webkit-tap-highlight-color: transparent; padding: 0; border: 0; background: none; cursor: grab; touch-action: none; transform: translate(-50%, -50%) rotate(var(--mat-rotate)); filter: var(--mat-shadow); transition: transform 200ms var(--ease), filter 200ms var(--ease); }
+.mat-item img { display: block; width: 100%; height: auto; pointer-events: none; -webkit-touch-callout: none; }
 .mat-item.is-dragging { cursor: grabbing; transform: translate(-50%, -50%) rotate(var(--mat-rotate)) scale(1.04); filter: var(--mat-shadow-lift); }
 .mat-item:focus-visible { outline: 3px solid var(--mat-title); outline-offset: 4px; }
 @media (prefers-reduced-motion: reduce) { .mat-item { transition: none; } .mat-item.is-dragging { transform: translate(-50%, -50%) rotate(var(--mat-rotate)); } }

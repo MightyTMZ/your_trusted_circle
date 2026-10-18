@@ -124,53 +124,70 @@ export function CuttingMat({ items, label, children }: { items: MatItem[]; label
   );
   const [dragging, setDragging] = useState<string | null>(null);
   const top = useRef(items.length);
-  const grab = useRef({ dx: 0, dy: 0 });
+  // The one pointer moving a picture; a second finger or a stray pen can't hijack the drag.
+  const grab = useRef({ pointer: -1, dx: 0, dy: 0 });
 
   useLayoutEffect(() => {
     const el = matRef.current;
     if (!el) return;
-    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    const measure = () => setSize((s) => (s.w === el.clientWidth && s.h === el.clientHeight ? s : { w: el.clientWidth, h: el.clientHeight }));
     measure();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
-  // Pictures added later start where their item says.
+  // Pictures added later start where their item says. Returning the same object when nothing is new keeps an
+  // inline `items` array from re-rendering forever.
   useEffect(() => {
     setPlaced((p) => {
+      const added = items.filter((it) => !p[it.id]);
+      if (!added.length) return p;
       const next = { ...p };
-      for (const it of items) if (!next[it.id]) next[it.id] = { x: it.x, y: it.y, z: ++top.current };
+      for (const it of added) next[it.id] = { x: it.x, y: it.y, z: ++top.current };
       return next;
     });
   }, [items]);
 
   const raise = useCallback((id: string) => {
-    setPlaced((p) => ({ ...p, [id]: { ...p[id], z: ++top.current } }));
+    setPlaced((p) => (p[id] ? { ...p, [id]: { ...p[id], z: ++top.current } } : p));
   }, []);
 
   const moveTo = useCallback((id: string, x: number, y: number) => {
-    setPlaced((p) => ({ ...p, [id]: { ...p[id], x: clamp(x, 0, 1), y: clamp(y, 0, 1) } }));
+    setPlaced((p) => (p[id] ? { ...p, [id]: { ...p[id], x: clamp(x, 0, 1), y: clamp(y, 0, 1) } } : p));
+  }, []);
+
+  const moveBy = useCallback((id: string, dx: number, dy: number) => {
+    setPlaced((p) => (p[id] ? { ...p, [id]: { ...p[id], x: clamp(p[id].x + dx, 0, 1), y: clamp(p[id].y + dy, 0, 1), z: ++top.current } } : p));
   }, []);
 
   const onPointerDown = (id: string) => (e: PointerEvent<HTMLButtonElement>) => {
-    if (e.button !== 0 || !matRef.current) return;
-    const box = matRef.current.getBoundingClientRect();
     const at = placed[id];
-    grab.current = { dx: (e.clientX - box.left) / box.width - at.x, dy: (e.clientY - box.top) / box.height - at.y };
+    if (e.button !== 0 || !matRef.current || !at || dragging) return;
+    const box = matRef.current.getBoundingClientRect();
+    if (!box.width || !box.height) return;
+    grab.current = { pointer: e.pointerId, dx: (e.clientX - box.left) / box.width - at.x, dy: (e.clientY - box.top) / box.height - at.y };
     e.currentTarget.setPointerCapture(e.pointerId);
     setDragging(id);
     raise(id);
   };
 
   const onPointerMove = (id: string) => (e: PointerEvent<HTMLButtonElement>) => {
-    if (dragging !== id || !matRef.current) return;
+    if (dragging !== id || e.pointerId !== grab.current.pointer || !matRef.current) return;
     const box = matRef.current.getBoundingClientRect();
+    if (!box.width || !box.height) return;
     moveTo(id, (e.clientX - box.left) / box.width - grab.current.dx, (e.clientY - box.top) / box.height - grab.current.dy);
   };
 
+  // Also runs on cancel and on lost capture (e.g. the tab loses focus mid-drag), so a picture is never left stuck.
   const onPointerUp = (e: PointerEvent<HTMLButtonElement>) => {
+    if (e.pointerId !== grab.current.pointer) return;
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    grab.current.pointer = -1;
     setDragging(null);
   };
 
@@ -179,15 +196,13 @@ export function CuttingMat({ items, label, children }: { items: MatItem[]; label
     const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
     if (!d) return;
     e.preventDefault();
-    const at = placed[id];
-    raise(id);
-    moveTo(id, at.x + d[0], at.y + d[1]);
+    moveBy(id, d[0], d[1]);
   };
 
   return (
     <section className="mat-frame" aria-label={label}>
       <div className="mat" ref={matRef}>
-        {size.w > 0 && <MatRules w={size.w} h={size.h} />}
+        {size.w > 0 && size.h > 0 && <MatRules w={size.w} h={size.h} />}
         {children && <div className="mat-center">{children}</div>}
         {items.map((it) => {
           const at = placed[it.id];
@@ -209,6 +224,7 @@ export function CuttingMat({ items, label, children }: { items: MatItem[]; label
               onPointerMove={onPointerMove(it.id)}
               onPointerUp={onPointerUp}
               onPointerCancel={onPointerUp}
+              onLostPointerCapture={onPointerUp}
               onKeyDown={onKeyDown(it.id)}
             >
               <img src={it.src} alt="" draggable={false} />
