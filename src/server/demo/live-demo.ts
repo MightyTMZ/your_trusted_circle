@@ -111,6 +111,7 @@ export class DemoRegistry {
   async start(deps: Deps, session: SessionDoc, subjectId: string): Promise<LiveDemo> {
     const current = this.runs.get(session._id);
     if (current && !current.finished) throw new DemoError("demo_running", "A demo is already running in this session. Stop it first.");
+    if (current?.finished) await this.restoreRules(deps, current);
     const subject = session.participants.find((p) => p.participantId === subjectId && p.leftAt === null);
     if (!subject) throw new DemoError("no_participant", "That person is not in this session.", 404);
     // Consent is theirs alone (CLAUDE.md): the host cannot turn on monitoring for them.
@@ -126,7 +127,7 @@ export class DemoRegistry {
     // Everyone who shares location appears on the map: phones report a simulated position at the venue.
     const rules: SessionRules = { ...session.rules, ...DEMO_RULES, demoVenue: session.rules.demoVenue ?? FALLBACK_VENUE };
     await deps.store.setSessionRules(session._id, rules);
-    const run = new LiveDemo({ ...session, rules }, subject, deps.now().getTime(), this.calls);
+    const run = new LiveDemo({ ...session, rules }, subject, deps.now().getTime(), this.calls, session.rules, rules);
     this.runs.set(session._id, run);
     return run;
   }
@@ -135,10 +136,19 @@ export class DemoRegistry {
     return this.runs.get(sessionId);
   }
 
-  stop(sessionId: string, reason: string): LiveDemo | undefined {
+  async stop(deps: Deps, sessionId: string, reason: string): Promise<LiveDemo | undefined> {
     const run = this.runs.get(sessionId);
-    run?.stop(reason);
+    if (run) {
+      run.stop(reason);
+      await this.restoreRules(deps, run);
+    }
     return run;
+  }
+
+  private async restoreRules(deps: Deps, run: LiveDemo): Promise<void> {
+    const session = await deps.store.getSession(run.sessionId);
+    if (!session || !sameRules(session.rules, run.appliedRules)) return;
+    await deps.store.setSessionRules(run.sessionId, run.previousRules);
   }
 
   /** Called once per scheduler pass (main.ts). One failing demo never stops the others. */
@@ -163,13 +173,15 @@ interface Segment {
 export class LiveDemo {
   readonly sessionId: string;
   readonly timeline: Timeline;
-  private readonly subject: ParticipantDoc;
+  private subject: ParticipantDoc;
   private readonly hostParticipantId: string | null;
   private readonly startedAt: number;
   private readonly historyStart: number;
   /** Two seconds before a window boundary, so the impact's window closes right after it. */
   readonly impactAt: number;
   private readonly venue: { label: string; lat: number; lng: number };
+  readonly previousRules: SessionRules;
+  readonly appliedRules: SessionRules;
   private readonly rand = seeded(29);
   private readonly pipeline: SensorPipeline;
   private readonly rawLines: string[] = [];
@@ -195,17 +207,22 @@ export class LiveDemo {
   private updatesMirrored = 0;
   private resolved = false;
   private call: { id: string; status: "ringing" | "active" | "ended" } | null = null;
+  private consentScopes = new Set<ConsentScope>();
 
   constructor(
     session: SessionDoc,
     subject: ParticipantDoc,
     startedAt: number,
     private readonly calls: CallService,
+    previousRules: SessionRules,
+    appliedRules: SessionRules,
   ) {
     this.sessionId = session._id;
     this.subject = subject;
     this.hostParticipantId = session.participants.find((p) => p.role === "host")?.participantId ?? null;
     this.startedAt = startedAt;
+    this.previousRules = previousRules;
+    this.appliedRules = appliedRules;
     this.impactAt = Math.ceil((startedAt + LEAD_MS + 2_000) / WINDOW_MS) * WINDOW_MS - 2_000;
     this.historyStart = Math.floor((startedAt - HISTORY_MS) / WINDOW_MS) * WINDOW_MS;
     this.venue = session.rules.demoVenue ?? FALLBACK_VENUE;
@@ -223,6 +240,7 @@ export class LiveDemo {
       features: { nominalRateHz: RATE_HZ, sensorRangeM_s2: SENSOR_RANGE, windowMs: WINDOW_MS },
     });
     this.writeHistory(session);
+    this.consentScopes = new Set(this.scopes(subject));
     this.manual = null;
   }
 
@@ -272,9 +290,15 @@ export class LiveDemo {
     const session = await deps.store.getSession(this.sessionId);
     const subject = session?.participants.find((p) => p.participantId === this.subject.participantId);
     if (!session || !subject || subject.leftAt !== null) return this.stop(`${this.subject.displayName} left, or the session is gone.`);
+    this.subject = subject;
+    this.syncConsent(subject);
     if (session.status === "ended" && !this.incident) return this.stop("The session ended.");
 
     const now = deps.now().getTime();
+    if (!this.incident && session.suspendedAt) {
+      this.cursor = Math.max(this.cursor, now);
+      return;
+    }
     if (!this.resolved) this.feed(now);
     if (!this.checkIn) {
       if (now >= this.impactAt && this.phaseValue === "before_impact") this.phaseValue = "watching";
@@ -285,6 +309,31 @@ export class LiveDemo {
     await this.mirrorCheckIn(deps);
     if (this.finished) return;
     await this.mirrorIncident(deps, session);
+  }
+
+  private syncConsent(subject: ParticipantDoc): void {
+    const next = new Set(this.scopes(subject));
+    const revoked = [...this.consentScopes].filter((scope) => !next.has(scope));
+    const granted = [...next].filter((scope) => !this.consentScopes.has(scope));
+    if (revoked.length > 0) {
+      this.timeline.append({
+        type: "consent.revoked",
+        participant_id: subject.participantId,
+        actor: { kind: "participant", id: subject.participantId },
+        provenance: prov("ui"),
+        data: { scopes: revoked },
+      });
+    }
+    if (granted.length > 0) {
+      this.timeline.append({
+        type: "consent.granted",
+        participant_id: subject.participantId,
+        actor: { kind: "participant", id: subject.participantId },
+        provenance: prov("ui"),
+        data: { scopes: granted, consent_text_version: subject.consentTextVersion },
+      });
+    }
+    this.consentScopes = next;
   }
 
   // ── Inputs: synthetic samples through the real pipeline ──────────────
@@ -603,7 +652,7 @@ export class LiveDemo {
           occurred_at: at,
           data: { mock_endpoint_id: MOCK_OPERATOR_ENDPOINT_ID, escalation_id: inc.escalationId, delivered_fact_event_ids: delivered },
         });
-        await this.placeCall(deps, inc.id, step.notifiedAt);
+        await this.placeCall(deps, inc.id, step.notifiedAt, session);
         continue;
       }
       let firstSent: TimelineEvent | null = null;
@@ -720,13 +769,14 @@ export class LiveDemo {
 
   // ── The simulated call ───────────────────────────────────────────────
 
-  private async placeCall(deps: Deps, incidentId: string, at: Date): Promise<void> {
+  private async placeCall(deps: Deps, incidentId: string, at: Date, session: SessionDoc): Promise<void> {
     if (this.call) return;
     const shared = this.timeline.hasConsent(this.subject.participantId, "profile.responders");
     const id = this.calls.ring({
       timeline: this.timeline,
       clock: this.clock,
       incidentId,
+      sessionId: session._id,
       about: shared ? this.subject.displayName : "a participant who did not share their name",
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       scenarioId: SCENARIO,
@@ -767,4 +817,8 @@ function recipientId(job: NotificationJobDoc, session: SessionDoc): string {
   if (r.kind === "backup_contact") return r.contactId;
   if (r.kind === "user") return session.participants.find((p) => p.userId === r.userId)?.participantId ?? "host";
   return MOCK_OPERATOR_ENDPOINT_ID;
+}
+
+function sameRules(a: SessionRules, b: SessionRules): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }

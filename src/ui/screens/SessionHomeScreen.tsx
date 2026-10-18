@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { UNVALIDATED_LABEL } from '../../domain/config';
-import { activeIncidentFor, nextDeadline } from '../../domain/incident';
+import { alertedNames, nextDeadline } from '../../domain/incident';
 import { canViewLocation, latestReading, participantFreshness } from '../../domain/location';
 import { endSession, resumeSession, suspendSession, updateConsent } from '../../domain/session';
 import type { Incident, Participant } from '../../domain/types';
@@ -35,11 +35,13 @@ function AlertCard({ incident, now }: { incident: Incident; now: number }) {
       : 'Unacknowledged · all steps alerted'
     : incident.status === 'acknowledged'
       ? `Acknowledged by ${incident.acknowledged?.name} · not yet resolved`
-      : `Resolved ${fmtTime(incident.resolution!.at)}`;
+      : incident.resolution?.by === 'participant'
+        ? `${COPY.cancelledBySelf(p.displayName)} · ${fmtTime(incident.resolution.at)}`
+        : `Resolved ${fmtTime(incident.resolution!.at)}`;
   const title = incident.trigger === 'help_requested' ? `${p.displayName} asked for help` : `${COPY.movementChanged} · ${p.displayName}`;
   return (
-    <section className="surface card rise" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-      <span className={`av num ${open ? 'on-accent' : 'fill'}`}>{initials(p.displayName)}</span>
+    <section className={`surface card rise${open ? ' alert-open' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <span className={`av num ${open ? 'on-danger' : 'fill'}`}>{initials(p.displayName)}</span>
       <span className="stack grow">
         <h2 className="t-card">{title}</h2>
         <span className="t-sub num">{status}</span>
@@ -96,7 +98,7 @@ function PersonRow({ subject, viewer, now, alerting, fixes }: { subject: Partici
     );
   return (
     <li className="row" style={{ alignItems: 'flex-start' }}>
-      <span className={`av num ${alerting ? 'on-accent' : 'fill'}`}>{initials(subject.displayName)}</span>
+      <span className={`av num ${alerting ? 'on-danger' : 'fill'}`}>{initials(subject.displayName)}</span>
       <span className="stack grow" style={{ gap: 4 }}>
         <span className="inline">
           <span className="t-name">{subject.id === viewer.id ? `${subject.displayName} (you)` : subject.displayName}</span>
@@ -169,8 +171,12 @@ export function SessionHomeScreen() {
     .filter((i) => i.participantId !== viewer.id)
     .sort((a, b) => Number(a.status === 'resolved') - Number(b.status === 'resolved') || b.openedAt - a.openedAt);
   const alerting = new Set(state.incidents.filter((i) => i.status === 'open').map((i) => i.participantId));
-  const myIncident = activeIncidentFor(state, viewer.id);
   const hostName = state.participants[session.hostId]?.displayName;
+  // The alert this person most recently cancelled themselves, shown for ten minutes as a receipt.
+  const myCancelled = state.incidents
+    .filter((i) => i.participantId === viewer.id && i.resolution?.by === 'participant' && now - i.resolution.at < 10 * 60_000)
+    .sort((a, b) => b.resolution!.at - a.resolution!.at)[0];
+  const myIncident = state.incidents.find((i) => i.participantId === viewer.id && i.status !== 'resolved');
   const live = useLive();
   const { points, anchor } = useGroupPoints(viewer, now);
   const run = (fn: Parameters<typeof store.dispatch>[0]) => {
@@ -187,6 +193,7 @@ export function SessionHomeScreen() {
         locationSharing: viewer.consent.locationSharing,
         shareLocationWithResponders: viewer.consent.shareLocationWithResponders,
         shareNoteWithResponders: viewer.consent.shareNoteWithResponders,
+        consentTextVersion: 'consent-v1',
       });
     }
   };
@@ -257,9 +264,7 @@ export function SessionHomeScreen() {
   return (
     <div className="screen">
       <header className="header">
-        <span className="logo fill phone-only" role="img" aria-label="YTC">
-          YTC
-        </span>
+        <span className="logo phone-only" role="img" aria-label="YTC" />
         <h1 className="t-title grow">{session.name}</h1>
         {isHost && (
           <button type="button" className="btn ibtn fill" aria-label="Show QR code" onClick={() => go({ name: 'invite' })}>
@@ -269,6 +274,15 @@ export function SessionHomeScreen() {
         <SettingsButton />
       </header>
 
+      {myCancelled && (
+        <section className="surface card stack rise" style={{ gap: 8 }} role="status">
+          <h2 className="t-card num">You cancelled the alert at {fmtTime(myCancelled.resolution!.at)}</h2>
+          <p className="t-sub">
+            Escalation stopped. {alertedNames(state, myCancelled)} can see you cancelled it as a false alarm. If you need help, use the
+            help button: that starts a new alert.
+          </p>
+        </section>
+      )}
 
       {/* Access prompts wait while an alert about you is open: that notification comes first. */}
       {!myIncident && trackingActive && motionPerm === 'prompt' && (
@@ -414,6 +428,7 @@ export function SessionHomeScreen() {
           </button>
         </Sheet>
       )}
+
     </div>
   );
 }

@@ -4,18 +4,16 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { defaultTransport } from "../../src/server/alerts/transport.js";
 import { createApp } from "../../src/server/app.js";
 import { loadConfig } from "../../src/server/config.js";
-import type { Deps } from "../../src/server/context.js";
-import { LocationRelay } from "../../src/server/lifecycle/relay.js";
+import { createDeps } from "../../src/server/deps.js";
 import { MemoryStore } from "../../src/server/store/memory.js";
 
 const LOCAL = "http://localhost:5173";
 
 function app(env: Record<string, string>) {
   const config = loadConfig(env as NodeJS.ProcessEnv);
-  const deps: Deps = { store: new MemoryStore(), config, providers: {}, transport: defaultTransport, relay: new LocationRelay(), now: () => new Date() };
+  const deps = createDeps(config, new MemoryStore(), { providers: {}, strictTimeline: true });
   return { app: createApp(deps), config };
 }
 

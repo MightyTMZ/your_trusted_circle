@@ -119,8 +119,12 @@ export function OperatorConsole() {
     let alive = true;
     const poll = () =>
       callApi.incoming().then(
-        (r) => alive && setIncoming(r.calls),
-        () => alive && setIncoming([]),
+        (r) => {
+          if (!alive) return;
+          setIncoming(r.calls);
+          setError(null);
+        },
+        (e) => alive && setError((e as Error).message),
       );
     poll();
     const id = window.setInterval(poll, RING_POLL_MS);
@@ -141,7 +145,7 @@ export function OperatorConsole() {
         setConnectedAt(Date.parse(r.call.transcript[0]?.at ?? new Date().toISOString()));
         setPhase('ready');
       },
-      () => {},
+      (e) => setError((e as Error).message),
     );
   }, []);
 
@@ -153,7 +157,10 @@ export function OperatorConsole() {
     }
     let alive = true;
     const id = window.setInterval(() => {
-      callApi.state(call.call_id).then((r) => alive && phaseRef.current === 'thinking' && setActivity(r.call.activity), () => {});
+      callApi.state(call.call_id).then(
+        (r) => alive && phaseRef.current === 'thinking' && setActivity(r.call.activity),
+        (e) => alive && setError((e as Error).message),
+      );
     }, ACTIVITY_POLL_MS);
     return () => {
       alive = false;
@@ -228,6 +235,22 @@ export function OperatorConsole() {
     },
     [settle],
   );
+
+  const startPractice = async () => {
+    setError(null);
+    setReplies({});
+    setCited([]);
+    setPhase('starting');
+    try {
+      const res = await callApi.start();
+      setCall(res.call);
+      setConnectedAt(Date.now());
+      play(res.reply, res.call);
+    } catch (e) {
+      setError((e as Error).message);
+      setPhase('idle');
+    }
+  };
 
   /** Stops the agent mid-sentence (at once) and logs how much the operator heard. */
   const bargeIn = async () => {
@@ -432,6 +455,14 @@ export function OperatorConsole() {
           <p className="t-sub">Calls ring here. No real phone line or emergency service is connected.</p>
         </div>
         {error && <ErrorLine text={error} />}
+        <div className="opx-tools">
+          <button type="button" className="btn pbtn on-accent" disabled={phase === 'starting'} onClick={() => void startPractice()}>
+            Practice a call
+          </button>
+          <button type="button" className="btn pbtn fill" onClick={() => (window.location.hash = '')}>
+            Back to app
+          </button>
+        </div>
       </div>
     );
   }

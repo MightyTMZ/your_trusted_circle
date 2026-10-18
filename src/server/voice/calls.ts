@@ -52,6 +52,8 @@ interface LiveCall {
   agent: OperatorCallAgent;
   timeline: Timeline;
   incidentId: string;
+  pool: "practice" | "live";
+  sessionId: string | null;
   /** Set for a call placed by escalation that nobody has answered yet. */
   ringing: { since: string; about: string } | null;
   /** What the agent is doing while it prepares an answer (agent.ts onStage). */
@@ -64,6 +66,7 @@ export interface RingRequest {
   timeline: Timeline;
   clock: Clock;
   incidentId: string;
+  sessionId: string;
   /** Shown on the incoming-call card. Only a name the person shared with responders, else a neutral label. */
   about: string;
   timeZone: string;
@@ -91,7 +94,7 @@ export class CallService {
 
   /** Builds a fresh incident, places the simulated call, and speaks the opening breakdown. */
   start(): { call: CallView; reply: ReplyView } {
-    this.evict();
+    this.evict("practice");
     const scenario = buildNoResponseScenario({ voiceCall: false });
     // The story's clock stops at the simulated dispatch; from here it follows real time.
     const base = scenario.clock.now();
@@ -117,7 +120,17 @@ export class CallService {
       ...this.opts.models,
       ...this.opts.agent,
     });
-    const live: LiveCall = { id, agent, timeline, incidentId: FIXTURE_INCIDENT_ID, ringing: null, activity: null, lastActive: this.wall() };
+    const live: LiveCall = {
+      id,
+      agent,
+      timeline,
+      incidentId: FIXTURE_INCIDENT_ID,
+      pool: "practice",
+      sessionId: null,
+      ringing: null,
+      activity: null,
+      lastActive: this.wall(),
+    };
     holder.live = live;
     this.calls.set(id, live);
     const started = this.wall();
@@ -132,7 +145,7 @@ export class CallService {
    * during the call (an acknowledgment, say).
    */
   ring(req: RingRequest): string {
-    this.evict();
+    this.evict("live");
     const id = this.callIds.next("call");
     const holder: { live?: LiveCall } = {};
     const agent = new OperatorCallAgent({
@@ -152,6 +165,8 @@ export class CallService {
       agent,
       timeline: req.timeline,
       incidentId: req.incidentId,
+      pool: "live",
+      sessionId: req.sessionId,
       ringing: { since: new Date(req.clock.now()).toISOString(), about: req.about },
       activity: null,
       lastActive: this.wall(),
@@ -167,6 +182,11 @@ export class CallService {
       .filter((c) => c.ringing !== null)
       .map((c) => ({ call_id: c.id, incident_id: c.incidentId, ringing_since: c.ringing!.since, about: c.ringing!.about }))
       .sort((a, b) => a.ringing_since.localeCompare(b.ringing_since));
+  }
+
+  access(callId: string): { kind: "practice" | "live"; sessionId: string | null } | null {
+    const live = this.calls.get(callId);
+    return live ? { kind: live.pool, sessionId: live.sessionId } : null;
   }
 
   /** The operator picks up: the agent starts and speaks the opening breakdown. */
@@ -267,9 +287,10 @@ export class CallService {
   }
 
   /** Ends idle calls and keeps at most maxCalls, dropping ended ones first. */
-  private evict(): void {
+  private evict(pool: "practice" | "live"): void {
     const now = this.wall();
     for (const live of this.calls.values()) {
+      if (live.pool !== pool) continue;
       if ((live.agent.isActive || live.ringing) && now - live.lastActive > (this.opts.idleMs ?? 30 * 60_000)) {
         live.ringing = null;
         live.agent.end("timeout");
@@ -277,8 +298,8 @@ export class CallService {
     }
     const max = this.opts.maxCalls ?? 8;
     const open = (c: LiveCall) => Number(c.agent.isActive || c.ringing !== null);
-    const byAge = [...this.calls.values()].sort((a, b) => open(a) - open(b) || a.lastActive - b.lastActive);
-    while (this.calls.size >= max && byAge.length) {
+    const byAge = [...this.calls.values()].filter((c) => c.pool === pool).sort((a, b) => open(a) - open(b) || a.lastActive - b.lastActive);
+    while (byAge.length >= max && byAge.length) {
       const drop = byAge.shift()!;
       drop.ringing = null;
       drop.agent.end("disconnected");

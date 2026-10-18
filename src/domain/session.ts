@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG, MAX_BACKUP_CONTACTS } from './config';
+import { DEFAULT_CONFIG, MAX_BACKUP_CONTACTS, MAX_DURATION_MIN, MIN_DURATION_MIN } from './config';
 import { emptyBaseline, ingestSample, startCalibration } from './detector';
 import { makeId, makeJoinCode } from './ids';
 import {
@@ -6,12 +6,14 @@ import {
   EMERGENCY_SIM_RECIPIENT_ID,
   HOST_RECIPIENT_PREFIX,
   activeIncidentFor,
+  cancelBySubject,
   log,
   openIncident,
 } from './incident';
 import type {
   AppState,
   BackupContact,
+  Incident,
   LocationSharing,
   Millis,
   MotionSample,
@@ -273,6 +275,9 @@ export interface CreateSessionInput {
 /** Only a host can initialise a session, and only after accepting the host commitment. */
 export function createSession(state: AppState, input: CreateSessionInput, now: Millis): { session: Session; host: Participant } {
   if (!input.hostCommitment) throw new SessionError('The host must accept the host commitment to start a session.');
+  if (!Number.isInteger(input.durationMin) || input.durationMin < MIN_DURATION_MIN || input.durationMin > MAX_DURATION_MIN) {
+    throw new SessionError(`A session must last between ${MIN_DURATION_MIN} minutes and ${MAX_DURATION_MIN / 60} hours.`);
+  }
   const offset = state.clockOffsetMs;
   Object.assign(state, emptyState(), { clockOffsetMs: offset });
 
@@ -494,4 +499,17 @@ export function participantUpdate(state: AppState, actorId: string, now: Millis)
     source: 'participant',
     text: `${state.participants[actorId].displayName} responded "I'm OK" from their device. The alert stays open until a recipient acknowledges and resolves it.`,
   });
+}
+
+/**
+ * The wearer cancels an alert about themselves: a false alarm. Only the
+ * person the alert is about can do this, from their own device, whether or
+ * not anyone has acknowledged yet. They can ask for help again at any time;
+ * that opens a new alert.
+ */
+export function cancelOwnAlert(state: AppState, actorId: string, now: Millis): Incident {
+  const inc = activeIncidentFor(state, actorId);
+  if (!inc) throw new SessionError('There is no open alert about you to cancel.');
+  cancelBySubject(state, inc, now);
+  return inc;
 }

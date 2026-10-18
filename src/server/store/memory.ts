@@ -1,9 +1,11 @@
 /** In-memory Store for tests and for running the API without MongoDB. Not durable. */
+import type { TimelineEvent } from "../../timeline/schema/catalog.js";
 import type { DeletionCounts, ParticipantPatch, Store } from "./store.js";
 import type {
   AuthSessionDoc,
   CheckInDoc,
   CheckInStatus,
+  ContactInviteDoc,
   IncidentDoc,
   IncidentLogEntry,
   NotificationJobDoc,
@@ -23,7 +25,10 @@ export class MemoryStore implements Store {
   readonly checkIns = new Map<string, CheckInDoc>();
   readonly incidents = new Map<string, IncidentDoc>();
   readonly jobs = new Map<string, NotificationJobDoc>();
+  readonly invites = new Map<string, ContactInviteDoc>();
+  readonly timelines = new Map<string, TimelineEvent[]>();
   readonly traces: TraceDoc[] = [];
+  readonly rawRecordings: TraceDoc[] = [];
 
   private participant(sessionId: string, participantId: string): ParticipantDoc | undefined {
     return this.sessions.get(sessionId)?.participants.find((p) => p.participantId === participantId);
@@ -104,6 +109,50 @@ export class MemoryStore implements Store {
     Object.assign(s, { status: "ended", endedReason: reason, endedAt: at });
     return true;
   }
+  async setSessionSuspended(sessionId: string, at: Date | null) {
+    const s = this.sessions.get(sessionId);
+    if (s) s.suspendedAt = at;
+  }
+  async linkBackupContact(sessionId: string, participantId: string, contactId: string, userId: string) {
+    const c = this.participant(sessionId, participantId)?.backupContacts.find((x) => x.id === contactId);
+    if (!c || c.userId !== null) return false;
+    c.userId = userId;
+    return true;
+  }
+
+  // contact invites
+  async insertContactInvite(invite: ContactInviteDoc) {
+    this.invites.set(invite._id, clone(invite));
+  }
+  async getContactInvite(hash: string) {
+    const i = this.invites.get(hash);
+    return i ? clone(i) : null;
+  }
+  async acceptContactInvite(hash: string, userId: string) {
+    const i = this.invites.get(hash);
+    if (!i || i.acceptedByUserId !== null) return false;
+    i.acceptedByUserId = userId;
+    return true;
+  }
+
+  // server timeline
+  async insertTimelineEvent(event: TimelineEvent) {
+    const list = this.timelines.get(event.session_id) ?? [];
+    if (list.some((e) => e.seq === event.seq || e.event_id === event.event_id)) return false;
+    list.push(clone(event));
+    this.timelines.set(event.session_id, list);
+    return true;
+  }
+  async listTimelineEvents(sessionId: string) {
+    return (this.timelines.get(sessionId) ?? []).slice().sort((a, b) => a.seq - b.seq).map(clone);
+  }
+  async countTimelineEvents(sessionId: string) {
+    return this.timelines.get(sessionId)?.length ?? 0;
+  }
+  async replaceTimeline(sessionId: string, events: TimelineEvent[]) {
+    if (events.length === 0) this.timelines.delete(sessionId);
+    else this.timelines.set(sessionId, events.map(clone));
+  }
 
   // check-ins
   async insertCheckIn(c: CheckInDoc) {
@@ -153,6 +202,10 @@ export class MemoryStore implements Store {
   async listIncidentsForSession(sessionId: string) {
     return [...this.incidents.values()].filter((i) => i.sessionId === sessionId).map(clone);
   }
+  async updateIncident(id: string, patch: Partial<IncidentDoc>) {
+    const i = this.incidents.get(id);
+    if (i) Object.assign(i, clone(patch));
+  }
   async claimStep(id: string, index: number, at: Date, nextDueAt: Date | null) {
     const i = this.incidents.get(id);
     const step = i?.steps[index];
@@ -161,6 +214,12 @@ export class MemoryStore implements Store {
     i.currentStep = index;
     const next = i.steps[index + 1];
     if (next) next.dueAt = nextDueAt;
+    return true;
+  }
+  async claimRepeat(id: string, index: number, expectedRepeats: number) {
+    const step = this.incidents.get(id)?.steps[index];
+    if (!step || step.repeats !== expectedRepeats) return false;
+    step.repeats++;
     return true;
   }
   async acknowledgeIncident(id: string, ack: NonNullable<IncidentDoc["acknowledged"]>) {
@@ -174,6 +233,13 @@ export class MemoryStore implements Store {
   async resolveIncident(id: string, res: NonNullable<IncidentDoc["resolved"]>) {
     const i = this.incidents.get(id);
     if (!i || i.status !== "acknowledged") return false;
+    Object.assign(i, { status: "resolved", resolved: clone(res), activeKey: null });
+    return true;
+  }
+  async cancelIncidentBySubject(id: string, res: NonNullable<IncidentDoc["resolved"]>) {
+    const i = this.incidents.get(id);
+    if (!i || i.status === "resolved") return false;
+    for (const s of i.steps) if (s.notifiedAt === null) s.dueAt = null;
     Object.assign(i, { status: "resolved", resolved: clone(res), activeKey: null });
     return true;
   }
@@ -209,6 +275,12 @@ export class MemoryStore implements Store {
     Object.assign(j, clone(patch));
     if (result) j.results.push(clone(result));
   }
+  async markJobViewed(id: string, at: Date) {
+    const j = this.jobs.get(id);
+    if (!j || j.viewedAt !== null) return false;
+    j.viewedAt = at;
+    return true;
+  }
   async listJobsForUser(userId: string) {
     return [...this.jobs.values()].filter((j) => j.recipient.kind === "user" && j.recipient.userId === userId).map(clone);
   }
@@ -219,9 +291,33 @@ export class MemoryStore implements Store {
     for (const j of this.jobs.values()) if (j.incidentId === incidentId && j.acknowledgedAt === null) j.acknowledgedAt = at;
   }
 
-  // traces
+  // traces and raw recordings
   async insertTraces(traces: TraceDoc[]) {
     this.traces.push(...traces.map(clone));
+  }
+  private duplicate(list: TraceDoc[], doc: TraceDoc) {
+    return list.some(
+      (x) =>
+        (doc.eventId !== null && x.sessionId === doc.sessionId && x.eventId === doc.eventId) ||
+        (doc.clientItemId !== null && x.userId === doc.userId && x.clientItemId === doc.clientItemId),
+    );
+  }
+  async insertTraceIfAbsent(doc: TraceDoc) {
+    if (this.duplicate(this.traces, doc)) return false;
+    this.traces.push(clone(doc));
+    return true;
+  }
+  async setTraceTimelineEvent(traceId: string, timelineEventId: string) {
+    const tr = this.traces.find((x) => x._id === traceId);
+    if (tr) tr.timelineEventId = timelineEventId;
+  }
+  async insertRawRecordingIfAbsent(doc: TraceDoc) {
+    if (this.duplicate(this.rawRecordings, doc)) return false;
+    this.rawRecordings.push(clone(doc));
+    return true;
+  }
+  async listRawRecordingsForUser(userId: string) {
+    return this.rawRecordings.filter((r) => r.userId === userId).map(clone);
   }
   private aboutUser(tr: TraceDoc, userId: string, participantIds: string[]) {
     return tr.userId === userId || (tr.subjectParticipantId !== null && participantIds.includes(tr.subjectParticipantId));
@@ -238,19 +334,28 @@ export class MemoryStore implements Store {
     for (const [id, c] of this.checkIns) if (sessionIds.has(c.sessionId)) this.checkIns.delete(id);
     for (const [id, i] of this.incidents) if (sessionIds.has(i.sessionId)) this.incidents.delete(id);
     for (const [id, j] of this.jobs) if (sessionIds.has(j.sessionId)) this.jobs.delete(id);
-    for (const id of sessionIds) this.sessions.delete(id);
+    for (const [id, inv] of this.invites) if (sessionIds.has(inv.sessionId)) this.invites.delete(id);
+    for (const id of sessionIds) {
+      this.sessions.delete(id);
+      this.timelines.delete(id);
+    }
+  }
+  private removeWhere(list: TraceDoc[], pred: (x: TraceDoc) => boolean) {
+    let n = 0;
+    for (let i = list.length - 1; i >= 0; i--) if (pred(list[i]!)) (list.splice(i, 1), n++);
+    return n;
   }
   async pruneBefore(cutoff: Date) {
-    const before = this.traces.length;
-    for (let i = this.traces.length - 1; i >= 0; i--) if (t(this.traces[i]!.receivedAt) < cutoff.getTime()) this.traces.splice(i, 1);
-    const activeIncidentSessions = new Set([...this.incidents.values()].filter((i) => i.activeKey).map((i) => i.sessionId));
+    const traces = this.removeWhere(this.traces, (x) => t(x.receivedAt) < cutoff.getTime());
+    const rawRecordings = this.removeWhere(this.rawRecordings, (x) => t(x.receivedAt) < cutoff.getTime());
+    const busy = new Set([...this.incidents.values()].filter((i) => i.activeKey).map((i) => i.sessionId));
     const old = new Set(
       [...this.sessions.values()]
-        .filter((s) => (s.status === "ended" ? t(s.endedAt) : t(s.expiresAt)) < cutoff.getTime() && !activeIncidentSessions.has(s._id))
+        .filter((s) => (s.status === "ended" ? t(s.endedAt) : t(s.expiresAt)) < cutoff.getTime() && !busy.has(s._id))
         .map((s) => s._id),
     );
     this.dropSessionData(old);
-    return { traces: before - this.traces.length, sessions: old.size };
+    return { traces, rawRecordings, sessions: old.size };
   }
 
   async deleteUserCascade(userId: string): Promise<DeletionCounts> {
@@ -258,10 +363,8 @@ export class MemoryStore implements Store {
     const participantIds = mine.flatMap((s) => s.participants.filter((p) => p.userId === userId).map((p) => p.participantId));
     const hosted = new Set(mine.filter((s) => s.hostUserId === userId).map((s) => s._id));
 
-    const tracesBefore = this.traces.length;
-    for (let i = this.traces.length - 1; i >= 0; i--) {
-      if (this.aboutUser(this.traces[i]!, userId, participantIds)) this.traces.splice(i, 1);
-    }
+    const traces = this.removeWhere(this.traces, (x) => this.aboutUser(x, userId, participantIds) || hosted.has(x.sessionId ?? ""));
+    const rawRecordings = this.removeWhere(this.rawRecordings, (x) => this.aboutUser(x, userId, participantIds));
     let checkIns = 0;
     for (const [id, c] of this.checkIns) {
       if (participantIds.includes(c.participantId) || hosted.has(c.sessionId)) (this.checkIns.delete(id), checkIns++);
@@ -275,22 +378,30 @@ export class MemoryStore implements Store {
       const toMe = j.recipient.kind === "user" && j.recipient.userId === userId;
       if (toMe || j.subjectUserId === userId || hosted.has(j.sessionId)) (this.jobs.delete(id), notifications++);
     }
-    for (const id of hosted) this.sessions.delete(id);
-    for (const s of mine) {
-      const live = this.sessions.get(s._id);
-      if (live) live.participants = live.participants.filter((p) => p.userId !== userId);
+    for (const [id, inv] of this.invites) {
+      if (inv.acceptedByUserId === userId || participantIds.includes(inv.participantId) || hosted.has(inv.sessionId)) this.invites.delete(id);
+    }
+    for (const id of hosted) {
+      this.sessions.delete(id);
+      this.timelines.delete(id);
+    }
+    // Leave other sessions; and stop being anyone's linked backup contact.
+    for (const s of this.sessions.values()) {
+      s.participants = s.participants.filter((p) => p.userId !== userId);
+      for (const p of s.participants) for (const c of p.backupContacts) if (c.userId === userId) c.userId = null;
     }
     let authSessions = 0;
     for (const [hash, a] of this.authSessions) if (a.userId === userId) (this.authSessions.delete(hash), authSessions++);
     this.users.delete(userId);
     return {
-      traces: tracesBefore - this.traces.length,
+      traces,
       authSessions,
       sessionsDeleted: hosted.size,
       sessionsLeft: mine.length - hosted.size,
       checkIns,
       incidents,
       notifications,
+      rawRecordings,
     };
   }
 }

@@ -57,7 +57,7 @@ export function demoRoutes(deps: Deps, demos: DemoRegistry) {
     const found = await hostOf(c.req.param("id"), c.var.user._id);
     if (found.error === "no_session") return fail(c, 404, "no_session", "Session not found.");
     if (found.error === "host_only") return fail(c, 403, "host_only", "Only the host can stop the demo.");
-    const run = demos.stop(found.session._id, "Stopped by the host.");
+    const run = await demos.stop(deps, found.session._id, "Stopped by the host.");
     return c.json({ demo: run ? run.view() : null });
   });
 

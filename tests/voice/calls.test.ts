@@ -4,6 +4,7 @@ import { createApp } from "../../src/server/app.js";
 import { loadConfig } from "../../src/server/config.js";
 import { LocationRelay } from "../../src/server/lifecycle/relay.js";
 import { MemoryStore } from "../../src/server/store/memory.js";
+import { SessionTimelines } from "../../src/server/timeline/record.js";
 import { CallService, type CallServiceOptions } from "../../src/server/voice/calls.js";
 import type { SpeechProvider } from "../../src/server/voice/elevenlabs.js";
 import type { CallView, StartCallResponse, TurnResponse } from "../../src/server/voice/protocol.js";
@@ -41,7 +42,9 @@ function serve(opts: CallServiceOptions = {}) {
   let wall = 0;
   const calls = new CallService({ wallClock: () => wall, ...opts });
   const config = loadConfig({ APP_ORIGIN } as NodeJS.ProcessEnv);
-  const app = createApp({ store: new MemoryStore(), config, providers: {}, transport: defaultTransport, relay: new LocationRelay(), now: () => new Date(), calls });
+  const store = new MemoryStore();
+  const now = () => new Date();
+  const app = createApp({ store, config, providers: {}, transport: defaultTransport, relay: new LocationRelay(), timeline: new SessionTimelines(store, now), now, calls });
   const api = async <T>(method: string, path: string, body?: unknown, headers: Record<string, string> = { Origin: APP_ORIGIN }) => {
     // Like the console's client (src/ui/operator/api.ts): every write carries a JSON body, {} if nothing else.
     const h = new Headers(method === "GET" ? {} : headers);

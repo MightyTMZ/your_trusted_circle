@@ -45,6 +45,7 @@ export function ParticipantCheckInScreen({ checkIn }: { checkIn: CheckIn }) {
           endLabel={hm(checkIn.dueAt)}
           ariaLabel={`${fmtCountdown(remaining)} left to respond.`}
           role="timer"
+          sweep={{ dueAt: checkIn.dueAt, now }}
         />
         <p className="t-sub center num" aria-live="polite">
           If you don't answer, {whoIsAlerted} alerted at {fmtTime(checkIn.dueAt)}.

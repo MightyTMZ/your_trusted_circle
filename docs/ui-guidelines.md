@@ -71,6 +71,15 @@ Themes change surfaces, not the layout. YTC has no colour accent: don't
 add tinted themes (orange, gold, ice blue, purple). Orange was tried and
 removed.
 
+**Logo.** The app icon is an image, not a token: `public/logo-dark.png`
+(night scene) for Mono and `public/logo-light.png` (day scene) for Onyx,
+switched by `data-theme` in the `.logo` class in `src/styles.css`. Use
+`<div className="logo" role="img" aria-label="YTC" />` and set only its size.
+The browser tab icon follows the device's light/dark setting through
+`public/favicon-dark.png` and `public/favicon-light.png` (see `index.html`),
+not the in-app theme. A new theme needs its own logo image and a matching
+`[data-theme]` rule.
+
 Adding a theme: override the same tokens as the existing ones
 (backgrounds, fills, material, labels, accent set, switch, track, map),
 check every label token against `--bg-base`, `--surface` and `--fill` for
@@ -94,6 +103,7 @@ override tokens on the same element.
 | Accent | `--accent`, `--accent-ink` (text on accent), `--accent-icon` (icons on accent), `--accent-ring` (focus, selection outline, help ring), `--accent-soft` |
 | Positive | `--positive` (outline and icon, Mono `#30d158`, Onyx `#248a3d`), `--positive-fill` `#248a3d` with `--positive-ink` white (4.6:1). The only colour in the app, for exactly two things people know from their phones: accepting a call, and "your message reached responders". Never for anyone's condition. |
 | Alert | `--alert` (Mono `#ff453a`, Onyx `#d70015`, 5.4:1 on white), `--alert-soft` (its pulse). Only for the "Alert about you" pill's outline and bell: an alert about this person is open (green once they told responders they're OK). Never for errors, which stay grey. |
+| Danger | `--danger` (#ff3b30, Apple system red), `--danger-ink`, `--danger-icon`, `--danger-ring`, `--danger-soft`, `--danger-glow`. Used for open/unacknowledged alerts only. `.on-danger` replaces `.on-accent` on alert avatars, tags, badges, buttons, and cards. `.card.alert-open` adds a red border and glow. |
 | Switch | `--switch-off`, `--switch-knob`, `--switch-knob-on` (dark in Mono, where the track is white), `--segment-thumb` |
 | Data | `--track-inactive`, `--tick-inactive`, `--knob` |
 | Map | `--map-bg`, `--map-street`, `--map-block` |
@@ -102,8 +112,10 @@ override tokens on the same element.
 | Motion | `--ease` = `cubic-bezier(.25,.1,.25,1)` |
 | Type | `--font` = the system font stack (`-apple-system`, `BlinkMacSystemFont`, `system-ui`, then Segoe UI, Roboto, Helvetica Neue) |
 
-No gradients and no glows: fills are flat (`--accent-glow` stays `none`
-and exists only for older call sites). The page background is flat
+No gradients and no accent glows: fills are flat (`--accent-glow` stays
+`none` and exists only for older call sites). The one exception is
+`--danger-glow`, a red box-shadow used on `.card.alert-open` to make
+unacknowledged alerts impossible to miss. The page background is flat
 `--bg-base`.
 
 ## 4. Typography
@@ -176,8 +188,8 @@ pointer events. Minimum hit area 44×44 (`accessibility.md › Mobility`).
 | Stepper | `.ibtn.ibtn-sm` − value + | For numeric settings (escalation timing). |
 | Quick tile | `button.btn.qtile.fill` | 88px tall, 22px icon over 13px label, equal-width grid of 2–4. |
 | Text field | `input.field` / `textarea.field` | 50px, radius 12, `--surface` on the page and `--fill` inside a card, always with a `<label>` (visible `.lbl` or `.sr-only`). |
-| Tag | `span.tag` | 24px grey-fill capsule, 12/600. `.tag.on-accent` only for an active alert state. |
-| Avatar | `.av` / `<Avatar name src>` | 40px circle, `fill` by default. Profile picture when the account has one, initials otherwise. `.on-accent` only for the person with an open alert. |
+| Tag | `span.tag` | 24px grey-fill capsule, 12/600. `.tag.on-danger` for an active/open alert state; `.tag.on-accent` for non-alert active states. |
+| Avatar | `.av` / `<Avatar name src>` | 40px circle, `fill` by default. Profile picture when the account has one, initials otherwise. `.on-danger` for the person with an open alert; `.on-accent` for non-alert active states. |
 | Avatar stack | `.av-stack` > `.av` | 32px solid avatars overlapping 10px, ringed in `--surface`. Leftmost on top: set `z-index` descending left to right. |
 | Step progress | `.seg` > `span` | Multi-step flows; done/current segments `.is-on`. |
 | Sheet | `<Sheet title onClose centered? className?>` | Confirmations, portalled to `<body>`. Material bottom sheet on phone, centered dialog on larger screens (`centered` centres it on phones too, as for the operator's incident record). `className="sheet-capped"` caps its height for a long list: the title and buttons stay put and only a `.sheet-scroll` child scrolls, blurred scrim, Escape closes. Most likely button on top of the stack (`alerts.md › Buttons`). Destructive confirms use a grey primary, not the accent; irreversible ones (delete account) also need typed confirmation. |
@@ -198,7 +210,7 @@ React wrappers in `src/ui/components/Controls.tsx`: `Toggle`, `ToggleRow`,
 | --- | --- | --- |
 | Arc gauge | Countdowns (next escalation, check-in window) | ~200° SVG arc, 8px round stroke, flat accent active stroke, white knob with accent ring, hero numeral + label inside, start/end times at the arc ends. Turns grey with no knob when stopped. Word values use `.t-hero-word` so they stay inside the arc. |
 | Tick dial | Elapsed time across a window (incident card) | 48 radial ticks generated in JS. Lit ticks fade in and grow toward the current point; the leading tick is tallest; unlit ticks fade out toward the end. Hero numeral sits inside the arc. |
-| Group map | Where people are (`GroupMap`) | Google satellite imagery with labels (`GoogleMap`, hybrid map type) when `GOOGLE_MAPS_API_KEY` is set at build time; otherwise, or if the key is rejected, the synthetic venue plot (`--map-*` tokens). Markers are avatars (`.av.pin` on Google, `.av.mark` on the plot): `fill` live, `stale` dashed, `on-accent` open alert. Simulated positions also get a dotted outline (`.sim`) and the map chip counts them, so they never pass for a real fix. |
+| Group map | Where people are (`GroupMap`) | Google satellite imagery with labels (`GoogleMap`, hybrid map type) when `GOOGLE_MAPS_API_KEY` is set at build time; otherwise, or if the key is rejected, the synthetic venue plot (`--map-*` tokens). Markers are avatars (`.av.pin` on Google, `.av.mark` on the plot): `fill` live, `stale` dashed, `on-accent` open alert. Simulated positions also get a dotted outline (`.sim`) and the map chip counts them, so they never pass for a real fix. **Auto-fit** (`src/ui/mapFit.ts`): both maps centre on the midpoint of the group's bounding box and zoom so everyone fits with a margin. The zoom follows the map's measured CSS size; the margin is about 12% of the shorter side (24–72px, `fitPadding`), with at least 64px clear at the top for the map chip on the plot. A lone person shows about 60 m across. Avatars that still overlap are nudged apart on screen while their positions and labels stay true. Google re-fits when someone joins or leaves, walks out of view, or the map is resized, and stops auto-fitting after a manual pan or zoom until the group changes. |
 | Scrubber | Progress (`Scrubber`) | 4px accent line on grey, white knob with accent ring, elapsed left, remaining right (13px). |
 | Live time bar | Session time (`LiveScrubber`) | Like a live stream: always full to now, "Live · time left" on the right. Drag (44px hit area) or arrow keys to look back; a "−12:34 · Back to live" chip returns. A "What happened" chip opens a capped sheet that tells, in sentences, what happened up to that moment (or so far, when live): joins, alerts and their escalation, and movements where a record of positions exists (`GET /api/sessions/:id/story`; only the incident demo's person, to whoever they share location with), with a line naming whose movements aren't kept. Nothing expands under the bar. Positions are never stored, so the map always shows now. `role="slider"`. |
 

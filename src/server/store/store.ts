@@ -8,8 +8,10 @@
  * That is what makes "exactly one alert per recipient per step" hold even
  * if two scheduler passes overlap.
  */
+import type { TimelineEvent } from "../../timeline/schema/catalog.js";
 import type {
   AuthSessionDoc,
+  ContactInviteDoc,
   CheckInDoc,
   CheckInStatus,
   IncidentDoc,
@@ -32,9 +34,10 @@ export interface DeletionCounts {
   checkIns: number;
   incidents: number;
   notifications: number;
+  rawRecordings: number;
 }
 
-export type ParticipantPatch = Partial<Pick<ParticipantDoc, "consent" | "leftAt" | "lastHeartbeatAt" | "deviceOnline">>;
+export type ParticipantPatch = Partial<Pick<ParticipantDoc, "consent" | "consentTextVersion" | "consentUpdatedAt" | "leftAt" | "lastHeartbeatAt" | "deviceOnline">>;
 
 export interface Store {
   // users and sign-in
@@ -61,6 +64,22 @@ export interface Store {
   setSessionRules(sessionId: string, rules: SessionRules): Promise<void>;
   /** active -> ended. Returns false if it had already ended. */
   endSession(sessionId: string, reason: SessionDoc["endedReason"], at: Date): Promise<boolean>;
+  setSessionSuspended(sessionId: string, at: Date | null): Promise<void>;
+  /** Attaches an account to a backup contact. False if it already has one. */
+  linkBackupContact(sessionId: string, participantId: string, contactId: string, userId: string): Promise<boolean>;
+
+  // contact invites
+  insertContactInvite(invite: ContactInviteDoc): Promise<void>;
+  getContactInvite(tokenHash: string): Promise<ContactInviteDoc | null>;
+  acceptContactInvite(tokenHash: string, userId: string): Promise<boolean>;
+
+  // server timeline (append-only, hash-chained per session)
+  /** False if that seq is already taken (another writer appended first). */
+  insertTimelineEvent(event: TimelineEvent): Promise<boolean>;
+  listTimelineEvents(sessionId: string): Promise<TimelineEvent[]>;
+  countTimelineEvents(sessionId: string): Promise<number>;
+  /** Replaces a session's whole timeline, after an account deletion re-seals it. */
+  replaceTimeline(sessionId: string, events: TimelineEvent[]): Promise<void>;
 
   // check-ins
   insertCheckIn(checkIn: CheckInDoc): Promise<void>;
@@ -78,10 +97,15 @@ export interface Store {
   findActiveIncident(sessionId: string, participantId: string): Promise<IncidentDoc | null>;
   listOpenIncidents(): Promise<IncidentDoc[]>;
   listIncidentsForSession(sessionId: string): Promise<IncidentDoc[]>;
+  updateIncident(id: string, patch: Partial<Pick<IncidentDoc, "triggerEventId" | "openedEventId">>): Promise<void>;
   /** Marks step `index` notified, if the incident is still open and the step has not been notified. */
   claimStep(id: string, index: number, at: Date, nextDueAt: Date | null): Promise<boolean>;
+  /** Counts one more repeat of a step, if nobody else repeated it first. */
+  claimRepeat(id: string, index: number, expectedRepeats: number): Promise<boolean>;
   acknowledgeIncident(id: string, ack: NonNullable<IncidentDoc["acknowledged"]>): Promise<boolean>;
   resolveIncident(id: string, res: NonNullable<IncidentDoc["resolved"]>): Promise<boolean>;
+  /** The subject cancels their own open or acknowledged incident. Pending steps lose their deadlines. Once only. */
+  cancelIncidentBySubject(id: string, res: NonNullable<IncidentDoc["resolved"]>): Promise<boolean>;
   appendIncidentLog(id: string, entry: IncidentLogEntry): Promise<void>;
 
   // notification jobs
@@ -91,18 +115,30 @@ export interface Store {
   /** Takes ownership of a due job until `leaseUntil`. */
   claimJob(id: string, now: Date, leaseUntil: Date): Promise<boolean>;
   updateJob(id: string, patch: Partial<NotificationJobDoc>, result?: NotificationJobDoc["results"][number]): Promise<void>;
+  /** First view only: false if it was already viewed. */
+  markJobViewed(id: string, at: Date): Promise<boolean>;
   listJobsForUser(userId: string): Promise<NotificationJobDoc[]>;
   listJobsForIncident(incidentId: string): Promise<NotificationJobDoc[]>;
   markIncidentJobsAcknowledged(incidentId: string, at: Date): Promise<void>;
 
-  // traces
+  // traces and raw recordings
   insertTraces(traces: TraceDoc[]): Promise<void>;
+  /** Stores the trace unless one with the same (sessionId, eventId) or (userId, clientItemId) exists. */
+  insertTraceIfAbsent(trace: TraceDoc): Promise<boolean>;
+  setTraceTimelineEvent(traceId: string, timelineEventId: string): Promise<void>;
+  /** Raw sensor samples, kept apart from derived features (CLAUDE.md). */
+  insertRawRecordingIfAbsent(doc: TraceDoc): Promise<boolean>;
+  listRawRecordingsForUser(userId: string): Promise<TraceDoc[]>;
   listTracesForUser(userId: string, participantIds: string[]): Promise<TraceDoc[]>;
   listTracesForSession(sessionId: string): Promise<TraceDoc[]>;
 
   // retention
-  /** Deletes traces received before `cutoff`, and sessions (with their check-ins, incidents, jobs) that ended before it. */
-  pruneBefore(cutoff: Date): Promise<{ traces: number; sessions: number }>;
+  /**
+   * Deletes traces and raw recordings received before `cutoff`, and sessions
+   * that ended before it with their check-ins, incidents, alerts, timeline and
+   * invites. Sessions with an active incident are kept.
+   */
+  pruneBefore(cutoff: Date): Promise<{ traces: number; rawRecordings: number; sessions: number }>;
   /** Removes every record of the user. See data/account.ts for what that covers. */
   deleteUserCascade(userId: string): Promise<DeletionCounts>;
 }

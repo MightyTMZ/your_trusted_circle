@@ -1,6 +1,6 @@
 import { makeId } from './ids';
-import { deliver } from './transport';
-import { startSimulatedCall } from './voiceAgent';
+import { deliver, deliverCancellation } from './transport';
+import { relayCancellation, startSimulatedCall } from './voiceAgent';
 import type {
   AppState,
   EscalationStep,
@@ -185,7 +185,7 @@ export function resolve(
   if (!incident || incident.status !== 'acknowledged') return;
   const name = state.recipients[recipientId]?.name ?? 'Unknown recipient';
   incident.status = 'resolved';
-  incident.resolution = { recipientId, name, at: now, outcome, note: note.trim() };
+  incident.resolution = { by: 'recipient', recipientId, name, at: now, outcome, note: note.trim() };
   const label =
     outcome === 'false_alarm' ? 'False alarm' : outcome === 'assistance_reached' ? 'Someone reached them in person' : 'Other';
   log(incident, {
@@ -194,6 +194,56 @@ export function resolve(
     source: 'recipient',
     text: `Resolved by ${name}: ${label}.${note.trim() ? ` Note: "${note.trim()}"` : ''}`,
   });
+}
+
+/** Who has been sent this alert so far, by name, as a readable list. */
+export function alertedNames(state: AppState, incident: Incident): string {
+  const names = alertedRecipientIds(incident).map((id) =>
+    id === EMERGENCY_SIM_RECIPIENT_ID ? 'simulated emergency services' : (state.recipients[id]?.name ?? 'unknown'),
+  );
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? 'nobody yet');
+}
+
+/** Everyone who has been sent this alert so far, in the order they were alerted. */
+export function alertedRecipientIds(incident: Incident): string[] {
+  return incident.steps.filter((s) => s.notifiedAt !== undefined).flatMap((s) => s.recipientIds);
+}
+
+/**
+ * Close an open or acknowledged incident as a false alarm reported by the
+ * person it is about. Callers check that the actor is that person
+ * (see `cancelOwnAlert` in session.ts). Stops pending escalation, tells
+ * everyone already alerted, and has the voice agent relay the cancellation
+ * before ending the simulated call. Recorded as the person's own report.
+ */
+export function cancelBySubject(state: AppState, incident: Incident, now: Millis): void {
+  if (incident.status === 'resolved') return;
+  const name = state.participants[incident.participantId]?.displayName ?? 'The participant';
+
+  incident.status = 'resolved';
+  incident.escalationStoppedAt ??= now;
+  for (const s of incident.steps) if (s.notifiedAt === undefined) s.dueAt = undefined;
+  incident.resolution = { by: 'participant', name, at: now, outcome: 'false_alarm', note: '' };
+  const entry = log(incident, {
+    at: now,
+    kind: 'resolution',
+    source: 'participant',
+    text: `${name} cancelled the alert from their own device: false alarm. Pending escalation stopped. This is their own report; no one has checked on them in person.`,
+  });
+
+  const told = alertedRecipientIds(incident);
+  for (const rid of told) deliverCancellation(state, incident, rid, now);
+  if (told.length > 0) {
+    const names = told.map((id) => (id === EMERGENCY_SIM_RECIPIENT_ID ? 'simulated emergency services' : state.recipients[id]?.name ?? 'unknown'));
+    log(incident, {
+      at: now,
+      kind: 'notification',
+      source: 'transport',
+      simulated: true,
+      text: `Cancellation sent to ${names.join(', ')}.`,
+    });
+  }
+  relayCancellation(state, incident, entry, now);
 }
 
 export function nextDeadline(incident: Incident): Millis | undefined {

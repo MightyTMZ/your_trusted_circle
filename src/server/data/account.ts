@@ -9,8 +9,11 @@
  * Deleting removes: the user, every sign-in, every trace I sent and every
  * trace about me, my check-ins, incidents about me, alerts about me or sent
  * to me, my place in other people's sessions, and the sessions I host (with
- * their check-ins, incidents and alerts). Other people's own traces in a
- * session I hosted remain theirs to export or delete.
+ * their check-ins, incidents, alerts and timeline), raw recordings, and invites.
+ * In sessions I only joined, my events are removed from the hash-chained
+ * timeline and the remaining chain is re-verified and re-sealed
+ * (timeline/record.ts). Other people's own traces in a session I hosted
+ * remain theirs to export or delete.
  */
 import { Hono } from "hono";
 import { v, validate } from "../../timeline/schema/validate.js";
@@ -70,12 +73,21 @@ export function accountRoutes(deps: Deps) {
     const incidents = (await Promise.all(sessions.map((s) => deps.store.listIncidentsForSession(s._id)))).flat().filter((i) => mine.has(i.participantId));
     const alertsReceived = await deps.store.listJobsForUser(user._id);
     const traces = await deps.store.listTracesForUser(user._id, [...mine]);
+    const rawRecordings = await deps.store.listRawRecordingsForUser(user._id);
+    // My own record on each session timeline, including every consent choice (the audit trail).
+    const myEvents = (
+      await Promise.all(
+        sessions.map(async (s) =>
+          (await deps.timeline.events(s._id)).filter((e) => (e.participant_id !== null && mine.has(e.participant_id)) || (e.actor.id !== null && mine.has(e.actor.id))),
+        ),
+      )
+    ).flat();
     const signIns = await deps.store.listAuthSessions(user._id);
     const exportedAt = deps.now();
 
     const body = {
       format: "ytc-personal-data-export",
-      version: 2,
+      version: 3,
       exportedAt,
       user: {
         ...profile(user),
@@ -94,7 +106,16 @@ export function accountRoutes(deps: Deps) {
           expiresAt: s.expiresAt,
           status: s.status,
           rules: s.rules,
-          me: { participantId: me.participantId, role: me.role, joinedAt: me.joinedAt, leftAt: me.leftAt, consent: me.consent, backupContacts: me.backupContacts },
+          me: {
+            participantId: me.participantId,
+            role: me.role,
+            joinedAt: me.joinedAt,
+            leftAt: me.leftAt,
+            consent: me.consent,
+            consentTextVersion: me.consentTextVersion,
+            consentUpdatedAt: me.consentUpdatedAt,
+            backupContacts: me.backupContacts.map((b) => ({ name: b.name, relation: b.relation, hasAccount: b.userId !== null })),
+          },
         };
       }),
       checkIns: checkIns.map(checkInView),
@@ -114,7 +135,19 @@ export function accountRoutes(deps: Deps) {
         level: j.level,
         status: j.status,
         deliveredAt: j.deliveredAt,
+        viewedAt: j.viewedAt,
         acknowledgedAt: j.acknowledgedAt,
+        delivered: j.payload,
+      })),
+      timelineEvents: myEvents,
+      rawRecordings: rawRecordings.map((t) => ({
+        id: t._id,
+        sessionId: t.sessionId,
+        dataOrigin: t.dataOrigin,
+        units: t.units,
+        occurredAt: t.occurredAt,
+        receivedAt: t.receivedAt,
+        data: t.data,
       })),
       traces: traces.map((t) => ({
         id: t._id,
@@ -124,6 +157,9 @@ export function accountRoutes(deps: Deps) {
         sentByMe: t.userId === user._id,
         occurredAt: t.occurredAt,
         receivedAt: t.receivedAt,
+        dataOrigin: t.dataOrigin,
+        dataClass: t.dataClass,
+        units: t.units,
         locationRedacted: t.locationRedacted,
         data: t.data,
       })),
@@ -149,7 +185,21 @@ export function accountRoutes(deps: Deps) {
       if (s.hostUserId === user._id) deps.relay.clearSession(s._id);
       for (const p of s.participants) if (p.userId === user._id) deps.relay.clearParticipant(s._id, p.participantId);
     }
-    const deleted = await deps.store.deleteUserCascade(user._id);
+    // Re-seal the timelines of sessions I only joined, without my events.
+    let timelineEvents = 0;
+    for (const s of await deps.store.listSessionsForUser(user._id)) {
+      if (s.hostUserId === user._id) continue;
+      const pids = new Set(s.participants.filter((p) => p.userId === user._id).map((p) => p.participantId));
+      const aboutMe = new Set((await deps.store.listIncidentsForSession(s._id)).filter((i) => pids.has(i.participantId)).map((i) => i._id));
+      timelineEvents += await deps.timeline.reseal(
+        s._id,
+        (e) =>
+          !(e.participant_id !== null && pids.has(e.participant_id)) &&
+          !(e.actor.id !== null && pids.has(e.actor.id)) &&
+          !(e.incident_id !== null && aboutMe.has(e.incident_id)),
+      );
+    }
+    const deleted = { ...(await deps.store.deleteUserCascade(user._id)), timelineEvents };
     await endAuthSession(c, deps);
     return c.json({ deleted });
   });

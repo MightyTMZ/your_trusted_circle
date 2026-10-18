@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { DEFAULT_CONFIG, UNVALIDATED_LABEL } from '../../domain/config';
+import { DEFAULT_CONFIG, MAX_DURATION_MIN, MIN_DURATION_MIN, UNVALIDATED_LABEL } from '../../domain/config';
 import { createSession, type ParticipantInput } from '../../domain/session';
 import { COPY } from '../copy';
 import { useApp } from '../context';
@@ -11,11 +11,30 @@ import { ParticipantConsentFields, defaultParticipantInput } from '../components
 const DURATIONS = [120, 240, 360];
 const STEPS = 4;
 
+/** Whole numbers only; blank counts as 0. Returns null for anything else. */
+const wholeNumber = (s: string): number | null => (/^\d{0,3}$/.test(s.trim()) ? Number(s.trim() || '0') : null);
+
+/** The custom time limit in minutes, or why it can't be used. */
+function parseCustomLength(hours: string, minutes: string): { min: number } | { error: string } {
+  const h = wholeNumber(hours);
+  const m = wholeNumber(minutes);
+  if (h === null || m === null) return { error: 'Use whole numbers for hours and minutes.' };
+  if (m > 59) return { error: 'Minutes must be 59 or less.' };
+  const total = h * 60 + m;
+  if (total < MIN_DURATION_MIN) return { error: `At least ${MIN_DURATION_MIN} minutes.` };
+  if (total > MAX_DURATION_MIN) return { error: `At most ${MAX_DURATION_MIN / 60} hours.` };
+  return { min: total };
+}
+
+const fmtLength = (min: number) => `${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60} min` : ''}`;
+
 export function HostSetupScreen() {
   const { store, setViewer, go, account } = useApp();
   const [step, setStep] = useState(1);
   const [sessionName, setSessionName] = useState('');
-  const [durationMin, setDurationMin] = useState(240);
+  const [lengthChoice, setLengthChoice] = useState<number | 'custom'>(240);
+  const [customHours, setCustomHours] = useState('5');
+  const [customMinutes, setCustomMinutes] = useState('0');
   const [commitment, setCommitment] = useState(false);
   const [host, setHost] = useState<ParticipantInput>(() => ({ ...defaultParticipantInput(), motionMonitoring: false, displayName: account?.displayName ?? '' }));
   const [cfg, setCfg] = useState({
@@ -26,6 +45,11 @@ export function HostSetupScreen() {
   const [showTiming, setShowTiming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+
+  const custom = lengthChoice === 'custom' ? parseCustomLength(customHours, customMinutes) : null;
+  const customError = custom && 'error' in custom ? custom.error : null;
+  // 240 (the default) whenever the custom entry isn't usable; the Continue button is blocked in that case.
+  const durationMin = lengthChoice !== 'custom' ? lengthChoice : custom && 'min' in custom ? custom.min : 240;
 
   const accountName = account?.displayName;
   useEffect(() => {
@@ -50,6 +74,7 @@ export function HostSetupScreen() {
         locationSharing: host.locationSharing,
         shareLocationWithResponders: host.shareLocationWithResponders,
         shareNoteWithResponders: host.shareNoteWithResponders,
+        consentTextVersion: 'consent-v1',
       },
       ...(host.emergencyNote.trim() ? { responderNote: host.emergencyNote.trim().slice(0, 500) } : {}),
       backupContacts: host.backupContacts.filter((c) => c.name.trim() && c.relation.trim()).map((c) => ({ name: c.name.trim(), relation: c.relation.trim() })),
@@ -78,7 +103,7 @@ export function HostSetupScreen() {
 
   if (!account) return null;
 
-  const blocked = creating || (step === 2 && !commitment) || (step === 3 && !host.displayName.trim());
+  const blocked = creating || (step === 1 && customError !== null) || (step === 2 && !commitment) || (step === 3 && !host.displayName.trim());
   const next = () => (step < STEPS ? setStep(step + 1) : create());
 
   return (
@@ -107,12 +132,51 @@ export function HostSetupScreen() {
                 onChange={(e) => setSessionName(e.target.value)}
               />
             </div>
-            <ChipChoice<number>
+            <ChipChoice<number | 'custom'>
               label="Ends automatically after"
-              options={DURATIONS.map((m) => ({ value: m, label: `${m / 60} hours` }))}
-              value={durationMin}
-              onChange={setDurationMin}
+              options={[...DURATIONS.map((m) => ({ value: m, label: `${m / 60} hours` })), { value: 'custom', label: 'Custom' }]}
+              value={lengthChoice}
+              onChange={setLengthChoice}
             />
+            {lengthChoice === 'custom' && (
+              <div className="fgroup">
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <div className="fgroup grow">
+                    <label className="lbl" htmlFor="customHours">
+                      Hours
+                    </label>
+                    <input
+                      id="customHours"
+                      className="field num"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      value={customHours}
+                      aria-invalid={customError !== null}
+                      aria-describedby="customLengthNote"
+                      onChange={(e) => setCustomHours(e.target.value)}
+                    />
+                  </div>
+                  <div className="fgroup grow">
+                    <label className="lbl" htmlFor="customMinutes">
+                      Minutes
+                    </label>
+                    <input
+                      id="customMinutes"
+                      className="field num"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      value={customMinutes}
+                      aria-invalid={customError !== null}
+                      aria-describedby="customLengthNote"
+                      onChange={(e) => setCustomMinutes(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <p id="customLengthNote" className={customError ? 'error' : 't-sub num'} role={customError ? 'alert' : 'status'}>
+                  {customError ?? `${fmtLength(durationMin)} from when you start, about ${new Date(Date.now() + durationMin * 60_000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`}
+                </p>
+              </div>
+            )}
           </div>
         )}
 

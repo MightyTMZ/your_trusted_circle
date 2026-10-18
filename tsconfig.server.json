@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "outDir": "build/server",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["src/server/**/*.ts", "src/timeline/**/*.ts", "src/shared/**/*.ts"]
+}

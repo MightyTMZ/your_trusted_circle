@@ -7,6 +7,7 @@
  * POST /api/sessions/:id/help         ask for help now (the client confirms first)
  * POST /api/sessions/:id/heartbeat    my device is alive
  * POST /api/sessions/:id/update       add "I'm OK" to my open alert; never acknowledges or resolves it
+ * POST /api/sessions/:id/cancel-alert cancel my own open alert as a false alarm (my own report)
  */
 import { Hono } from "hono";
 import { v, validate, type Infer } from "../../timeline/schema/validate.js";
@@ -14,7 +15,9 @@ import { activeParticipant, isLive } from "../auth/authz.js";
 import { requireAuth } from "../auth/session.js";
 import { fail, type AppEnv, type Deps } from "../context.js";
 import { newId } from "../ids.js";
-import type { CheckInDoc } from "../types.js";
+import { recorder } from "../timeline/recorder.js";
+import type { CheckInDoc, ParticipantDoc, SessionDoc } from "../types.js";
+import { incidentView } from "../alerts/routes.js";
 import { openIncident } from "./escalation.js";
 
 const checkInSchema = v.object({
@@ -36,9 +39,40 @@ export function checkInView(c: CheckInDoc) {
   };
 }
 
+/**
+ * "I need help" without a pending check-in. The catalog needs an earlier event
+ * as the incident's trigger, so the tap is recorded as what it is: a manual
+ * check-in, answered with "requested help" at once.
+ */
+export async function requestHelpNow(deps: Deps, session: SessionDoc, me: ParticipantDoc, at: Date) {
+  const existing = await deps.store.findActiveIncident(session._id, me.participantId);
+  if (existing) return existing;
+  const rec = recorder(deps);
+  const checkIn: CheckInDoc = {
+    _id: newId("chk"),
+    sessionId: session._id,
+    participantId: me.participantId,
+    reason: "manual",
+    observationEventId: null,
+    promptedAt: at,
+    dueAt: at,
+    status: "requested_help",
+    respondedAt: at,
+    cancelledReason: null,
+    incidentId: null,
+  };
+  await deps.store.insertCheckIn(checkIn);
+  await rec.checkInPrompted(session, checkIn);
+  const responded = await rec.checkInResponded(session, me, checkIn, "requested_help", at);
+  const incident = await openIncident(deps, session, me, "help_requested", at, checkIn._id, responded?.event_id ?? null);
+  await deps.store.transitionCheckIn(checkIn._id, "requested_help", { incidentId: incident._id });
+  return incident;
+}
+
 export function safetyRoutes(deps: Deps) {
   const r = new Hono<AppEnv>();
   const auth = requireAuth(deps);
+  const rec = recorder(deps);
 
   async function mine(sessionId: string, userId: string) {
     const session = await deps.store.getSession(sessionId);
@@ -52,6 +86,7 @@ export function safetyRoutes(deps: Deps) {
     const { session, me } = found;
     const now = deps.now();
     if (!isLive(session, now)) return fail(c, 409, "session_over", "This session has ended.");
+    if (session.suspendedAt) return fail(c, 409, "session_suspended", "The host has paused check-ins for this session.");
     const body = await c.req.json().catch(() => undefined);
     const issues = validate(checkInSchema, body);
     if (issues.length > 0) return fail(c, 400, "invalid_request", "Check the check-in request.", issues);
@@ -79,6 +114,7 @@ export function safetyRoutes(deps: Deps) {
       incidentId: null,
     };
     await deps.store.insertCheckIn(checkIn);
+    await rec.checkInPrompted(session, checkIn);
     return c.json({ checkIn: checkInView(checkIn) }, 201);
   });
 
@@ -98,15 +134,17 @@ export function safetyRoutes(deps: Deps) {
       if (!(await deps.store.transitionCheckIn(checkIn._id, "pending", { status: "responded_ok", respondedAt: now }))) {
         return fail(c, 409, "checkin_closed", "This check-in has already closed. If an alert was sent, your host can see it.");
       }
+      await rec.checkInResponded(found.session, found.me, checkIn, "confirmed_ok", now);
       return c.json({ checkIn: checkInView((await deps.store.getCheckIn(checkIn._id))!) });
     }
 
     if (!(await deps.store.transitionCheckIn(checkIn._id, "pending", { status: "requested_help", respondedAt: now }))) {
       // Too late to answer, but asking for help is never refused.
-      const incident = await openIncident(deps, found.session, found.me, "help_requested", now);
+      const incident = await requestHelpNow(deps, found.session, found.me, now);
       return c.json({ checkIn: checkInView((await deps.store.getCheckIn(checkIn._id))!), incidentId: incident._id });
     }
-    const incident = await openIncident(deps, found.session, found.me, "help_requested", now, checkIn._id);
+    const responded = await rec.checkInResponded(found.session, found.me, checkIn, "requested_help", now);
+    const incident = await openIncident(deps, found.session, found.me, "help_requested", now, checkIn._id, responded?.event_id ?? null);
     await deps.store.transitionCheckIn(checkIn._id, "requested_help", { incidentId: incident._id });
     return c.json({ checkIn: checkInView((await deps.store.getCheckIn(checkIn._id))!), incidentId: incident._id });
   });
@@ -114,7 +152,7 @@ export function safetyRoutes(deps: Deps) {
   r.post("/sessions/:id/help", auth, async (c) => {
     const found = await mine(c.req.param("id"), c.var.user._id);
     if (!found) return fail(c, 404, "no_session", "You are not in this session.");
-    const incident = await openIncident(deps, found.session, found.me, "help_requested", deps.now());
+    const incident = await requestHelpNow(deps, found.session, found.me, deps.now());
     return c.json({ incidentId: incident._id, status: incident.status }, 201);
   });
 
@@ -125,6 +163,7 @@ export function safetyRoutes(deps: Deps) {
     const { session, me } = found;
     await deps.store.updateParticipant(session._id, me.participantId, { lastHeartbeatAt: now, deviceOnline: true });
     if (!me.deviceOnline) {
+      await rec.deviceOnline(session, me, now.getTime() - (me.lastHeartbeatAt?.getTime() ?? now.getTime()));
       const incident = await deps.store.findActiveIncident(session._id, me.participantId);
       if (incident) {
         await deps.store.appendIncidentLog(incident._id, { at: now, kind: "connectivity", text: `${me.displayName}'s device is sending heartbeats again.` });
@@ -144,6 +183,27 @@ export function safetyRoutes(deps: Deps) {
       text: `${found.me.displayName} says they are OK. This is added to the record; the alert stays open until a responder resolves it.`,
     });
     return c.body(null, 204);
+  });
+
+  // Only the person the alert is about can cancel it, and only their own.
+  // Queued deliveries for a closed incident are dropped by the dispatcher.
+  r.post("/sessions/:id/cancel-alert", auth, async (c) => {
+    const found = await mine(c.req.param("id"), c.var.user._id);
+    if (!found) return fail(c, 404, "no_session", "You are not in this session.");
+    const incident = await deps.store.findActiveIncident(found.session._id, found.me.participantId);
+    if (!incident) return fail(c, 404, "no_incident", "There is no open alert about you to cancel.");
+    const now = deps.now();
+    const res = { byUserId: c.var.user._id, name: found.me.displayName, at: now, outcome: "false_alarm" as const, bySubject: true };
+    if (!(await deps.store.cancelIncidentBySubject(incident._id, res))) {
+      return fail(c, 409, "incident_closed", "This alert has already been closed.");
+    }
+    await deps.store.appendIncidentLog(incident._id, {
+      at: now,
+      kind: "resolution",
+      text: `${found.me.displayName} cancelled the alert from their own device: false alarm. Pending escalation stopped. This is their own report; no one has checked on them in person.`,
+    });
+    const updated = (await deps.store.getIncident(incident._id))!;
+    return c.json({ incident: incidentView(updated, found.session, await deps.store.listJobsForIncident(updated._id)) });
   });
 
   return r;

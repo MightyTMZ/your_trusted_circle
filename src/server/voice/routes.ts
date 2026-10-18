@@ -22,7 +22,9 @@
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { fail } from "../context.js";
+import { fail, type AppEnv, type Deps } from "../context.js";
+import { activeParticipant } from "../auth/authz.js";
+import { requireAuth } from "../auth/session.js";
 import { CallError, type CallService } from "./calls.js";
 import { SpeechError } from "./elevenlabs.js";
 
@@ -32,43 +34,76 @@ const small = bodyLimit({ maxSize: 16 * 1024, onError: tooLarge });
 /** About 5 MB of audio once base64 is decoded: minutes of compressed speech. */
 const recording = bodyLimit({ maxSize: 7 * 1024 * 1024, onError: tooLarge });
 
-export function voiceRoutes(calls: CallService) {
-  const r = new Hono();
+export function voiceRoutes(calls: CallService, deps: Deps) {
+  const r = new Hono<AppEnv>();
+  const auth = requireAuth(deps);
+
+  const withCallAccess = async (c: Context<AppEnv>, callId: string, next: () => Promise<Response>) => {
+    const access = calls.access(callId);
+    if (!access || access.kind === "practice") return next();
+    let denied: Response | null = null;
+    const authResponse = await auth(c, async () => {
+      const session = access.sessionId ? await deps.store.getSession(access.sessionId) : null;
+      if (!session || !activeParticipant(session, c.var.user._id)) {
+        denied = fail(c, 403, "call_forbidden", "You are not a member of this session.");
+        return;
+      }
+    });
+    return authResponse ?? denied ?? next();
+  };
 
   r.get("/capabilities", (c) => c.json(calls.capabilities()));
   r.post("/", (c) => c.json(calls.start(), 201));
-  r.get("/incoming", (c) => c.json({ calls: calls.incoming() }));
-  r.post(`/${ID}/answer`, (c) => c.json(calls.answer(c.req.param("id"))));
-  r.get(`/${ID}`, (c) => c.json(calls.state(c.req.param("id"))));
+  r.get("/incoming", auth, async (c) => {
+    const visible = [];
+    for (const incoming of calls.incoming()) {
+      const access = calls.access(incoming.call_id);
+      const session = access?.sessionId ? await deps.store.getSession(access.sessionId) : null;
+      if (session && activeParticipant(session, c.var.user._id)) visible.push(incoming);
+    }
+    return c.json({ calls: visible });
+  });
+  r.post(`/${ID}/answer`, (c) => withCallAccess(c, c.req.param("id"), async () => c.json(calls.answer(c.req.param("id")))));
+  r.get(`/${ID}`, (c) => withCallAccess(c, c.req.param("id"), async () => c.json(calls.state(c.req.param("id")))));
 
   r.post(`/${ID}/turns`, small, async (c) => {
-    const body = await readJson(c);
-    return c.json(await calls.operatorText(c.req.param("id"), stringField(body, "text")));
+    return withCallAccess(c, c.req.param("id"), async () => {
+      const body = await readJson(c);
+      return c.json(await calls.operatorText(c.req.param("id"), stringField(body, "text")));
+    });
   });
 
   r.post(`/${ID}/speech`, recording, async (c) => {
-    const body = await readJson(c);
-    const mime = stringField(body, "mime_type");
-    if (!/^(audio|video)\/[\w.+-]+(;[\w=.+-]+)*$/.test(mime.replace(/\s/g, ""))) throw new CallError("mime_type must be an audio type.", 400);
-    const audio = Buffer.from(stringField(body, "audio_base64"), "base64");
-    return c.json(await calls.operatorSpeech(c.req.param("id"), new Uint8Array(audio), mime));
+    return withCallAccess(c, c.req.param("id"), async () => {
+      const body = await readJson(c);
+      const mime = stringField(body, "mime_type");
+      if (!/^(audio|video)\/[\w.+-]+(;[\w=.+-]+)*$/.test(mime.replace(/\s/g, ""))) throw new CallError("mime_type must be an audio type.", 400);
+      const audio = Buffer.from(stringField(body, "audio_base64"), "base64");
+      return c.json(await calls.operatorSpeech(c.req.param("id"), new Uint8Array(audio), mime));
+    });
   });
 
-  r.post(`/${ID}/silence`, small, async (c) => c.json(calls.silence(c.req.param("id"), numberField(await readJson(c), "ms"))));
+  r.post(`/${ID}/silence`, small, async (c) =>
+    withCallAccess(c, c.req.param("id"), async () => c.json(calls.silence(c.req.param("id"), numberField(await readJson(c), "ms")))),
+  );
 
   r.post(`/${ID}/interrupt`, small, async (c) => {
-    const body = await readJson(c);
-    return c.json(calls.interrupt(c.req.param("id"), numberField(body, "turn_index"), numberField(body, "heard_ms")));
+    return withCallAccess(c, c.req.param("id"), async () => {
+      const body = await readJson(c);
+      return c.json(calls.interrupt(c.req.param("id"), numberField(body, "turn_index"), numberField(body, "heard_ms")));
+    });
   });
 
-  r.post(`/${ID}/end`, (c) => c.json(calls.end(c.req.param("id"))));
+  r.post(`/${ID}/end`, (c) => withCallAccess(c, c.req.param("id"), async () => c.json(calls.end(c.req.param("id")))));
 
   r.get(`/${ID}/turns/:n{[0-9]{1,4}}/audio`, async (c) => {
-    const speech = calls.speech;
-    if (!speech) throw new CallError("Text-to-speech is not configured.", 503);
-    const text = calls.agentTurnText(c.req.param("id"), Number(c.req.param("n")));
-    const audio = await speech.synthesize(text, c.req.raw.signal);
-    return new Response(audio.stream, { headers: { "Content-Type": audio.contentType, "Cache-Control": "no-store" } });
+    return withCallAccess(c, c.req.param("id"), async () => {
+      const speech = calls.speech;
+      if (!speech) throw new CallError("Text-to-speech is not configured.", 503);
+      const text = calls.agentTurnText(c.req.param("id"), Number(c.req.param("n")));
+      const audio = await speech.synthesize(text, c.req.raw.signal);
+      return new Response(audio.stream, { headers: { "Content-Type": audio.contentType, "Cache-Control": "no-store" } });
+    });
   });
 
   r.onError((err, c) => {

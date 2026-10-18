@@ -1,16 +1,29 @@
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { canViewLocation, latestReading, participantFreshness } from '../../domain/location';
 import type { Participant } from '../../domain/types';
 import type { LiveFix } from '../api';
 import { useApp } from '../context';
 import { fmtTime } from '../format';
 import { useLive } from '../hooks/useServerSession';
+import { fitPlot, spreadOverlaps, toPlotPx, type PlotView } from '../mapFit';
 import { useDemoVenue } from '../venue';
 import { initials } from './Controls';
 import { GoogleMap, googleMapsConfigured, type MapPin } from './GoogleMap';
 
-const RANGE_M = 60;
 const M_PER_DEG = 111_320;
+/** Room kept clear at the top of the plot for the map chip. */
+const PAD_TOP_PX = 64;
+/** Avatar diameter plus a small gap: pins closer than this get nudged apart. */
+const PIN_GAP_PX = 40;
+
+/** The synthetic venue, in metres east/north of the entrance. Drawn to scale so it zooms with the group. */
+const BLOCKS = [
+  { x0: -60, y0: 16, x1: -19, y1: 57 },
+  { x0: 19, y0: 14, x1: 60, y1: 60 },
+  { x0: -57, y0: -57, x1: -11, y1: -11 },
+  { x0: 16, y0: -57, x1: 57, y1: -11 },
+];
+const STREET_HALF_M = 3.5;
 
 export interface GroupPoint {
   participantId: string;
@@ -122,30 +135,72 @@ export function GroupMap({ points, anchor, alerting }: { points: GroupPoint[]; a
     );
   }
 
-  // Metres from the anchor to a percentage of the plot, kept off the edges.
-  const pos = (m: number) => Math.max(6, Math.min(94, 50 + (m / RANGE_M) * 44));
+  return <SyntheticPlot points={points} alerting={alerting} described={described} />;
+}
+
+/** Size of an element, kept current as the layout changes. */
+function useSize<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const read = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return { ref, ...size };
+}
+
+/**
+ * The synthetic venue plot. Auto-fits like the Google map: centred on the
+ * middle of the group and zoomed so everyone fills the plot. Avatars that
+ * would still overlap are nudged apart; their positions are unchanged.
+ */
+function SyntheticPlot({ points, alerting, described }: { points: GroupPoint[]; alerting: Set<string>; described: string }) {
+  const { ref, w, h } = useSize<HTMLDivElement>();
+  const view: PlotView = useMemo(() => fitPlot(points, w, h, { padTop: PAD_TOP_PX }), [points, w, h]);
+  const px = (x: number, y: number) => toPlotPx({ x, y }, view);
+  const placed = useMemo(() => {
+    const at = points.map((pt) => toPlotPx(pt, view));
+    const off = spreadOverlaps(at, PIN_GAP_PX);
+    return at.map((p, i) => ({ x: p.x + off[i].x, y: p.y + off[i].y }));
+  }, [points, view]);
+  const rect = (x0: number, y0: number, x1: number, y1: number) => {
+    const a = px(x0, y1);
+    const b = px(x1, y0);
+    return { left: a.x, top: a.y, width: b.x - a.x, height: b.y - a.y };
+  };
+  const far = 5_000;
+  const entrance = px(0, 0);
+
   return (
-    <div className="map" role="img" aria-label={`Synthetic venue map. ${described || 'No shared locations yet.'}`}>
-      <div className="map-block" style={{ left: '6%', top: '8%', width: '30%', height: '30%' }} />
-      <div className="map-block" style={{ left: '64%', top: '6%', width: '30%', height: '34%' }} />
-      <div className="map-block" style={{ left: '8%', top: '58%', width: '34%', height: '34%' }} />
-      <div className="map-block" style={{ left: '62%', top: '58%', width: '30%', height: '34%' }} />
-      <div className="map-street" style={{ left: 0, right: 0, top: 'calc(50% - 5px)', height: 10 }} />
-      <div className="map-street" style={{ top: 0, bottom: 0, left: 'calc(50% - 5px)', width: 10 }} />
-      <div className="map-entrance" style={{ left: '50%', top: '50%' }} />
-      {points.map((pt) => {
-        const hot = alerting.has(pt.participantId);
-        return (
-          <span
-            key={pt.participantId}
-            className={`av mark num ${hot ? 'on-accent' : pt.live ? 'fill' : 'stale'}${pt.source === 'simulated' ? ' sim' : ''}`}
-            style={{ left: `${pos(pt.x)}%`, top: `${100 - pos(pt.y)}%` }}
-            aria-hidden="true"
-          >
-            {pt.isYou ? 'You' : initials(pt.name)}
-          </span>
-        );
-      })}
+    <div ref={ref} className="map" role="img" aria-label={`Synthetic venue map. ${described || 'No shared locations yet.'}`}>
+      {w > 0 && (
+        <>
+          {BLOCKS.map((b, i) => (
+            <div key={i} className="map-block" style={rect(b.x0, b.y0, b.x1, b.y1)} />
+          ))}
+          <div className="map-street" style={rect(-far, -STREET_HALF_M, far, STREET_HALF_M)} />
+          <div className="map-street" style={rect(-STREET_HALF_M, -far, STREET_HALF_M, far)} />
+          <div className="map-entrance" style={{ left: entrance.x, top: entrance.y }} />
+          {points.map((pt, i) => {
+            const hot = alerting.has(pt.participantId);
+            return (
+              <span
+                key={pt.participantId}
+                className={`av mark num ${hot ? 'on-danger' : pt.live ? 'fill' : 'stale'}${pt.source === 'simulated' ? ' sim' : ''}`}
+                style={{ left: placed[i].x, top: placed[i].y }}
+                aria-hidden="true"
+              >
+                {pt.isYou ? 'You' : initials(pt.name)}
+              </span>
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }

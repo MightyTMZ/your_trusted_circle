@@ -4,6 +4,7 @@ import type { Transport } from "./alerts/transport.js";
 import type { ProviderRegistry } from "./auth/providers.js";
 import type { ServerConfig } from "./config.js";
 import type { LocationRelay } from "./lifecycle/relay.js";
+import type { SessionTimelines } from "./timeline/record.js";
 import type { Store } from "./store/store.js";
 import type { UserDoc } from "./types.js";
 import type { DemoRegistry } from "./demo/live-demo.js";
@@ -21,6 +22,8 @@ export interface Deps {
   transport: Transport;
   /** Live group positions, memory only. Never persisted (lifecycle/relay.ts). */
   relay: LocationRelay;
+  /** The server's hash-chained record of each session (timeline/record.ts). */
+  timeline: SessionTimelines;
   now: () => Date;
   /** Simulated voice-agent calls (voice/). Absent: /api/calls is not mounted. */
   calls?: CallService;

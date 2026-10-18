@@ -32,7 +32,8 @@ export interface ServerIncidentInput {
   openedAt: string;
   status: 'open' | 'acknowledged' | 'resolved';
   acknowledged: { by: string; at: string } | null;
-  resolved: { by: string; at: string; outcome: ResolutionOutcome } | null;
+  /** `bySubject`: the person the alert is about cancelled it themselves. */
+  resolved: { by: string; at: string; outcome: ResolutionOutcome; bySubject?: boolean } | null;
   steps: { level: EscalationStep['level']; recipients: string[]; notifiedAt: string | null; dueAt: string | null }[];
   log: { at: string; kind: string; text: string; simulated?: boolean }[];
 }
@@ -121,10 +122,12 @@ export function incidentFromServer(state: AppState, view: ServerIncidentInput, a
     steps,
     currentStep,
     lastUnackedNotificationAt: view.status === 'open' && currentStep >= 0 ? steps[currentStep].notifiedAt : undefined,
-    escalationStoppedAt: ackAt,
+    escalationStoppedAt: ackAt ?? (view.resolved?.bySubject ? ms(view.resolved.at) : undefined),
     acknowledged: view.acknowledged ? { recipientId: responderId(view.acknowledged.by), name: view.acknowledged.by, at: ackAt! } : undefined,
     resolution: view.resolved
-      ? { recipientId: responderId(view.resolved.by), name: view.resolved.by, at: ms(view.resolved.at)!, outcome: view.resolved.outcome, note: '' }
+      ? view.resolved.bySubject
+        ? { by: 'participant', name: view.resolved.by, at: ms(view.resolved.at)!, outcome: view.resolved.outcome, note: '' }
+        : { by: 'recipient', recipientId: responderId(view.resolved.by), name: view.resolved.by, at: ms(view.resolved.at)!, outcome: view.resolved.outcome, note: '' }
       : undefined,
     timeline,
     server: alertId ? { alertId } : {},

@@ -15,7 +15,7 @@ async function group() {
   const code = (await maya.call("GET", `/api/sessions/${s.id}`)).body.session.code as string;
   const joinAs = async (name: string, locationSharing: string, shareLocationWithResponders = false) => {
     const c = await signIn(env.app, name);
-    const res = await c.call("POST", "/api/sessions/join", { code, consent: { monitoring: true, locationSharing, shareLocationWithResponders } });
+    const res = await c.call("POST", "/api/sessions/join", { code, consent: { monitoring: true, locationSharing, shareLocationWithResponders }, consentTextVersion: "consent-v1" });
     assert.equal(res.status, 201);
     return c;
   };
@@ -107,7 +107,7 @@ test("turning sharing off, leaving, and ending the session clear positions at on
   await send(sam);
   await send(jo);
 
-  await sam.call("PATCH", `/api/sessions/${sessionId}/me/consent`, { monitoring: true, locationSharing: "off", shareLocationWithResponders: false });
+  await sam.call("PATCH", `/api/sessions/${sessionId}/me/consent`, { monitoring: true, locationSharing: "off", shareLocationWithResponders: false, consentTextVersion: "consent-v1" });
   assert.ok(!(await seen(maya)).some((x) => x.startsWith("Sam")));
 
   await jo.call("POST", `/api/sessions/${sessionId}/leave`);

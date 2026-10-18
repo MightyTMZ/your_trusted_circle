@@ -50,9 +50,7 @@ export function SignInScreen() {
       <div className="narrow">
         <ScreenHeader title="Sign in" onBack={() => { setPendingJoinCode(null); go({ name: 'home' }); }} />
         <div className="stack rise" style={{ gap: 8 }}>
-          <div className="logo fill" role="img" aria-label="YTC" style={{ width: 56, height: 56, fontSize: 12, marginBottom: 16 }}>
-            YTC
-          </div>
+          <div className="logo" role="img" aria-label="YTC" style={{ width: 56, height: 56, marginBottom: 16 }} />
           <h2 className="t-display">Sign in or create an account</h2>
           <p className="t-lead">
             {pendingJoinCode

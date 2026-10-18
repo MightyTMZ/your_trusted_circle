@@ -1,4 +1,5 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
+import { spreadOverlaps, worldPx, zoomForSpan } from '../mapFit';
 
 /* Minimal typing for the parts of the Maps JavaScript API used here. */
 declare global {
@@ -24,6 +25,18 @@ const API_KEY = import.meta.env.GOOGLE_MAPS_API_KEY?.trim() ?? '';
 const MAP_ID = import.meta.env.GOOGLE_MAPS_MAP_ID?.trim() || 'DEMO_MAP_ID';
 
 export const googleMapsConfigured = API_KEY.length > 0;
+
+const M_PER_DEG = 111_320;
+/** Closest zoom we use when the imagery limit at the venue is unknown. */
+const DEFAULT_MAX_ZOOM = 20;
+/** Never closer than this, even where imagery goes deeper: GPS is only good to a few metres. */
+const HARD_MAX_ZOOM = 21;
+/** A lone person or an empty map shows about this many metres across, whatever the map's size. */
+const SINGLE_SPAN_M = 60;
+/** Starting zoom before the map has been measured. */
+const SINGLE_ZOOM = 19;
+/** Avatar diameter plus a small gap: pins closer than this on screen get nudged apart. */
+const PIN_GAP_PX = 40;
 
 let loading: Promise<void> | null = null;
 let authFailed = false;
@@ -61,7 +74,7 @@ function pinElement(pin: MapPin): HTMLElement {
 }
 
 function updatePinElement(el: HTMLElement, pin: MapPin) {
-  const tone = pin.tone === 'alert' ? 'on-accent' : pin.tone === 'live' ? 'fill' : 'stale';
+  const tone = pin.tone === 'alert' ? 'on-danger' : pin.tone === 'live' ? 'fill' : 'stale';
   el.className = `av pin num ${tone}${pin.simulated ? ' sim' : ''}`;
   el.textContent = pin.label;
 }
@@ -97,9 +110,58 @@ function GoogleMapInner({ pins, center, onFail }: { pins: MapPin[]; center: { la
   const map = useRef<any>(null);
   const markers = useRef(new Map<string, any>());
   const fitted = useRef('');
+  /** The imagery's deepest zoom at the venue, from Google's MaxZoomService. */
+  const maxZoom = useRef(DEFAULT_MAX_ZOOM);
+  /** True once the person pans or zooms; auto-fit then waits until the group changes. */
+  const userMoved = useRef(false);
+  /** True while our own setCenter/setZoom is settling, so it isn't mistaken for the person moving the map. */
+  const fitting = useRef(false);
+  const pinsRef = useRef(pins);
+  pinsRef.current = pins;
   const [ready, setReady] = useState(false);
   const failRef = useRef(onFail);
   failRef.current = onFail;
+
+  /** Nudge avatars that land on top of each other at the current zoom. Positions stay true. */
+  function spreadPins() {
+    const m = map.current;
+    if (!m) return;
+    const z = m.getZoom() ?? SINGLE_ZOOM;
+    const list = pinsRef.current.filter((p) => markers.current.has(p.id));
+    const off = spreadOverlaps(list.map((p) => worldPx(p.lat, p.lng, z)), PIN_GAP_PX);
+    list.forEach((p, i) => {
+      const content = markers.current.get(p.id)?.content as HTMLElement | undefined;
+      if (content) content.style.transform = off[i].x || off[i].y ? `translate(${off[i].x.toFixed(1)}px, ${off[i].y.toFixed(1)}px)` : '';
+    });
+  }
+
+  /** Centre on the middle of the group and zoom so everyone fits, down to the imagery limit. */
+  function fitGroup(list: MapPin[]) {
+    const m = map.current;
+    if (!m || !el.current) return;
+    fitting.current = true;
+    // 'idle' clears it; if the view didn't change, no 'idle' comes, so clear it anyway.
+    window.setTimeout(() => (fitting.current = false), 1_000);
+    const w = el.current.clientWidth;
+    const h = el.current.clientHeight;
+    if (list.length === 0) {
+      m.setCenter(center);
+      m.setZoom(zoomForSpan(SINGLE_SPAN_M, SINGLE_SPAN_M, w, h, center.lat, maxZoom.current));
+      return;
+    }
+    const lats = list.map((p) => p.lat);
+    const lngs = list.map((p) => p.lng);
+    const mid = { lat: (Math.min(...lats) + Math.max(...lats)) / 2, lng: (Math.min(...lngs) + Math.max(...lngs)) / 2 };
+    const spanY = (Math.max(...lats) - Math.min(...lats)) * M_PER_DEG;
+    const spanX = (Math.max(...lngs) - Math.min(...lngs)) * M_PER_DEG * Math.cos((mid.lat * Math.PI) / 180);
+    // The zoom follows the map's real size: a small map zooms out further for the same group.
+    const zoom =
+      list.length === 1
+        ? zoomForSpan(SINGLE_SPAN_M, SINGLE_SPAN_M, w, h, mid.lat, maxZoom.current)
+        : zoomForSpan(spanX, spanY, w, h, mid.lat, maxZoom.current);
+    m.setCenter(mid);
+    m.setZoom(zoom);
+  }
 
   useEffect(() => {
     let alive = true;
@@ -127,6 +189,20 @@ function GoogleMapInner({ pins, center, onFail }: { pins: MapPin[]; center: { la
           // The attribution, Terms and error-report links are required by Google and stay.
           keyboardShortcuts: false,
         });
+        const m = map.current;
+        m.addListener('dragstart', () => (userMoved.current = true));
+        m.addListener('zoom_changed', () => {
+          if (!fitting.current) userMoved.current = true;
+          spreadPins();
+        });
+        m.addListener('idle', () => (fitting.current = false));
+        try {
+          new g.maps.MaxZoomService().getMaxZoomAtLatLng(center, (r: { status: string; zoom: number }) => {
+            if (r?.status === 'OK' && r.zoom) maxZoom.current = Math.min(r.zoom, HARD_MAX_ZOOM);
+          });
+        } catch {
+          // Unknown: keep the default.
+        }
         setReady(true);
       })
       .catch(fail);
@@ -139,6 +215,37 @@ function GoogleMapInner({ pins, center, onFail }: { pins: MapPin[]; center: { la
     };
     // The map is created once; later centre changes come through fitting below.
   }, []);
+
+  // The resize observer outlives renders; give it the latest fit, not the first one.
+  const fitRef = useRef(fitGroup);
+  fitRef.current = fitGroup;
+  const spreadRef = useRef(spreadPins);
+  spreadRef.current = spreadPins;
+
+  // Re-fit when the map changes size (window resize, rotation, fullscreen), unless the person moved it.
+  useEffect(() => {
+    const node = el.current;
+    if (!ready || !node) return;
+    let last = { w: node.clientWidth, h: node.clientHeight };
+    let timer = 0;
+    const ro = new ResizeObserver(() => {
+      const w = node.clientWidth;
+      const h = node.clientHeight;
+      // Ignore sub-pixel jitter; wait for a resize drag to settle.
+      if (Math.abs(w - last.w) < 8 && Math.abs(h - last.h) < 8) return;
+      last = { w, h };
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (!userMoved.current) fitRef.current(pinsRef.current);
+        spreadRef.current();
+      }, 150);
+    });
+    ro.observe(node);
+    return () => {
+      ro.disconnect();
+      window.clearTimeout(timer);
+    };
+  }, [ready]);
 
   // Add, move and remove markers in place so the map doesn't flicker on every poll.
   useEffect(() => {
@@ -169,22 +276,18 @@ function GoogleMapInner({ pins, center, onFail }: { pins: MapPin[]; center: { la
         );
       }
     }
-    // Re-frame only when who is on the map or the venue changes, not on every position update.
+    // Re-frame when who is on the map or the venue changes. Between those, only
+    // when someone walks out of view, and never after the person has moved the map.
     const key = `${pins.map((p) => p.id).sort().join(',')}@${center.lat},${center.lng}`;
-    if (key === fitted.current) return;
-    fitted.current = key;
-    if (pins.length === 0) {
-      m.setCenter(center);
-      m.setZoom(19);
-    } else if (pins.length === 1) {
-      m.setCenter({ lat: pins[0].lat, lng: pins[0].lng });
-      m.setZoom(19);
-    } else {
-      const b = new g.maps.LatLngBounds();
-      pins.forEach((p) => b.extend({ lat: p.lat, lng: p.lng }));
-      m.fitBounds(b, 48);
-      g.maps.event.addListenerOnce(m, 'idle', () => m.getZoom() > 19 && m.setZoom(19));
+    if (key !== fitted.current) {
+      fitted.current = key;
+      userMoved.current = false;
+      fitGroup(pins);
+    } else if (!userMoved.current) {
+      const bounds = m.getBounds();
+      if (bounds && pins.some((p) => !bounds.contains({ lat: p.lat, lng: p.lng }))) fitGroup(pins);
     }
+    spreadPins();
   }, [pins, ready, center]);
 
   return <div ref={el} className="map map-google" />;

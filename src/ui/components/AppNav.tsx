@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { activeIncidentFor } from '../../domain/incident';
 import { COPY } from '../copy';
 import { useApp } from '../context';
-import { AlertAboutYou } from './AlertAboutYou';
 import { HelpSheet } from './HelpSheet';
 import { Icon, type IconName } from './Icon';
 import { SessionStatus } from './SessionStatus';
@@ -128,7 +127,6 @@ export function AppNav({ variant }: { variant: 'rail' | 'bottom' }) {
             </nav>
           </div>
         </div>
-        {!canAskForHelp && <AlertAboutYou />}
         {sheet}
       </>
     );

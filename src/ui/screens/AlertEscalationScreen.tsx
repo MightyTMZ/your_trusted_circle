@@ -13,7 +13,7 @@ import { ArcGauge } from '../components/Gauges';
 import { Icon } from '../components/Icon';
 import { LocationStamp } from '../components/LocationStamp';
 import { SimulatedTag } from '../components/SimulatedTag';
-import { acknowledgeOnServer, resolveOnServer } from '../api';
+import { acknowledgeOnServer, fetchDemo, resolveOnServer } from '../api';
 import { useLive } from '../hooks/useServerSession';
 
 const hm = (t: number) => fmtTime(t).slice(0, 5);
@@ -31,6 +31,7 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
   const [note, setNote] = useState('');
   const [flash, setFlash] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [hasDemoCall, setHasDemoCall] = useState(false);
   const { refreshAlerts } = useLive();
 
   const incident = state.incidents.find((i) => i.id === incidentId);
@@ -39,8 +40,28 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
   const payload = incident ? latestPayloadFor(state, incident.id, recipientId) : undefined;
   const back = () => go({ name: 'home' });
 
-  // Server alerts: when escalation reaches simulated emergency services while this screen is open, follow the call.
-  const calling = !!incident?.server && incident.steps.some((s) => s.level === 'emergency_simulated' && s.notifiedAt !== undefined);
+  const callReached = !!incident?.server && incident.steps.some((s) => s.level === 'emergency_simulated' && s.notifiedAt !== undefined);
+  useEffect(() => {
+    const serverId = state.session?.serverId;
+    if (!serverId || !incident?.server) {
+      setHasDemoCall(false);
+      return;
+    }
+    let alive = true;
+    const poll = async () => {
+      const demo = await fetchDemo(serverId);
+      if (!alive) return;
+      setHasDemoCall(demo !== 'unavailable' && demo?.incidentId === incidentId && demo.call !== null);
+    };
+    void poll();
+    const id = window.setInterval(poll, 1500);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [incident?.server, incidentId, state.session?.serverId]);
+  // follow the call only when the live incident demo placed one
+  const calling = callReached && hasDemoCall;
   const callingBefore = useRef<boolean | null>(null);
   useEffect(() => {
     if (callingBefore.current === false && calling) go({ name: 'call', id: incidentId });
@@ -59,8 +80,13 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
   }
 
   const staleAfter = state.session?.config.locationStaleAfterSec ?? 90;
-  const callReached = incident.steps.some((s) => s.level === 'emergency_simulated' && s.notifiedAt !== undefined);
   const open = incident.status === 'open';
+  const selfCancelled = incident.resolution?.by === 'participant';
+  // What the original alert said; the cancellation itself is shown below.
+  const alertMessage =
+    state.notifications
+      .filter((n) => n.incidentId === incident.id && n.recipientId === recipientId && n.payload.kind !== 'cancelled')
+      .sort((x, y) => y.deliveredAt - x.deliveredAt)[0]?.payload.message ?? payload.message;
   const deadline = nextDeadline(incident);
   const lastNotified = incident.steps[incident.currentStep]?.notifiedAt ?? incident.openedAt;
   const title =
@@ -82,10 +108,14 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
         progress: 1,
         label: 'Escalation',
         value: 'Stopped',
-        sub: incident.acknowledged ? `Acknowledged ${fmtTime(incident.acknowledged.at)}` : '',
+        sub: selfCancelled
+          ? `Cancelled ${fmtTime(incident.resolution!.at)}`
+          : incident.acknowledged
+            ? `Acknowledged ${fmtTime(incident.acknowledged.at)}`
+            : '',
         start: '',
         end: '',
-        aria: 'Escalation stopped by acknowledgment.',
+        aria: selfCancelled ? `Escalation stopped: ${payload.participantName} cancelled the alert.` : 'Escalation stopped by acknowledgment.',
       };
 
   // Server incidents: the server decides, and its answer replaces this device's copy.
@@ -121,12 +151,20 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
       <ScreenHeader title="Alert" onBack={back} />
       <div className="cols">
         <div className="col">
-          <section className="surface card rise" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <section className={`surface card rise${open ? ' alert-open' : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div className="header">
-              <span className={`av num ${open ? 'on-accent' : 'fill'}`}>{initials(payload.participantName)}</span>
+              <span className={`av num ${open ? 'on-danger' : 'fill'}`}>{initials(payload.participantName)}</span>
               <span className="stack grow">
                 <h2 className="t-card">{title}</h2>
-                <span className="t-sub">{open ? 'Unacknowledged' : incident.status === 'acknowledged' ? 'Acknowledged' : 'Resolved'}</span>
+                <span className="t-sub">
+                  {open
+                    ? 'Unacknowledged'
+                    : incident.status === 'acknowledged'
+                      ? 'Acknowledged'
+                      : selfCancelled
+                        ? COPY.cancelledBySelf(payload.participantName)
+                        : 'Resolved'}
+                </span>
               </span>
             </div>
             <ArcGauge
@@ -140,12 +178,12 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
               ariaLabel={gauge.aria}
               role="timer"
             />
-            <p className="t-sub center">{payload.message}</p>
+            <p className="t-sub center">{alertMessage}</p>
           </section>
 
           {open ? (
             <div className="col rise rise-2">
-              <button type="button" className="btn pbtn on-accent" disabled={busy} onClick={doAcknowledge}>
+              <button type="button" className="btn pbtn on-danger" disabled={busy} onClick={doAcknowledge}>
                 <Icon name="check" />
                 {COPY.acknowledge}
               </button>
@@ -171,10 +209,24 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
             </div>
           ) : (
             <section className="surface card col rise rise-2" style={{ gap: 16 }}>
-              <p className="t-body num" role="status">
-                {COPY.acknowledgedNotice(incident.acknowledged!.name, fmtTime(incident.acknowledged!.at))}
-              </p>
-              {incident.status === 'resolved' ? (
+              {incident.acknowledged && (
+                <p className="t-body num" role="status">
+                  {COPY.acknowledgedNotice(incident.acknowledged.name, fmtTime(incident.acknowledged.at))}
+                </p>
+              )}
+              {selfCancelled ? (
+                <div className="header" role="status">
+                  <span className="av fill">
+                    <Icon name="circleCheck" />
+                  </span>
+                  <span className="stack grow">
+                    <span className="t-body num">
+                      {payload.participantName} cancelled this alert from their own device at {fmtTime(incident.resolution!.at)}: false alarm.
+                    </span>
+                    <span className="t-sub">{COPY.cancelledBySelfCaveat}</span>
+                  </span>
+                </div>
+              ) : incident.status === 'resolved' ? (
                 <div className="header">
                   <span className="av fill">
                     <Icon name="circleCheck" />
@@ -219,7 +271,7 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
               </div>
             </section>
           )}
-          {callReached && (
+          {callReached && hasDemoCall && (
             <button type="button" className="btn pbtn fill" onClick={() => go({ name: 'call', id: incident.id })}>
               Simulated emergency call <SimulatedTag />
             </button>

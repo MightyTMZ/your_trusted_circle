@@ -55,16 +55,23 @@ function ServerCallScreen({ incident }: { incident: Incident }) {
   const [callId, setCallId] = useState<string | null>(null);
   const [call, setCall] = useState<CallView | null>(null);
   const [checked, setChecked] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Which call belongs to this alert. Only the live demo places one; the host can see it.
   useEffect(() => {
     if (!serverId) return;
     let alive = true;
     const poll = async () => {
-      const demo = await fetchDemo(serverId);
-      if (!alive) return;
-      setChecked(true);
-      if (demo && demo !== 'unavailable' && demo.incidentId === incident.id && demo.call) setCallId(demo.call.id);
+      try {
+        const demo = await fetchDemo(serverId);
+        if (!alive) return;
+        setChecked(true);
+        setError(demo === 'unavailable' ? 'The server did not return the live demo state.' : null);
+        if (demo && demo !== 'unavailable' && demo.incidentId === incident.id && demo.call) setCallId(demo.call.id);
+        else setCallId(null);
+      } catch {
+        if (alive) setError('Could not check for the simulated call.');
+      }
     };
     poll();
     const id = setInterval(poll, CALL_POLL_MS);
@@ -77,7 +84,15 @@ function ServerCallScreen({ incident }: { incident: Incident }) {
   useEffect(() => {
     if (!callId) return;
     let alive = true;
-    const poll = () => callApi.state(callId).then((r) => alive && setCall(r.call), () => {});
+    const poll = () =>
+      callApi.state(callId).then(
+        (r) => {
+          if (!alive) return;
+          setError(null);
+          setCall(r.call);
+        },
+        () => alive && setError('Could not read the simulated call state.'),
+      );
     poll();
     const id = setInterval(poll, CALL_POLL_MS);
     return () => {
@@ -114,6 +129,11 @@ function ServerCallScreen({ incident }: { incident: Incident }) {
               : 'Calls are placed only in the live incident demo.'}{' '}
             {COPY.simulatedCallBanner}
           </p>
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
         </section>
 
         {call && call.transcript.length > 0 && (
@@ -233,7 +253,7 @@ function LocalCallScreen({ incidentId }: { incidentId: string }) {
               <Icon name="alert" />
               Agent failure
             </button>
-            <button type="button" className="btn qtile fill" disabled={live} onClick={() => store.dispatch((d, t) => reconnectCall(d, incidentId, t))}>
+            <button type="button" className="btn qtile fill" disabled={live || incident.status === 'resolved'} onClick={() => store.dispatch((d, t) => reconnectCall(d, incidentId, t))}>
               <Icon name="rotate" />
               Reconnect
             </button>

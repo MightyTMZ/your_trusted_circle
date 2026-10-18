@@ -30,6 +30,7 @@ export function MySharingScreen() {
       locationSharing: next.locationSharing,
       shareLocationWithResponders: next.shareLocationWithResponders,
       shareNoteWithResponders: next.shareNoteWithResponders,
+      consentTextVersion: 'consent-v1',
     }).then((ok) => setSyncError(!ok));
   };
   // Location always reaches at least the host; that is what lets the host respond.

@@ -7,7 +7,6 @@ import type { ProviderId, SessionRules } from "./types.js";
 
 export interface ProviderCredentials {
   google?: { clientId: string; clientSecret: string };
-  github?: { clientId: string; clientSecret: string };
   apple?: { clientId: string; teamId: string; keyId: string; privateKeyPem: string };
   microsoft?: { clientId: string; clientSecret: string; tenant: string };
 }
@@ -25,8 +24,9 @@ export interface ServerConfig {
   authSessionTtlMs: number;
   providers: ProviderCredentials;
   defaultRules: SessionRules;
-  /** Session lengths a host may pick, in minutes. */
-  allowedDurationsMin: readonly number[];
+  /** Shortest and longest session a host may start, in minutes. Mirrors src/domain/config.ts. */
+  minDurationMin: number;
+  maxDurationMin: number;
   /** Alert delivery: attempts before giving up, and the wait before each retry. */
   alertMaxAttempts: number;
   alertRetryDelaysMs: readonly number[];
@@ -34,6 +34,18 @@ export interface ServerConfig {
   alertLeaseMs: number;
   /** Traces and finished sessions older than this are deleted. */
   retentionDays: number;
+  /** Run retention inside the API. Turn off once the Python pruning pipeline (pipelines/) runs. */
+  retentionInApi: boolean;
+  /** Voice-agent service (box 4). Both unset: the emergency step is recorded as simulated only. */
+  voiceAgentUrl: string | null;
+  /** Shared secret the voice-agent service uses for /api/service/*. */
+  voiceAgentToken: string | null;
+  /** Vercel Cron sends this as a bearer token to /api/internal/tick. */
+  cronSecret: string | null;
+  /** Serverless hosts: run a scheduler pass (at most once a second) before handling requests. */
+  tickOnRequest: boolean;
+  /** Read the client IP from X-Forwarded-For (only behind a proxy you control, e.g. Vercel). */
+  trustProxy: boolean;
   /**
    * Password-free test sign-in for trying the app with several made-up people
    * on one computer. Only ever on for a localhost app origin outside production.
@@ -83,9 +95,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const google = pick(env, "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET");
   if (google) providers.google = { clientId: google[0]!, clientSecret: google[1]! };
 
-  const github = pick(env, "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET");
-  if (github) providers.github = { clientId: github[0]!, clientSecret: github[1]! };
-
   const apple = pick(env, "APPLE_CLIENT_ID", "APPLE_TEAM_ID", "APPLE_KEY_ID", "APPLE_PRIVATE_KEY");
   if (apple) {
     providers.apple = {
@@ -119,11 +128,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     authSessionTtlMs: 30 * 24 * 60 * 60 * 1000,
     providers,
     defaultRules: DEFAULT_RULES,
-    allowedDurationsMin: [120, 240, 360],
+    minDurationMin: 30,
+    maxDurationMin: 24 * 60,
     alertMaxAttempts: 5,
     alertRetryDelaysMs: [5_000, 15_000, 45_000, 120_000],
     alertLeaseMs: 30_000,
     retentionDays: Number(env.RETENTION_DAYS ?? 30) || 30,
+    retentionInApi: env.RETENTION_IN_API !== "false",
+    voiceAgentUrl: env.VOICE_AGENT_URL?.trim().replace(/\/$/, "") || null,
+    voiceAgentToken: env.VOICE_AGENT_TOKEN?.trim() || null,
+    cronSecret: env.CRON_SECRET?.trim() || null,
+    tickOnRequest: env.TICK_ON_REQUEST === "true",
+    trustProxy: env.TRUST_PROXY === "true",
   };
 }
 

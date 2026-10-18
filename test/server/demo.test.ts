@@ -14,6 +14,7 @@ import { runSchedulerPass } from "../../src/server/safety/scheduler.js";
 import { MemoryStore } from "../../src/server/store/memory.js";
 import { CallService } from "../../src/server/voice/calls.js";
 import { defaultTransport } from "../../src/server/alerts/transport.js";
+import { SessionTimelines } from "../../src/server/timeline/record.js";
 import { Timeline } from "../../src/timeline/timeline.js";
 import { APP_ORIGIN, Client, T0, hostSession, signIn } from "./helpers.js";
 
@@ -22,8 +23,10 @@ const CONSENT = { monitoring: true, locationSharing: "group", shareLocationWithR
 async function demoGroup(samConsent: Record<string, unknown> = { ...CONSENT, shareNoteWithResponders: true }) {
   let nowMs = T0;
   const calls = new CallService({ wallClock: () => nowMs });
+  const store = new MemoryStore();
+  const now = () => new Date(nowMs);
   const deps: Deps = {
-    store: new MemoryStore(),
+    store,
     config: loadConfig({ APP_ORIGIN, DEMO_INCIDENTS: "true" } as NodeJS.ProcessEnv),
     providers: {
       google: {
@@ -35,7 +38,8 @@ async function demoGroup(samConsent: Record<string, unknown> = { ...CONSENT, sha
     },
     transport: defaultTransport,
     relay: new LocationRelay(),
-    now: () => new Date(nowMs),
+    timeline: new SessionTimelines(store, now),
+    now,
     calls,
   };
   const demos = new DemoRegistry(calls);
@@ -48,6 +52,7 @@ async function demoGroup(samConsent: Record<string, unknown> = { ...CONSENT, sha
   const joined = await sam.call("POST", "/api/sessions/join", {
     code,
     consent: samConsent,
+    consentTextVersion: "consent-v1",
     backupContacts: [{ name: "Priya", relation: "Sister" }],
     responderNote: "Synthetic demo note: carries an inhaler.",
   });
@@ -171,12 +176,61 @@ test("demo: without their consent the call does not name them or read their note
   assert.doesNotMatch(answered.reply.text, /Sam|inhaler/);
 });
 
+test("demo: current consent controls later call disclosure", async () => {
+  const { maya, sam, session, samId, calls, until } = await demoGroup();
+  assert.equal((await maya.call("POST", `/api/sessions/${session.id}/demo`, { participantId: samId })).status, 201);
+  assert.equal(
+    (
+      await sam.call("PATCH", `/api/sessions/${session.id}/me/consent`, {
+        monitoring: true,
+        locationSharing: "group",
+        shareLocationWithResponders: false,
+        shareNoteWithResponders: false,
+        consentTextVersion: "consent-v1",
+      })
+    ).status,
+    200,
+  );
+  await until(async () => (await demoOf(maya, session.id)).phase === "calling", 200);
+  const ring = calls.incoming()[0]!;
+  assert.equal(ring.about, "a participant who did not share their name");
+  const answered = calls.answer(ring.call_id);
+  assert.doesNotMatch(answered.reply.text, /Sam|inhaler|Toronto City Hall/);
+});
+
+test("demo: suspension suppresses new input and stopping restores the session rules", async () => {
+  const { maya, sam, session, samId, second } = await demoGroup();
+  const before = (await maya.call("GET", `/api/sessions/${session.id}`)).body.session.rules;
+  assert.equal((await maya.call("POST", `/api/sessions/${session.id}/demo`, { participantId: samId })).status, 201);
+  assert.equal((await maya.call("POST", `/api/sessions/${session.id}/suspend`)).status, 200);
+  for (let i = 0; i < 15; i++) await second();
+  const pending = (await sam.call("GET", `/api/sessions/${session.id}/timeline`)).body.checkIns.filter((c: any) => c.status === "pending");
+  assert.equal(pending.length, 0);
+  assert.equal((await maya.call("DELETE", `/api/sessions/${session.id}/demo`)).status, 200);
+  const after = (await maya.call("GET", `/api/sessions/${session.id}`)).body.session.rules;
+  assert.deepEqual(after, before);
+});
+
+test("demo: live call routes require a session member and practice calls stay isolated", async () => {
+  const { app, maya, session, samId, calls, until } = await demoGroup();
+  assert.equal((await maya.call("POST", `/api/sessions/${session.id}/demo`, { participantId: samId })).status, 201);
+  await until(async () => (await demoOf(maya, session.id)).phase === "calling", 200);
+  const live = calls.incoming()[0]!;
+  const stranger = await signIn(app, "alex");
+  assert.equal((await stranger.call("GET", "/api/calls/incoming")).status, 200);
+  assert.deepEqual((await stranger.call("GET", "/api/calls/incoming")).body.calls, []);
+  assert.equal((await stranger.call("GET", `/api/calls/${live.call_id}`)).status, 403);
+  assert.equal((await maya.call("GET", "/api/calls/incoming")).body.calls.length, 1);
+  for (let i = 0; i < 8; i++) calls.start();
+  assert.equal(calls.access(live.call_id)?.kind, "live");
+});
+
 
 test("story: the demo person's movements as sentences, shown only to those they share location with", async () => {
   const { app, maya, sam, session, samId, until } = await demoGroup({ ...CONSENT, locationSharing: "host", shareNoteWithResponders: true });
   const code = (await maya.call("GET", `/api/sessions/${session.id}`)).body.session.code as string;
   const alex = await signIn(app, "alex");
-  assert.equal((await alex.call("POST", "/api/sessions/join", { code, consent: CONSENT })).status, 201);
+  assert.equal((await alex.call("POST", "/api/sessions/join", { code, consent: CONSENT, consentTextVersion: "consent-v1" })).status, 201);
   assert.equal((await maya.call("POST", `/api/sessions/${session.id}/demo`, { participantId: samId })).status, 201);
 
   const story = async (c: Client) => (await c.call("GET", `/api/sessions/${session.id}/story`)).body as { items: { kind: string; text: string }[]; noMovementRecord: string[] };

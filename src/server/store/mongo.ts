@@ -4,11 +4,13 @@
  * state in the update filter, so concurrent workers cannot both win.
  */
 import { MongoClient, MongoServerError, type Collection, type Db } from "mongodb";
+import type { TimelineEvent } from "../../timeline/schema/catalog.js";
 import type { DeletionCounts, ParticipantPatch, Store } from "./store.js";
 import type {
   AuthSessionDoc,
   CheckInDoc,
   CheckInStatus,
+  ContactInviteDoc,
   IncidentDoc,
   IncidentLogEntry,
   NotificationJobDoc,
@@ -31,6 +33,9 @@ export class MongoStore implements Store {
     private readonly incidents: Collection<IncidentDoc>,
     private readonly jobs: Collection<NotificationJobDoc>,
     private readonly traces: Collection<TraceDoc>,
+    private readonly rawRecordings: Collection<TraceDoc>,
+    private readonly timeline: Collection<TimelineEvent>,
+    private readonly invites: Collection<ContactInviteDoc>,
   ) {}
 
   static async connect(uri: string, dbName: string): Promise<MongoStore> {
@@ -47,6 +52,9 @@ export class MongoStore implements Store {
       db.collection("incidents"),
       db.collection("notification_jobs"),
       db.collection("traces"),
+      db.collection("raw_recordings"),
+      db.collection("timeline_events"),
+      db.collection("contact_invites"),
     );
     await store.ensureIndexes();
     return store;
@@ -91,7 +99,7 @@ export class MongoStore implements Store {
       this.checkIns.createIndex({ sessionId: 1, participantId: 1 }),
       // At most one active incident per person per session.
       this.incidents.createIndex({ activeKey: 1 }, { unique: true, partialFilterExpression: { activeKey: { $type: "string" } } }),
-      this.incidents.createIndex({ status: 1 }, { name: "ix_status" }), 
+      this.incidents.createIndex({ status: 1 }, { name: "ix_status" }),
       this.incidents.createIndex({ sessionId: 1 }),
       // Never two jobs for the same recipient and step.
       this.jobs.createIndex({ dedupeKey: 1 }, { unique: true }),
@@ -102,6 +110,16 @@ export class MongoStore implements Store {
       this.traces.createIndex({ subjectParticipantId: 1 }),
       this.traces.createIndex({ sessionId: 1, receivedAt: 1 }),
       this.traces.createIndex({ receivedAt: 1 }),
+      // A resent event or item is stored once.
+      this.traces.createIndex({ sessionId: 1, eventId: 1 }, { unique: true, partialFilterExpression: { eventId: { $type: "string" } } }),
+      this.traces.createIndex({ userId: 1, clientItemId: 1 }, { unique: true, partialFilterExpression: { clientItemId: { $type: "string" } } }),
+      this.rawRecordings.createIndex({ userId: 1, receivedAt: 1 }),
+      this.rawRecordings.createIndex({ receivedAt: 1 }),
+      this.rawRecordings.createIndex({ userId: 1, clientItemId: 1 }, { unique: true, partialFilterExpression: { clientItemId: { $type: "string" } } }),
+      // One event per position in each session's hash chain.
+      this.timeline.createIndex({ session_id: 1, seq: 1 }, { unique: true }),
+      this.timeline.createIndex({ event_id: 1 }, { unique: true }),
+      this.invites.createIndex({ sessionId: 1 }),
     ]);
   }
 
@@ -186,6 +204,51 @@ export class MongoStore implements Store {
     return r.modifiedCount === 1;
   }
 
+  async setSessionSuspended(sessionId: string, at: Date | null) {
+    await this.sessions.updateOne({ _id: sessionId }, { $set: { suspendedAt: at } });
+  }
+  async linkBackupContact(sessionId: string, participantId: string, contactId: string, userId: string) {
+    const r = await this.sessions.updateOne(
+      { _id: sessionId },
+      { $set: { "participants.$[p].backupContacts.$[c].userId": userId } },
+      { arrayFilters: [{ "p.participantId": participantId }, { "c.id": contactId, "c.userId": null }] },
+    );
+    return r.modifiedCount === 1;
+  }
+
+  // contact invites
+  async insertContactInvite(invite: ContactInviteDoc) {
+    await this.invites.insertOne(invite);
+  }
+  getContactInvite(hash: string) {
+    return this.invites.findOne({ _id: hash });
+  }
+  async acceptContactInvite(hash: string, userId: string) {
+    const r = await this.invites.updateOne({ _id: hash, acceptedByUserId: null }, { $set: { acceptedByUserId: userId } });
+    return r.modifiedCount === 1;
+  }
+
+  // Server timeline. Mongo's own _id is never read back: the timeline validator rejects unknown fields.
+  async insertTimelineEvent(event: TimelineEvent) {
+    try {
+      await this.timeline.insertOne({ ...event });
+      return true;
+    } catch (err) {
+      if (isDuplicateKey(err)) return false;
+      throw err;
+    }
+  }
+  listTimelineEvents(sessionId: string) {
+    return this.timeline.find({ session_id: sessionId }, { projection: { _id: 0 } }).sort({ seq: 1 }).toArray() as Promise<TimelineEvent[]>;
+  }
+  countTimelineEvents(sessionId: string) {
+    return this.timeline.countDocuments({ session_id: sessionId });
+  }
+  async replaceTimeline(sessionId: string, events: TimelineEvent[]) {
+    await this.timeline.deleteMany({ session_id: sessionId });
+    if (events.length > 0) await this.timeline.insertMany(events.map((e) => ({ ...e })), { ordered: true });
+  }
+
   // check-ins
   async insertCheckIn(c: CheckInDoc) {
     await this.checkIns.insertOne(c);
@@ -232,6 +295,14 @@ export class MongoStore implements Store {
   listIncidentsForSession(sessionId: string) {
     return this.incidents.find({ sessionId }).sort({ openedAt: 1 }).toArray();
   }
+  async updateIncident(id: string, patch: Partial<IncidentDoc>) {
+    await this.incidents.updateOne({ _id: id }, { $set: patch });
+  }
+  async claimRepeat(id: string, index: number, expectedRepeats: number) {
+    const field = `steps.${index}.repeats`;
+    const r = await this.incidents.updateOne({ _id: id, [field]: expectedRepeats } as never, { $inc: { [field]: 1 } } as never);
+    return r.modifiedCount === 1;
+  }
   async claimStep(id: string, index: number, at: Date, nextDueAt: Date | null) {
     const set: Record<string, unknown> = { [`steps.${index}.notifiedAt`]: at, currentStep: index };
     set[`steps.${index + 1}.dueAt`] = nextDueAt;
@@ -255,6 +326,15 @@ export class MongoStore implements Store {
       { $set: { status: "resolved", resolved: res, activeKey: null } },
     );
     return r.modifiedCount === 1;
+  }
+  async cancelIncidentBySubject(id: string, res: NonNullable<IncidentDoc["resolved"]>) {
+    const r = await this.incidents.updateOne(
+      { _id: id, status: { $in: ["open", "acknowledged"] } },
+      { $set: { status: "resolved", resolved: res, activeKey: null } },
+    );
+    if (r.modifiedCount !== 1) return false;
+    await this.incidents.updateOne({ _id: id }, { $set: { "steps.$[pending].dueAt": null } }, { arrayFilters: [{ "pending.notifiedAt": null }] });
+    return true;
   }
   async appendIncidentLog(id: string, entry: IncidentLogEntry) {
     await this.incidents.updateOne({ _id: id }, { $push: { log: entry } });
@@ -291,6 +371,10 @@ export class MongoStore implements Store {
   async updateJob(id: string, patch: Partial<NotificationJobDoc>, result?: NotificationJobDoc["results"][number]) {
     await this.jobs.updateOne({ _id: id }, { $set: patch, ...(result ? { $push: { results: result } } : {}) });
   }
+  async markJobViewed(id: string, at: Date) {
+    const r = await this.jobs.updateOne({ _id: id, viewedAt: null }, { $set: { viewedAt: at } });
+    return r.modifiedCount === 1;
+  }
   listJobsForUser(userId: string) {
     return this.jobs.find({ "recipient.kind": "user", "recipient.userId": userId }).sort({ createdAt: -1 }).toArray();
   }
@@ -305,6 +389,27 @@ export class MongoStore implements Store {
   async insertTraces(traces: TraceDoc[]) {
     if (traces.length > 0) await this.traces.insertMany(traces, { ordered: true });
   }
+  private async insertIfAbsent(col: Collection<TraceDoc>, doc: TraceDoc) {
+    try {
+      await col.insertOne(doc);
+      return true;
+    } catch (err) {
+      if (isDuplicateKey(err)) return false;
+      throw err;
+    }
+  }
+  insertTraceIfAbsent(doc: TraceDoc) {
+    return this.insertIfAbsent(this.traces, doc);
+  }
+  async setTraceTimelineEvent(traceId: string, timelineEventId: string) {
+    await this.traces.updateOne({ _id: traceId }, { $set: { timelineEventId } });
+  }
+  insertRawRecordingIfAbsent(doc: TraceDoc) {
+    return this.insertIfAbsent(this.rawRecordings, doc);
+  }
+  listRawRecordingsForUser(userId: string) {
+    return this.rawRecordings.find({ userId }).sort({ receivedAt: 1 }).toArray();
+  }
   listTracesForUser(userId: string, participantIds: string[]) {
     return this.traces.find({ $or: [{ userId }, { subjectParticipantId: { $in: participantIds } }] }).sort({ receivedAt: 1 }).toArray();
   }
@@ -318,11 +423,14 @@ export class MongoStore implements Store {
       this.checkIns.deleteMany({ sessionId: { $in: sessionIds } }),
       this.incidents.deleteMany({ sessionId: { $in: sessionIds } }),
       this.jobs.deleteMany({ sessionId: { $in: sessionIds } }),
+      this.invites.deleteMany({ sessionId: { $in: sessionIds } }),
+      this.timeline.deleteMany({ session_id: { $in: sessionIds } }),
     ]);
     return (await this.sessions.deleteMany({ _id: { $in: sessionIds } })).deletedCount;
   }
   async pruneBefore(cutoff: Date) {
     const traces = await this.traces.deleteMany({ receivedAt: { $lt: cutoff } });
+    const raw = await this.rawRecordings.deleteMany({ receivedAt: { $lt: cutoff } });
     const busy = await this.incidents.distinct("sessionId", { activeKey: { $type: "string" } });
     const old = await this.sessions
       .find({
@@ -332,7 +440,7 @@ export class MongoStore implements Store {
       .project<{ _id: string }>({ _id: 1 })
       .toArray();
     const sessions = await this.dropSessionData(old.map((s) => s._id));
-    return { traces: traces.deletedCount, sessions };
+    return { traces: traces.deletedCount, rawRecordings: raw.deletedCount, sessions };
   }
 
   /** Data first, the user last, so a failure part-way can simply be retried. */
@@ -341,7 +449,14 @@ export class MongoStore implements Store {
     const participantIds = mine.flatMap((s) => s.participants.filter((p) => p.userId === userId).map((p) => p.participantId));
     const hosted = mine.filter((s) => s.hostUserId === userId).map((s) => s._id);
 
-    const traces = await this.traces.deleteMany({ $or: [{ userId }, { subjectParticipantId: { $in: participantIds } }] });
+    const traces = await this.traces.deleteMany({
+      $or: [{ userId }, { subjectParticipantId: { $in: participantIds } }, { sessionId: { $in: hosted } }],
+    });
+    const raw = await this.rawRecordings.deleteMany({ $or: [{ userId }, { subjectParticipantId: { $in: participantIds } }] });
+    await this.invites.deleteMany({
+      $or: [{ acceptedByUserId: userId }, { participantId: { $in: participantIds } }, { sessionId: { $in: hosted } }],
+    });
+    await this.timeline.deleteMany({ session_id: { $in: hosted } });
     const checkIns = await this.checkIns.deleteMany({ $or: [{ participantId: { $in: participantIds } }, { sessionId: { $in: hosted } }] });
     const incidents = await this.incidents.deleteMany({ $or: [{ participantId: { $in: participantIds } }, { sessionId: { $in: hosted } }] });
     const jobs = await this.jobs.deleteMany({
@@ -349,6 +464,12 @@ export class MongoStore implements Store {
     });
     const deletedSessions = await this.sessions.deleteMany({ _id: { $in: hosted } });
     const left = await this.sessions.updateMany({ "participants.userId": userId }, { $pull: { participants: { userId } } });
+    // Stop being anyone's linked backup contact.
+    await this.sessions.updateMany(
+      { "participants.backupContacts.userId": userId },
+      { $set: { "participants.$[].backupContacts.$[c].userId": null } },
+      { arrayFilters: [{ "c.userId": userId }] },
+    );
     const auth = await this.authSessions.deleteMany({ userId });
     await this.users.deleteOne({ _id: userId });
     return {
@@ -359,6 +480,7 @@ export class MongoStore implements Store {
       checkIns: checkIns.deletedCount,
       incidents: incidents.deletedCount,
       notifications: jobs.deletedCount,
+      rawRecordings: raw.deletedCount,
     };
   }
 }

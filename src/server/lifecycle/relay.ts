@@ -23,6 +23,7 @@ import { activeParticipant, isHost, isLive } from "../auth/authz.js";
 import { requireAuth } from "../auth/session.js";
 import { fail, type AppEnv, type Deps } from "../context.js";
 import { newId } from "../ids.js";
+import { recorder } from "../timeline/recorder.js";
 import type { ParticipantDoc, SessionDoc } from "../types.js";
 import { mayStoreLocation } from "./location.js";
 
@@ -131,6 +132,10 @@ export function relayRoutes(deps: Deps) {
     if (!session || !me) return fail(c, 404, "no_session", "You are not in this session.");
     const now = deps.now();
     if (!isLive(session, now)) return fail(c, 409, "session_over", "This session has ended.");
+    if (session.suspendedAt) {
+      deps.relay.clearParticipant(session._id, me.participantId);
+      return c.json({ relayed: false, stored: false, reason: "session_suspended" }, 202);
+    }
 
     const body = await c.req.json().catch(() => undefined);
     const issues = validate(fixSchema, body);
@@ -161,27 +166,29 @@ export function relayRoutes(deps: Deps) {
     // Only during an active incident does a position reach the database.
     let stored = false;
     if (incident && mayStoreLocation(me, true)) {
-      await deps.store.insertTraces([
-        {
-          _id: newId("trc"),
-          userId: me.userId,
-          sessionId: session._id,
-          participantId: me.participantId,
-          subjectParticipantId: me.participantId,
-          kind: "sensor",
-          type: "location.fix",
-          occurredAt: fixAt,
-          receivedAt: now,
-          data: {
-            latitude: input.latitude,
-            longitude: input.longitude,
-            accuracyM: input.accuracyM,
-            simulated: input.simulated === true,
-            incidentId: incident._id,
-          },
-          locationRedacted: false,
-        },
-      ]);
+      const trace = {
+        _id: newId("trc"),
+        userId: me.userId,
+        sessionId: session._id,
+        participantId: me.participantId,
+        subjectParticipantId: me.participantId,
+        kind: "sensor" as const,
+        type: "location.fix",
+        occurredAt: fixAt,
+        receivedAt: now,
+        data: { latitude: input.latitude, longitude: input.longitude, accuracyM: input.accuracyM, simulated: input.simulated === true, incidentId: incident._id },
+        locationRedacted: false,
+        eventId: null,
+        clientItemId: null,
+        dataOrigin: input.simulated === true ? "synthetic_scenario" as const : "live_device" as const,
+        dataClass: "derived" as const,
+        units: "degrees, metres",
+        timelineEventId: null,
+      };
+      await deps.store.insertTraces([trace]);
+      // On the timeline too, so the briefing and Incident Card have the last known position.
+      const event = await recorder(deps).location(session, me, { latitude: input.latitude, longitude: input.longitude, accuracyM: input.accuracyM, fixAt }, trace.dataOrigin);
+      if (event) await deps.store.setTraceTimelineEvent(trace._id, event.event_id);
       stored = true;
     }
     return c.json({ relayed: true, stored }, 202);

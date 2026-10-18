@@ -34,7 +34,9 @@ export function AlertAboutYou() {
   const firstContact = useFirstContact();
   const incident = me ? activeIncidentFor(state, me.id) : undefined;
   // Grounded in the record: the server (or this device) logged the update.
-  const said = incident?.timeline.filter((e) => e.source === 'participant' && e.kind === 'checkin').at(-1);
+  const said = incident?.timeline
+    .filter((e) => e.source === 'participant' && e.kind === 'checkin' && (/responded ["']I'm OK["']/i.test(e.text) || /says they are OK/i.test(e.text)))
+    .at(-1);
   const [open, setOpen] = useState(() => !!incident && !said && !shrunk.has(incident.id));
   const close = () => {
     if (incident && !said) shrunk.add(incident.id);

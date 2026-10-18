@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { AppProvider, store, useApp } from './ui/context';
+import { AlertOverlay } from './ui/components/AlertOverlay';
 import { AppNav, useNavItems } from './ui/components/AppNav';
 import { SettingsScreen } from './ui/screens/SettingsScreen';
 import { SignInScreen } from './ui/screens/SignInScreen';
@@ -15,6 +16,7 @@ import { RecipientInboxScreen } from './ui/screens/RecipientInboxScreen';
 import { SessionHomeScreen } from './ui/screens/SessionHomeScreen';
 import { SessionInviteScreen } from './ui/screens/SessionInviteScreen';
 import { SimulatedEmergencyCallScreen } from './ui/screens/SimulatedEmergencyCallScreen';
+import { LandingScreen } from './ui/screens/LandingScreen';
 import { StartScreen } from './ui/screens/StartScreen';
 import { saveViewer } from './domain/store';
 import type { Route } from './ui/context';
@@ -22,6 +24,8 @@ import type { Route } from './ui/context';
 function readInitialRoute(): Route {
   // A failed sign-in redirects back with #login_error=…; the sign-in screen reads it.
   if (window.location.hash.includes('login_error=')) return { name: 'signin' };
+  // Preview of the landing page, until it replaces the start screen.
+  if (window.location.hash === '#landing') return { name: 'landing' };
   const m = window.location.hash.match(/join=([A-Za-z0-9]{6})/);
   if (!m) return { name: 'home' };
   // A join link always starts a fresh identity in this tab.
@@ -39,6 +43,7 @@ function CurrentScreen() {
   if (route.name === 'host-setup') return <HostSetupScreen />;
   if (route.name === 'join' && !me) return <JoinSessionScreen code={route.code} />;
   if (route.name === 'signin') return <SignInScreen />;
+  if (route.name === 'landing' && !me) return <LandingScreen />;
 
   if (meRecipient) {
     if (route.name === 'alert') return <AlertEscalationScreen incidentId={route.id} />;
@@ -100,6 +105,7 @@ function Shell() {
         <CurrentScreen />
       </main>
       <AppNav variant="bottom" />
+      <AlertOverlay />
     </div>
   );
 }

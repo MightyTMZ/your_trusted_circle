@@ -3,12 +3,15 @@ import { fakeClock } from '../src/domain/clock';
 import { tick } from '../src/domain/escalation';
 import { acknowledge, nextDeadline, repeatAlert, resolve } from '../src/domain/incident';
 import { canViewLocation, participantFreshness } from '../src/domain/location';
+import { buildIncidentCard, SELF_CANCEL_DISCLAIMER } from '../src/domain/incidentCard';
 import {
+  cancelOwnAlert,
   createSession,
   emptyState,
   endSession,
   ingestMotion,
   joinSession,
+  requestHelp,
   respondToCheckIn,
   setDeviceOnline,
   updateConsent,
@@ -16,7 +19,7 @@ import {
 } from '../src/domain/session';
 import { latestPayloadFor } from '../src/domain/transport';
 import type { AppState, MotionSample } from '../src/domain/types';
-import { answer, operatorSays } from '../src/domain/voiceAgent';
+import { answer, operatorSays, reconnectCall } from '../src/domain/voiceAgent';
 
 const input = (name: string, over: Partial<ParticipantInput> = {}): ParticipantInput => ({
   displayName: name,
@@ -60,6 +63,17 @@ describe('session and consent', () => {
     expect(() =>
       createSession(emptyState(), { sessionName: 'x', durationMin: 60, hostCommitment: false, host: input('A') }, 0),
     ).toThrow();
+  });
+
+  it('accepts any whole number of minutes from 30 minutes to 24 hours, and sets the end time from it', () => {
+    const start = (durationMin: number) =>
+      createSession(emptyState(), { sessionName: 'x', durationMin, hostCommitment: true, host: input('A') }, 1_000_000);
+    expect(start(90).session.expiresAt).toBe(1_000_000 + 90 * 60_000);
+    expect(start(30).session.config.durationMin).toBe(30);
+    expect(start(24 * 60).session.config.durationMin).toBe(1440);
+    for (const bad of [0, 29, 24 * 60 + 1, 90.5, Number.NaN, -60]) {
+      expect(() => start(bad), `${bad}`).toThrow(/between 30 minutes and 24 hours/);
+    }
   });
 
   it('the host cannot change another participant’s sharing', () => {
@@ -195,5 +209,121 @@ describe('recipients and voice agent use only delivered information', () => {
     const before = inc.timeline.filter((e) => e.kind === 'voice').length;
     operatorSays(ctx.s, inc.id, 'What happened?', ctx.clock.now());
     expect(inc.timeline.filter((e) => e.kind === 'voice').length).toBe(before + 2);
+  });
+});
+
+describe('the wearer cancels their own false alarm', () => {
+  const cancellations = (s: AppState, incidentId: string) =>
+    s.notifications.filter((n) => n.incidentId === incidentId && n.payload.kind === 'cancelled');
+
+  it('stops escalation and tells only the people already alerted', () => {
+    const ctx = setup();
+    const inc = triggerMissedCheckIn(ctx);
+    ctx.clock.advance(5_000);
+    cancelOwnAlert(ctx.s, ctx.sam.id, ctx.clock.now());
+
+    expect(inc.status).toBe('resolved');
+    expect(inc.resolution).toMatchObject({ by: 'participant', name: 'Sam', outcome: 'false_alarm' });
+    expect(inc.escalationStoppedAt).toBe(ctx.clock.now());
+    expect(nextDeadline(inc)).toBeUndefined();
+
+    // Nothing more fires, however long we wait.
+    ctx.clock.advance(60 * 60_000);
+    tick(ctx.s, ctx.clock.now());
+    expect(inc.steps.slice(1).every((st) => st.notifiedAt === undefined)).toBe(true);
+
+    // The host, the only one alerted, is told once. Backups never hear about it.
+    const told = cancellations(ctx.s, inc.id);
+    expect(told.map((n) => n.recipientId)).toEqual([`rcp_host_${ctx.host.id}`]);
+    expect(told[0].payload.message).toMatch(/Sam cancelled this alert from their own device/);
+    expect(told[0].payload.message).toMatch(/their own report/);
+    expect(ctx.s.notifications.some((n) => n.recipientId.startsWith('rcp_bk_'))).toBe(false);
+
+    const entry = inc.timeline.find((e) => e.kind === 'resolution')!;
+    expect(entry.source).toBe('participant');
+    expect(entry.text).toMatch(/no one has checked on them in person/);
+  });
+
+  it('works after the host acknowledged, and keeps the acknowledgment on record', () => {
+    const ctx = setup();
+    const inc = triggerMissedCheckIn(ctx);
+    acknowledge(ctx.s, inc.id, `rcp_host_${ctx.host.id}`, ctx.clock.now());
+    ctx.clock.advance(30_000);
+    cancelOwnAlert(ctx.s, ctx.sam.id, ctx.clock.now());
+    expect(inc.status).toBe('resolved');
+    expect(inc.acknowledged?.name).toBe('Ava');
+    expect(inc.resolution?.by).toBe('participant');
+  });
+
+  it('after the simulated emergency step, the agent relays the cancellation, grounded, then ends the call', () => {
+    const ctx = setup();
+    const inc = triggerMissedCheckIn(ctx);
+    ctx.clock.advance(10 * 60_000);
+    tick(ctx.s, ctx.clock.now());
+    expect(ctx.s.voiceCalls[inc.id].status).toBe('connected');
+    const before = latestPayloadFor(ctx.s, inc.id, 'rcp_emergency_simulated')!;
+
+    cancelOwnAlert(ctx.s, ctx.sam.id, ctx.clock.now());
+
+    // Everyone alerted (host, backup, simulated emergency services) is told exactly once.
+    const told = cancellations(ctx.s, inc.id).map((n) => n.recipientId).sort();
+    const alerted = [...new Set(ctx.s.notifications.filter((n) => n.payload.kind !== 'cancelled').map((n) => n.recipientId))].sort();
+    expect(told).toEqual(alerted);
+    expect(told).toContain('rcp_emergency_simulated');
+
+    // The cancellation carries no facts the recipient did not already have.
+    const after = latestPayloadFor(ctx.s, inc.id, 'rcp_emergency_simulated')!;
+    expect({ ...after, kind: undefined, message: '' }).toEqual({ ...before, kind: undefined, message: '' });
+
+    const call = ctx.s.voiceCalls[inc.id];
+    expect(call.status).toBe('ended');
+    const last = call.utterances.at(-1)!;
+    const entry = inc.timeline.find((e) => e.kind === 'resolution')!;
+    expect(last.speaker).toBe('agent');
+    expect(last.grounds).toEqual([entry.id]);
+    expect(last.text).toMatch(/cancelled the alert from their own device/);
+    expect(last.text).toMatch(/no one has checked on them in person/);
+
+    // The operator can no longer talk to an ended call, and it cannot be reconnected.
+    const n = call.utterances.length;
+    operatorSays(ctx.s, inc.id, 'Hello?', ctx.clock.now());
+    expect(call.utterances).toHaveLength(n);
+    reconnectCall(ctx.s, inc.id, ctx.clock.now());
+    expect(ctx.s.voiceCalls[inc.id].status).toBe('ended');
+  });
+
+  it('only the person the alert is about can cancel it, and only once', () => {
+    const ctx = setup();
+    const inc = triggerMissedCheckIn(ctx);
+    expect(() => cancelOwnAlert(ctx.s, ctx.host.id, ctx.clock.now())).toThrow(/no open alert about you/);
+    expect(inc.status).toBe('open');
+    cancelOwnAlert(ctx.s, ctx.sam.id, ctx.clock.now());
+    expect(() => cancelOwnAlert(ctx.s, ctx.sam.id, ctx.clock.now())).toThrow(/no open alert about you/);
+    expect(cancellations(ctx.s, inc.id)).toHaveLength(1);
+  });
+
+  it('asking for help again after cancelling opens a fresh alert that escalates normally', () => {
+    const ctx = setup();
+    const first = triggerMissedCheckIn(ctx);
+    cancelOwnAlert(ctx.s, ctx.sam.id, ctx.clock.now());
+    ctx.clock.advance(60_000);
+    requestHelp(ctx.s, ctx.sam.id, ctx.clock.now());
+    const second = ctx.s.incidents.at(-1)!;
+    expect(second.id).not.toBe(first.id);
+    expect(second.status).toBe('open');
+    expect(second.trigger).toBe('help_requested');
+    ctx.clock.advance(10 * 60_000);
+    tick(ctx.s, ctx.clock.now());
+    expect(second.steps.every((st) => st.notifiedAt !== undefined)).toBe(true);
+  });
+
+  it('the Incident Card shows the cancellation as the person’s own report', () => {
+    const ctx = setup();
+    const inc = triggerMissedCheckIn(ctx);
+    cancelOwnAlert(ctx.s, ctx.sam.id, ctx.clock.now());
+    const card = buildIncidentCard(ctx.s, inc.id, `rcp_host_${ctx.host.id}`)!;
+    expect(card.status).toBe('resolved');
+    expect(card.resolution?.by).toBe('participant');
+    expect(card.disclaimers).toContain(SELF_CANCEL_DISCLAIMER);
   });
 });

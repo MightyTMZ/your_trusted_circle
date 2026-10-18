@@ -123,6 +123,34 @@ describe('server alerts on the host device', () => {
     expect(inc.resolution).toBeUndefined();
   });
 
+  it('shows a cancel by the person themselves as theirs, not as a responder resolving it', () => {
+    const { s, hostId } = hostDevice();
+    applyServerTimeline(s, { incidents: [serverIncident()], checkIns: [], alerts: [alert] }, hostId);
+    applyServerIncident(
+      s,
+      serverIncident({
+        status: 'resolved',
+        resolved: { by: 'Sam', at: iso(40), outcome: 'false_alarm', bySubject: true },
+        steps: serverIncident().steps.map((st) => ({ ...st, dueAt: null })),
+      }),
+      hostId,
+    );
+    const inc = s.incidents[0];
+    expect(inc.status).toBe('resolved');
+    expect(inc.resolution).toEqual({ by: 'participant', name: 'Sam', at: T0 + 40_000, outcome: 'false_alarm', note: '' });
+    expect(inc.acknowledged).toBeUndefined();
+    expect(inc.escalationStoppedAt).toBe(T0 + 40_000);
+    expect(nextDeadline(inc)).toBeUndefined();
+
+    // A responder's resolution still reads as theirs.
+    applyServerIncident(
+      s,
+      serverIncident({ status: 'resolved', acknowledged: { by: 'Maya', at: iso(30) }, resolved: { by: 'Maya', at: iso(50), outcome: 'other' } }),
+      hostId,
+    );
+    expect(s.incidents[0].resolution).toMatchObject({ by: 'recipient', recipientId: HOST_RECIPIENT_PREFIX + hostId });
+  });
+
   it('waits until the subject is known on this device', () => {
     const { s, hostId } = hostDevice();
     const unknown = serverIncident({ participant: { participantId: 'ptc_new', displayName: 'Lee' } });
