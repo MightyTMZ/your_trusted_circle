@@ -770,7 +770,7 @@ textarea.field { height: 100px; padding: 13px 16px; resize: none; line-height: 1
 .mat-rules text { fill: var(--mat-ink); }
 .mat-rules .mat-angle { font-style: italic; }
 .mat-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 0 24px; text-align: center; color: var(--mat-title); font-family: var(--font-mono); pointer-events: none; }
-.mat-title { margin: 0; font-size: clamp(26px, 4.4vw, 64px); font-weight: 400; letter-spacing: 0.16em; line-height: 1.1; text-transform: uppercase; text-wrap: balance; }
+.mat-title { margin: 0; font-size: clamp(26px, 4.4vw, 64px); font-weight: 400; letter-spacing: 0.16em; word-spacing: -0.3em; line-height: 1.1; text-transform: uppercase; text-wrap: balance; }
 .mat-title-line { display: block; text-align: center; padding-left: 0.16em; } /* balances the trailing letter-spacing so each line sits truly centred */
 .mat-sub { margin: 0; font-size: clamp(12px, 1.6vw, 22px); letter-spacing: clamp(0.08em, 0.6vw, 0.28em); text-transform: uppercase; }
 .mat-item { position: absolute; -webkit-tap-highlight-color: transparent; padding: 0; border: 0; background: none; cursor: grab; touch-action: none; transform: translate(-50%, -50%) rotate(var(--mat-rotate)); filter: var(--mat-shadow); transition: transform 200ms var(--ease), filter 200ms var(--ease); }
