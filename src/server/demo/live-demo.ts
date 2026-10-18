@@ -44,6 +44,9 @@ export const DEMO_RULES = { checkInWindowSec: 20, hostAckWindowSec: 30, backupAc
 /** A public place, used when the host has not set a demo venue (matches src/ui/venue.ts). */
 export const FALLBACK_VENUE = { label: "Toronto City Hall", lat: 43.6532, lng: -79.3832 };
 
+const MAX_SYNTHETIC_PARTICIPANTS = 3;
+const SYNTHETIC_USER_PREFIX = "demo_user:";
+const SYNTHETIC_NAMES = ["Demo guest 1 (synthetic)", "Demo guest 2 (synthetic)", "Demo guest 3 (synthetic)"];
 const SCENARIO = "live-demo-v1";
 const WINDOW_MS = 15_000;
 const RATE_HZ = 25;
@@ -82,7 +85,12 @@ export interface DemoView {
   call: { id: string; status: "ringing" | "active" | "ended" } | null;
   timelineEvents: number;
   rules: typeof DEMO_RULES;
+  unskippable: boolean;
   stoppedReason: string | null;
+}
+
+export interface DemoStartOptions {
+  syntheticParticipants?: number;
 }
 
 export class DemoError extends Error {
@@ -108,27 +116,41 @@ export class DemoRegistry {
 
   constructor(private readonly calls: CallService) {}
 
-  async start(deps: Deps, session: SessionDoc, subjectId: string): Promise<LiveDemo> {
+  async start(deps: Deps, session: SessionDoc, subjectId: string, options: DemoStartOptions = {}): Promise<LiveDemo> {
     const current = this.runs.get(session._id);
     if (current && !current.finished) throw new DemoError("demo_running", "A demo is already running in this session. Stop it first.");
     if (current?.finished) await this.restoreRules(deps, current);
-    const subject = session.participants.find((p) => p.participantId === subjectId && p.leftAt === null);
+    const syntheticCount = Math.min(Math.max(options.syntheticParticipants ?? 0, 0), MAX_SYNTHETIC_PARTICIPANTS);
+    const prepared = syntheticCount > 0 ? await this.addSyntheticParticipants(deps, session, syntheticCount) : session;
+    const subject =
+      syntheticCount > 0
+        ? prepared.participants.find((p) => p.userId === `${SYNTHETIC_USER_PREFIX}${prepared._id}:0` && p.leftAt === null)
+        : prepared.participants.find((p) => p.participantId === subjectId && p.leftAt === null);
     if (!subject) throw new DemoError("no_participant", "That person is not in this session.", 404);
-    // Consent is theirs alone (CLAUDE.md): the host cannot turn on monitoring for them.
+    // Synthetic participants are scenario inputs, not people whose consent the host can change.
     if (!subject.consent.monitoring) {
       throw new DemoError("monitoring_off", `${subject.displayName} has movement check-ins turned off. Only they can turn them on.`);
     }
-    if (await deps.store.findActiveIncident(session._id, subject.participantId)) {
+    if (await deps.store.findActiveIncident(prepared._id, subject.participantId)) {
       throw new DemoError("incident_open", `An alert about ${subject.displayName} is already open. Resolve it first.`);
     }
-    if (await deps.store.findPendingCheckIn(session._id, subject.participantId)) {
+    if (await deps.store.findPendingCheckIn(prepared._id, subject.participantId)) {
       throw new DemoError("checkin_pending", `${subject.displayName} already has a check-in waiting. Let it finish first.`);
     }
     // Everyone who shares location appears on the map: phones report a simulated position at the venue.
-    const rules: SessionRules = { ...session.rules, ...DEMO_RULES, demoVenue: session.rules.demoVenue ?? FALLBACK_VENUE };
-    await deps.store.setSessionRules(session._id, rules);
-    const run = new LiveDemo({ ...session, rules }, subject, deps.now().getTime(), this.calls, session.rules, rules);
-    this.runs.set(session._id, run);
+    const rules: SessionRules = { ...prepared.rules, ...DEMO_RULES, demoVenue: prepared.rules.demoVenue ?? FALLBACK_VENUE };
+    await deps.store.setSessionRules(prepared._id, rules);
+    const run = new LiveDemo(
+      { ...prepared, rules },
+      subject,
+      deps.now().getTime(),
+      this.calls,
+      prepared.rules,
+      rules,
+      syntheticCount > 0,
+    );
+    if (syntheticCount > 0) this.seedSyntheticLocations(deps, { ...prepared, rules }, syntheticCount);
+    this.runs.set(prepared._id, run);
     return run;
   }
 
@@ -163,6 +185,59 @@ export class DemoRegistry {
       }
     }
   }
+
+  private async addSyntheticParticipants(deps: Deps, session: SessionDoc, count: number): Promise<SessionDoc> {
+    let prepared = (await deps.store.getSession(session._id)) ?? session;
+    const existing = prepared.participants.filter((p) => p.userId.startsWith(`${SYNTHETIC_USER_PREFIX}${session._id}:`));
+    for (let i = existing.length; i < count; i++) {
+      const now = deps.now();
+      const participant: ParticipantDoc = {
+        participantId: newId("par"),
+        userId: `${SYNTHETIC_USER_PREFIX}${session._id}:${i}`,
+        displayName: SYNTHETIC_NAMES[i]!,
+        role: "participant",
+        joinedAt: now,
+        leftAt: null,
+        consent: {
+          monitoring: true,
+          locationSharing: "group",
+          shareLocationWithResponders: true,
+          shareNoteWithResponders: true,
+        },
+        consentTextVersion: "demo-synthetic-v1",
+        consentUpdatedAt: now,
+        backupContacts: [],
+        responderNote: "Synthetic demo participant.",
+        lastHeartbeatAt: now,
+        deviceOnline: true,
+      };
+      if (!(await deps.store.addParticipant(session._id, participant, prepared.rules.maxParticipants))) {
+        throw new DemoError("session_full", "The session cannot fit the synthetic demo group.");
+      }
+    }
+    prepared = (await deps.store.getSession(session._id)) ?? prepared;
+    return prepared;
+  }
+
+  private seedSyntheticLocations(deps: Deps, session: SessionDoc, count: number): void {
+    const venue = session.rules.demoVenue ?? FALLBACK_VENUE;
+    const now = deps.now();
+    const synthetic = session.participants.filter((p) => p.userId.startsWith(`${SYNTHETIC_USER_PREFIX}${session._id}:`)).slice(0, count);
+    const keepMs = 2 * session.rules.locationStaleAfterSec * 1000;
+    for (const [index, participant] of synthetic.entries()) {
+      const metres = (index - (synthetic.length - 1) / 2) * 18;
+      deps.relay.put(session._id, {
+        participantId: participant.participantId,
+        latitude: venue.lat + metres / 111_320,
+        longitude: venue.lng + metres / (111_320 * Math.cos((venue.lat * Math.PI) / 180)),
+        accuracyM: 12,
+        simulated: true,
+        fixAt: now,
+        receivedAt: now,
+        expiresAt: new Date(now.getTime() + keepMs),
+      });
+    }
+  }
 }
 
 interface Segment {
@@ -182,6 +257,7 @@ export class LiveDemo {
   private readonly venue: { label: string; lat: number; lng: number };
   readonly previousRules: SessionRules;
   readonly appliedRules: SessionRules;
+  readonly unskippable: boolean;
   private readonly rand = seeded(29);
   private readonly pipeline: SensorPipeline;
   private readonly rawLines: string[] = [];
@@ -216,6 +292,7 @@ export class LiveDemo {
     private readonly calls: CallService,
     previousRules: SessionRules,
     appliedRules: SessionRules,
+    unskippable = false,
   ) {
     this.sessionId = session._id;
     this.subject = subject;
@@ -223,6 +300,7 @@ export class LiveDemo {
     this.startedAt = startedAt;
     this.previousRules = previousRules;
     this.appliedRules = appliedRules;
+    this.unskippable = unskippable;
     this.impactAt = Math.ceil((startedAt + LEAD_MS + 2_000) / WINDOW_MS) * WINDOW_MS - 2_000;
     this.historyStart = Math.floor((startedAt - HISTORY_MS) / WINDOW_MS) * WINDOW_MS;
     this.venue = session.rules.demoVenue ?? FALLBACK_VENUE;
@@ -270,6 +348,7 @@ export class LiveDemo {
       call: this.call,
       timelineEvents: this.timeline.length,
       rules: DEMO_RULES,
+      unskippable: this.unskippable,
       stoppedReason: this.stoppedReason,
     };
   }
@@ -423,6 +502,10 @@ export class LiveDemo {
       this.join(host, "host", "host_created", ["monitoring"]);
     }
     this.join(sub.participantId, sub.role === "host" ? "host" : "member", sub.role === "host" ? "host_created" : "qr_code", this.scopes(sub));
+    for (const participant of session.participants) {
+      if (participant.leftAt !== null || participant.participantId === host || participant.participantId === sub.participantId) continue;
+      this.join(participant.participantId, "member", "qr_code", this.scopes(participant));
+    }
     if (sub.consent.shareNoteWithResponders) {
       this.timeline.append({
         type: "profile.shared",

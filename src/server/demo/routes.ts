@@ -3,7 +3,7 @@
  * when config.demoIncidents is on. Simulation only: the call it leads to is
  * the in-process mock operator.
  *
- * POST   /api/sessions/:id/demo   { participantId }  start: synthetic history, then an impact ~5 s later
+ * POST   /api/sessions/:id/demo   { participantId, syntheticParticipants? }  start: synthetic history, then an impact ~5 s later
  * GET    /api/sessions/:id/demo                      where the demo is (404 when none has run)
  * DELETE /api/sessions/:id/demo                      stop feeding input; open alerts stay open
  */
@@ -14,7 +14,10 @@ import { requireAuth } from "../auth/session.js";
 import { fail, type AppEnv, type Deps } from "../context.js";
 import { DemoError, type DemoRegistry } from "./live-demo.js";
 
-const startSchema = v.object({ participantId: v.id("par") });
+const startSchema = v.object({
+  participantId: v.id("par"),
+  syntheticParticipants: v.optional(v.number({ min: 0, max: 3, integer: true })),
+});
 
 export function demoRoutes(deps: Deps, demos: DemoRegistry) {
   const r = new Hono<AppEnv>();
@@ -37,7 +40,8 @@ export function demoRoutes(deps: Deps, demos: DemoRegistry) {
     const issues = validate(startSchema, body);
     if (issues.length > 0) return fail(c, 400, "invalid_request", "Pick who the demo is about.", issues);
     try {
-      const run = await demos.start(deps, session, (body as Infer<typeof startSchema>).participantId);
+      const input = body as Infer<typeof startSchema>;
+      const run = await demos.start(deps, session, input.participantId, { syntheticParticipants: input.syntheticParticipants });
       return c.json({ demo: run.view() }, 201);
     } catch (err) {
       if (err instanceof DemoError) return fail(c, err.status, err.code, err.message);

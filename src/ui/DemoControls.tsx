@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { suddenChange, typicalMovement } from '../domain/scenarios';
-import { createSession, emptyState, ingestMotion, setDeviceOnline, type ParticipantInput } from '../domain/session';
+import { createSession, emptyState, ingestMotion, setDeviceOnline, syncServerParticipants, type ParticipantInput } from '../domain/session';
 import { useApp, useNow } from './context';
 import { fmtTime } from './format';
 import { Icon } from './components/Icon';
 import { joinUrl } from './screens/SessionInviteScreen';
-import { createSessionOnServer, endSessionOnServer, fetchDemo, setSessionVenueOnServer, startDemo, stopDemo, type DemoView } from './api';
+import { createSessionOnServer, endSessionOnServer, fetchDemo, fetchServerSession, setSessionVenueOnServer, startDemo, stopDemo, type DemoView } from './api';
 import { applySessionVenue, resolveVenue, setLocalVenue, useDemoVenue, type Venue } from './venue';
 
 const POS_KEY = 'ytc.demoFab';
@@ -206,7 +206,7 @@ function DemoPanel({ style }: { style: CSSProperties }) {
       return;
     }
 
-    const started = await startDemo(serverResult.session.id, serverParticipantId);
+    const started = await startDemo(serverResult.session.id, serverParticipantId, { syntheticParticipants: 3 });
     if (!started.ok) {
       operatorTab?.close();
       setOperatorBusy(false);
@@ -238,6 +238,8 @@ function DemoPanel({ style }: { style: CSSProperties }) {
       return;
     }
 
+    const serverView = await fetchServerSession(serverResult.session.id);
+    if (serverView) store.dispatch((d, currentNow) => syncServerParticipants(d, serverView, currentNow));
     setViewer({ kind: 'participant', id: hostId });
     if (operatorTab) {
       operatorTab.location.href = `${window.location.origin}${window.location.pathname}#operator`;
@@ -492,9 +494,11 @@ function IncidentDemo() {
                 {demo.phase === 'calling' ? 'Answer as the operator' : 'Open the operator console'}
               </button>
             )}
-            <button className="btn chip fill" onClick={() => serverId && stopDemo(serverId).then(() => fetchDemo(serverId).then(setDemo))}>
-              Stop demo
-            </button>
+            {!demo.unskippable && (
+              <button className="btn chip fill" onClick={() => serverId && stopDemo(serverId).then(() => fetchDemo(serverId).then(setDemo))}>
+                Stop demo
+              </button>
+            )}
           </div>
         </>
       ) : (

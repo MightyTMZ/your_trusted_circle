@@ -467,6 +467,7 @@ export interface DemoView {
   call: { id: string; status: 'ringing' | 'active' | 'ended' } | null;
   timelineEvents: number;
   rules: { checkInWindowSec: number; hostAckWindowSec: number; backupAckWindowSec: number };
+  unskippable: boolean;
   stoppedReason: string | null;
 }
 
@@ -481,8 +482,12 @@ export async function fetchDemo(serverId: string): Promise<DemoView | null | 'un
   }
 }
 
-export function startDemo(serverId: string, participantId: string): Promise<Result<{ demo: DemoView }>> {
-  return postResult(`/sessions/${encodeURIComponent(serverId)}/demo`, { participantId });
+export function startDemo(
+  serverId: string,
+  participantId: string,
+  options?: { syntheticParticipants?: number },
+): Promise<Result<{ demo: DemoView }>> {
+  return postResult(`/sessions/${encodeURIComponent(serverId)}/demo`, { participantId, ...options });
 }
 
 export async function stopDemo(serverId: string): Promise<boolean> {
