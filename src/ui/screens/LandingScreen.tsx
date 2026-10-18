@@ -53,8 +53,8 @@ export function LandingScreen() {
         </div>
 
         <CuttingMat items={MAT_ITEMS} label={COPY.appTagline}>
-          <h1 className="mat-title">{COPY.appTagline}</h1>
-          <p className="mat-sub">A buddy system for nights out</p>
+          <h1 className="mat-title">YTC: {COPY.appTagline}</h1>
+          <p className="mat-sub">Hack the Valley XI</p>
         </CuttingMat>
 
         <div className="cols" style={{ gap: 32 }}>
