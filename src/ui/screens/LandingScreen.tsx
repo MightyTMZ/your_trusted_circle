@@ -13,7 +13,8 @@ const STEPS = [
 ];
 
 // Pictures on the hero mat. Swap `src` for your own photos (drop them in public/mat/); positions are fractions of the mat.
-const MAT_ITEMS: MatItem[] = [{ id: 'white-card', src: '/mat/white-card.svg', alt: 'White card', x: 0.15, y: 0.25, width: 0.16, minWidth: 96, rotate: -6 }];
+// e.g. { id: 'patch', src: '/mat/patch.png', alt: 'Toronto patch', x: 0.15, y: 0.25, width: 0.16, rotate: -6 }
+const MAT_ITEMS: MatItem[] = [];
 
 /** First screen for a visitor: what YTC is, how it works in three lines, and one big way to start. Account and settings sit where they do everywhere else. */
 export function LandingScreen() {
