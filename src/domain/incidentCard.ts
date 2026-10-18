@@ -24,6 +24,9 @@ export const CARD_DISCLAIMERS = [
   'Detection thresholds and escalation intervals are unvalidated demo values.',
 ];
 
+export const SELF_CANCEL_DISCLAIMER =
+  'The person cancelled this alert from their own device. That is their own report; no one has checked on them in person.';
+
 /**
  * Builds the card for one recipient from the incident timeline and only the
  * personal fields that were actually delivered to that recipient.
@@ -45,6 +48,7 @@ export function buildIncidentCard(state: AppState, incidentId: string, recipient
     emergencyNote: payload?.emergencyNote,
     acknowledged: incident.acknowledged,
     resolution: incident.resolution,
-    disclaimers: CARD_DISCLAIMERS,
+    disclaimers:
+      incident.resolution?.by === 'participant' ? [...CARD_DISCLAIMERS, SELF_CANCEL_DISCLAIMER] : CARD_DISCLAIMERS,
   };
 }

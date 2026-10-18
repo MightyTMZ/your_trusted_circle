@@ -24,8 +24,9 @@ export interface ServerConfig {
   authSessionTtlMs: number;
   providers: ProviderCredentials;
   defaultRules: SessionRules;
-  /** Session lengths a host may pick, in minutes. */
-  allowedDurationsMin: readonly number[];
+  /** Shortest and longest session a host may start, in minutes. Mirrors src/domain/config.ts. */
+  minDurationMin: number;
+  maxDurationMin: number;
   /** Alert delivery: attempts before giving up, and the wait before each retry. */
   alertMaxAttempts: number;
   alertRetryDelaysMs: readonly number[];
@@ -45,6 +46,22 @@ export interface ServerConfig {
   tickOnRequest: boolean;
   /** Read the client IP from X-Forwarded-For (only behind a proxy you control, e.g. Vercel). */
   trustProxy: boolean;
+  /**
+   * Password-free test sign-in for trying the app with several made-up people
+   * on one computer. Only ever on for a localhost app origin outside production.
+   */
+  testSignIn: boolean;
+}
+
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** True for http(s)://localhost, 127.0.0.1 or [::1] on any port. */
+export function isLocalUrl(url: string): boolean {
+  try {
+    return LOCAL_HOSTS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
 }
 
 /** Mirrors src/domain/config.ts. All values are unvalidated demo defaults. */
@@ -99,10 +116,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     appOrigin,
     apiOrigin,
     secureCookies: env.COOKIE_SECURE ? env.COOKIE_SECURE === "true" : appOrigin.startsWith("https://"),
+    testSignIn: env.TEST_SIGN_IN === "true" && env.NODE_ENV !== "production" && isLocalUrl(appOrigin) && isLocalUrl(apiOrigin),
     authSessionTtlMs: 30 * 24 * 60 * 60 * 1000,
     providers,
     defaultRules: DEFAULT_RULES,
-    allowedDurationsMin: [120, 240, 360],
+    minDurationMin: 30,
+    maxDurationMin: 24 * 60,
     alertMaxAttempts: 5,
     alertRetryDelaysMs: [5_000, 15_000, 45_000, 120_000],
     alertLeaseMs: 30_000,

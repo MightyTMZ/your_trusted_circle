@@ -66,6 +66,14 @@ export interface Participant {
   locations: LocationReading[];
   baseline: MotionBaseline;
   motion: MotionState;
+  /** The server's participant id, when the session is on the server. */
+  serverId?: string;
+  /**
+   * Joined from another device. Known only from the server's session view:
+   * no simulated readings or check-ins run for them here, and their location
+   * comes only from the server's live relay.
+   */
+  remote?: boolean;
 }
 
 export interface SessionConfig {
@@ -100,6 +108,8 @@ export interface Session {
   endedReason?: 'host_ended' | 'expired';
   hostCommitmentAcceptedAt: Millis;
   config: SessionConfig;
+  /** The server's id for this session, when it was created or joined through the API. */
+  serverId?: string;
 }
 
 export interface Observation {
@@ -114,7 +124,8 @@ export interface Observation {
   unit: 'm/s²';
 }
 
-export type CheckInStatus = 'pending' | 'responded_ok' | 'requested_help' | 'missed';
+/** `cancelled`: closed by the server without an answer (session ended, you left, or an alert was already open). */
+export type CheckInStatus = 'pending' | 'responded_ok' | 'requested_help' | 'missed' | 'cancelled';
 
 export interface CheckIn {
   id: string;
@@ -124,6 +135,11 @@ export interface CheckIn {
   dueAt: Millis;
   status: CheckInStatus;
   respondedAt?: Millis;
+  /**
+   * Server-backed sessions only. The server owns the check-in deadline, so this
+   * device never opens an incident for it; `id` is null when the server refused it.
+   */
+  server?: { id: string | null; refused?: string; responseSent?: boolean };
 }
 
 export type TimelineKind =
@@ -186,8 +202,25 @@ export interface Incident {
   lastUnackedNotificationAt?: Millis;
   escalationStoppedAt?: Millis;
   acknowledged?: { recipientId: string; name: string; at: Millis };
-  resolution?: { recipientId: string; name: string; at: Millis; outcome: ResolutionOutcome; note: string };
+  /**
+   * `by: 'participant'` means the person the alert is about cancelled it from
+   * their own device. That is their own report, not a check by anyone else.
+   */
+  resolution?: {
+    by: 'recipient' | 'participant';
+    recipientId?: string;
+    name: string;
+    at: Millis;
+    outcome: ResolutionOutcome;
+    note: string;
+  };
   timeline: TimelineEntry[];
+  /**
+   * Set when the incident is a copy of the server's (server-backed sessions).
+   * The server owns its deadlines and state; this device only displays it.
+   * `alertId` is this viewer's delivered alert, needed to acknowledge.
+   */
+  server?: { alertId?: string };
 }
 
 export type RecipientKind = 'host' | 'backup_contact' | 'emergency_simulated';
@@ -202,6 +235,8 @@ export interface Recipient {
 
 /** Exactly what a recipient was told. Recipients may use only this. */
 export interface NotificationPayload {
+  /** 'cancelled': the person cancelled the alert themselves; escalation has stopped. */
+  kind?: 'alert' | 'cancelled';
   participantName: string;
   hostName: string;
   trigger: IncidentTrigger;

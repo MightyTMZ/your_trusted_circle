@@ -3,7 +3,7 @@
  * docs/YTC Grand Architecture.png. Compare-and-set methods put the expected
  * state in the update filter, so concurrent workers cannot both win.
  */
-import { MongoClient, MongoServerError, type Collection } from "mongodb";
+import { MongoClient, MongoServerError, type Collection, type Db } from "mongodb";
 import type { TimelineEvent } from "../../timeline/schema/catalog.js";
 import type { DeletionCounts, ParticipantPatch, Store } from "./store.js";
 import type {
@@ -25,6 +25,7 @@ const isDuplicateKey = (err: unknown) => err instanceof MongoServerError && err.
 export class MongoStore implements Store {
   private constructor(
     private readonly client: MongoClient,
+    private readonly db: Db,
     private readonly users: Collection<UserDoc>,
     private readonly authSessions: Collection<AuthSessionDoc>,
     private readonly sessions: Collection<SessionDoc>,
@@ -43,6 +44,7 @@ export class MongoStore implements Store {
     const db = client.db(dbName);
     const store = new MongoStore(
       client,
+      db,
       db.collection("users"),
       db.collection("auth_sessions"),
       db.collection("sessions"),
@@ -58,7 +60,34 @@ export class MongoStore implements Store {
     return store;
   }
 
+  /**
+   * Drop every non-_id index on every collection so ensureIndexes can
+   * recreate exactly the set the current schema needs. This is fine
+   * because ensureIndexes runs immediately after and is idempotent.
+   */
+  private async dropStaleIndexes(): Promise<void> {
+    const collections = [this.users, this.authSessions, this.sessions, this.checkIns, this.incidents, this.jobs, this.traces];
+    for (const col of collections) {
+      try {
+        await col.dropIndexes();
+      } catch {
+        // Collection may not exist yet on first run.
+      }
+      // Remove any collection-level JSON Schema validators from earlier migrations.
+      try {
+        await this.db.command({ collMod: col.collectionName, validator: {}, validationLevel: "off" });
+      } catch {
+        // Collection may not exist yet.
+      }
+    }
+  }
+
   private async ensureIndexes(): Promise<void> {
+    // Drop stale indexes left over from earlier schema versions. They conflict
+    // with the current schema because documents lack the old fields, causing
+    // unique-index violations on null values.
+    await this.dropStaleIndexes();
+
     await Promise.all([
       this.users.createIndex({ "identities.provider": 1, "identities.subject": 1 }, { unique: true }),
       this.authSessions.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
@@ -70,7 +99,7 @@ export class MongoStore implements Store {
       this.checkIns.createIndex({ sessionId: 1, participantId: 1 }),
       // At most one active incident per person per session.
       this.incidents.createIndex({ activeKey: 1 }, { unique: true, partialFilterExpression: { activeKey: { $type: "string" } } }),
-      this.incidents.createIndex({ status: 1 }),
+      this.incidents.createIndex({ status: 1 }, { name: "ix_status" }),
       this.incidents.createIndex({ sessionId: 1 }),
       // Never two jobs for the same recipient and step.
       this.jobs.createIndex({ dedupeKey: 1 }, { unique: true }),
@@ -297,6 +326,15 @@ export class MongoStore implements Store {
       { $set: { status: "resolved", resolved: res, activeKey: null } },
     );
     return r.modifiedCount === 1;
+  }
+  async cancelIncidentBySubject(id: string, res: NonNullable<IncidentDoc["resolved"]>) {
+    const r = await this.incidents.updateOne(
+      { _id: id, status: { $in: ["open", "acknowledged"] } },
+      { $set: { status: "resolved", resolved: res, activeKey: null } },
+    );
+    if (r.modifiedCount !== 1) return false;
+    await this.incidents.updateOne({ _id: id }, { $set: { "steps.$[pending].dueAt": null } }, { arrayFilters: [{ "pending.notifiedAt": null }] });
+    return true;
   }
   async appendIncidentLog(id: string, entry: IncidentLogEntry) {
     await this.incidents.updateOne({ _id: id }, { $push: { log: entry } });

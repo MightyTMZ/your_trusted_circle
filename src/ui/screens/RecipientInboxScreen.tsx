@@ -15,14 +15,14 @@ export function RecipientInboxScreen() {
     <div className="screen">
       <div className="narrow">
         <header className="header">
-          <span className="av glass">{initials(r.name)}</span>
+          <span className="av fill">{initials(r.name)}</span>
           <span className="stack grow">
             <h1 className="t-title">Messages</h1>
             <span className="t-sub">
               {r.name} · {isEmergency ? 'Simulated emergency services' : 'Backup contact'}
             </span>
           </span>
-          <button type="button" className="btn ibtn glass" aria-label="Exit recipient view" onClick={() => setViewer(null)}>
+          <button type="button" className="btn ibtn fill" aria-label="Exit recipient view" onClick={() => setViewer(null)}>
             <Icon name="logOut" />
           </button>
         </header>
@@ -32,7 +32,7 @@ export function RecipientInboxScreen() {
         {inbox.length === 0 ? (
           <p className="t-lead">Nothing has been sent to you.</p>
         ) : (
-          <section className="glass card card-list rise" aria-label="Messages">
+          <section className="surface card card-list rise" aria-label="Messages">
             {inbox.map((n) => (
               <button
                 key={n.id}
@@ -45,6 +45,7 @@ export function RecipientInboxScreen() {
                   <span className="inline">
                     <span className="t-cap num">{fmtTime(n.deliveredAt)}</span>
                     {n.repeat && <span className="tag">Repeat</span>}
+                    {n.payload.kind === 'cancelled' && <span className="tag">Cancelled by them</span>}
                   </span>
                   <span className="t-body">{n.payload.message}</span>
                 </span>

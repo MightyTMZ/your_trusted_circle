@@ -1,8 +1,6 @@
 import { MAX_BACKUP_CONTACTS } from '../../domain/config';
 import type { ParticipantInput } from '../../domain/session';
-import type { LocationSharing } from '../../domain/types';
-import { SHARING_LABEL } from '../copy';
-import { OptionList, ToggleRow } from './Controls';
+import { ToggleRow } from './Controls';
 import { Icon } from './Icon';
 
 export function defaultParticipantInput(): ParticipantInput {
@@ -16,12 +14,6 @@ export function defaultParticipantInput(): ParticipantInput {
     backupContacts: [{ name: '', relation: '' }],
   };
 }
-
-const SHARING_HELP: Record<LocationSharing, string> = {
-  group: 'Everyone in this session sees where you are.',
-  host: 'Only the host sees where you are.',
-  off: 'Nobody in the group sees your location.',
-};
 
 /**
  * The consent choices a person makes for themself. Never shown to anyone acting on their behalf.
@@ -41,7 +33,6 @@ export function ParticipantConsentFields({
   part: 'basics' | 'responders';
 }) {
   const set = <K extends keyof ParticipantInput>(k: K, v: ParticipantInput[K]) => onChange({ ...value, [k]: v });
-  const options: LocationSharing[] = forHost ? ['group', 'off'] : ['group', 'host', 'off'];
 
   if (part === 'basics') {
     return (
@@ -59,13 +50,12 @@ export function ParticipantConsentFields({
             autoComplete="off"
           />
         </div>
-        <OptionList
-          label="Who can see your location"
-          options={options.map((o) => ({ value: o, label: SHARING_LABEL[o], help: SHARING_HELP[o] }))}
-          value={value.locationSharing}
-          onChange={(o) => set('locationSharing', o)}
-        />
-        <div className="glass card card-list">
+        <p className="t-sub">
+          {forHost
+            ? 'As host, your location is shared with everyone in the session.'
+            : 'Joining shares your location with the group. You can limit it to the host later in Sharing.'}
+        </p>
+        <div className="surface card card-list">
           <ToggleRow
             label="Movement check-ins"
             sub={`You get a private check-in first. No answer within ${checkInWindowSec}s alerts ${forHost ? 'your backup contacts' : 'the host'}.`}
@@ -106,7 +96,7 @@ export function ParticipantConsentFields({
         {value.backupContacts.length < MAX_BACKUP_CONTACTS && (
           <button
             type="button"
-            className="btn chip glass"
+            className="btn chip fill"
             style={{ alignSelf: 'flex-start' }}
             onClick={() => set('backupContacts', [...value.backupContacts, { name: '', relation: '' }])}
           >
@@ -127,7 +117,7 @@ export function ParticipantConsentFields({
           onChange={(e) => set('emergencyNote', e.target.value)}
         />
       </div>
-      <div className="glass card card-list">
+      <div className="surface card card-list">
         <ToggleRow
           label="Share my last-known location with backup contacts and simulated emergency services during an alert"
           checked={value.shareLocationWithResponders}

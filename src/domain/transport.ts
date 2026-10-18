@@ -78,6 +78,35 @@ export function deliver(
   return n;
 }
 
+/**
+ * Tell a recipient who was already alerted that the person cancelled the alert
+ * themselves. Sent once per recipient. Carries the facts they already had, so
+ * nothing new is disclosed, and says plainly that it is the person's own report.
+ */
+export function deliverCancellation(state: AppState, incident: Incident, recipientId: string, at: Millis): Notification | null {
+  if (state.notifications.some((n) => n.incidentId === incident.id && n.recipientId === recipientId && n.stepKey === 'cancelled')) {
+    return null;
+  }
+  const previous = latestPayloadFor(state, incident.id, recipientId);
+  if (!previous) return null;
+  const n: Notification = {
+    id: makeId('ntf'),
+    incidentId: incident.id,
+    recipientId,
+    stepKey: 'cancelled',
+    deliveredAt: at,
+    repeat: false,
+    payload: {
+      ...previous,
+      kind: 'cancelled',
+      message: `${previous.participantName} cancelled this alert from their own device at ${fmt(at)} and says it was a false alarm. Escalation has stopped. This is their own report; no one has checked on them in person.`,
+    },
+    transport: 'simulated',
+  };
+  state.notifications.push(n);
+  return n;
+}
+
 export function inboxFor(state: AppState, recipientId: string): Notification[] {
   return state.notifications.filter((n) => n.recipientId === recipientId).sort((a, b) => b.deliveredAt - a.deliveredAt);
 }

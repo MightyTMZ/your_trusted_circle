@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { HOST_RECIPIENT_PREFIX, acknowledge, nextDeadline, repeatAlert, resolve } from '../../domain/incident';
 import { freshness } from '../../domain/location';
+import { applyServerIncident } from '../../domain/serverAlerts';
 import { latestPayloadFor } from '../../domain/transport';
 import type { Incident, ResolutionOutcome } from '../../domain/types';
 import { COPY } from '../copy';
@@ -12,6 +13,8 @@ import { ArcGauge } from '../components/Gauges';
 import { Icon } from '../components/Icon';
 import { LocationStamp } from '../components/LocationStamp';
 import { SimulatedTag } from '../components/SimulatedTag';
+import { acknowledgeOnServer, resolveOnServer } from '../api';
+import { useLive } from '../hooks/useServerSession';
 
 const hm = (t: number) => fmtTime(t).slice(0, 5);
 
@@ -27,6 +30,8 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
   const [outcome, setOutcome] = useState<ResolutionOutcome | null>(null);
   const [note, setNote] = useState('');
   const [flash, setFlash] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { refreshAlerts } = useLive();
 
   const incident = state.incidents.find((i) => i.id === incidentId);
   const recipientId = meRecipient?.id ?? (me ? HOST_RECIPIENT_PREFIX + me.id : '');
@@ -48,6 +53,12 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
   const staleAfter = state.session?.config.locationStaleAfterSec ?? 90;
   const callReached = incident.steps.some((s) => s.level === 'emergency_simulated' && s.notifiedAt !== undefined);
   const open = incident.status === 'open';
+  const selfCancelled = incident.resolution?.by === 'participant';
+  // What the original alert said; the cancellation itself is shown below.
+  const alertMessage =
+    state.notifications
+      .filter((n) => n.incidentId === incident.id && n.recipientId === recipientId && n.payload.kind !== 'cancelled')
+      .sort((x, y) => y.deliveredAt - x.deliveredAt)[0]?.payload.message ?? payload.message;
   const deadline = nextDeadline(incident);
   const lastNotified = incident.steps[incident.currentStep]?.notifiedAt ?? incident.openedAt;
   const title =
@@ -69,11 +80,38 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
         progress: 1,
         label: 'Escalation',
         value: 'Stopped',
-        sub: incident.acknowledged ? `Acknowledged ${fmtTime(incident.acknowledged.at)}` : '',
+        sub: selfCancelled
+          ? `Cancelled ${fmtTime(incident.resolution!.at)}`
+          : incident.acknowledged
+            ? `Acknowledged ${fmtTime(incident.acknowledged.at)}`
+            : '',
         start: '',
         end: '',
-        aria: 'Escalation stopped by acknowledgment.',
+        aria: selfCancelled ? `Escalation stopped: ${payload.participantName} cancelled the alert.` : 'Escalation stopped by acknowledgment.',
       };
+
+  // Server incidents: the server decides, and its answer replaces this device's copy.
+  const onServer = !!incident.server;
+  const viewerId = me?.id ?? '';
+  const serverAction = async (call: () => ReturnType<typeof acknowledgeOnServer>) => {
+    setBusy(true);
+    const r = await call();
+    if (r.ok) store.dispatch((d) => void applyServerIncident(d, r.data.incident, viewerId));
+    else await refreshAlerts();
+    setBusy(false);
+    setFlash(r.ok ? null : r.message);
+  };
+  const doAcknowledge = () => {
+    if (!onServer) return void store.dispatch((d, t) => acknowledge(d, incident.id, recipientId, t));
+    const alertId = incident.server!.alertId;
+    if (!alertId) return setFlash('This alert was not delivered to you, so you cannot acknowledge it.');
+    void serverAction(() => acknowledgeOnServer(alertId));
+  };
+  const doResolve = () => {
+    if (!outcome) return;
+    if (!onServer) return void store.dispatch((d, t) => resolve(d, incident.id, recipientId, outcome, note, t));
+    void serverAction(() => resolveOnServer(incident.id, outcome));
+  };
 
   const doRepeat = () => {
     store.dispatch((d, t) => repeatAlert(d, incident.id, t));
@@ -85,12 +123,20 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
       <ScreenHeader title="Alert" onBack={back} />
       <div className="cols">
         <div className="col">
-          <section className="glass card rise" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <section className={`surface card rise${open ? ' alert-open' : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div className="header">
-              <span className={`av num ${open ? 'on-accent' : 'glass-2'}`}>{initials(payload.participantName)}</span>
+              <span className={`av num ${open ? 'on-danger' : 'fill'}`}>{initials(payload.participantName)}</span>
               <span className="stack grow">
                 <h2 className="t-card">{title}</h2>
-                <span className="t-sub">{open ? 'Unacknowledged' : incident.status === 'acknowledged' ? 'Acknowledged' : 'Resolved'}</span>
+                <span className="t-sub">
+                  {open
+                    ? 'Unacknowledged'
+                    : incident.status === 'acknowledged'
+                      ? 'Acknowledged'
+                      : selfCancelled
+                        ? COPY.cancelledBySelf(payload.participantName)
+                        : 'Resolved'}
+                </span>
               </span>
             </div>
             <ArcGauge
@@ -104,24 +150,25 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
               ariaLabel={gauge.aria}
               role="timer"
             />
-            <p className="t-sub center">{payload.message}</p>
+            <p className="t-sub center">{alertMessage}</p>
           </section>
 
           {open ? (
             <div className="col rise rise-2">
-              <button type="button" className="btn pbtn on-accent" onClick={() => store.dispatch((d, t) => acknowledge(d, incident.id, recipientId, t))}>
+              <button type="button" className="btn pbtn on-danger" disabled={busy} onClick={doAcknowledge}>
                 <Icon name="check" />
                 {COPY.acknowledge}
               </button>
               <p className="t-sub center">{COPY.acknowledgeCaveat}</p>
               <div className="inline" style={{ justifyContent: 'center' }}>
-                {isHost && (
-                  <button type="button" className="btn chip glass" onClick={doRepeat}>
+                {/* The server has no repeat; its deadlines run regardless. */}
+                {isHost && !onServer && (
+                  <button type="button" className="btn chip fill" onClick={doRepeat}>
                     <Icon name="repeat" />
                     {COPY.repeatAlert}
                   </button>
                 )}
-                <button type="button" className="btn chip glass" onClick={() => go({ name: 'card', id: incident.id })}>
+                <button type="button" className="btn chip fill" onClick={() => go({ name: 'card', id: incident.id })}>
                   <Icon name="file" />
                   Incident card
                 </button>
@@ -133,13 +180,27 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
               )}
             </div>
           ) : (
-            <section className="glass card col rise rise-2" style={{ gap: 16 }}>
-              <p className="t-body num" role="status">
-                {COPY.acknowledgedNotice(incident.acknowledged!.name, fmtTime(incident.acknowledged!.at))}
-              </p>
-              {incident.status === 'resolved' ? (
+            <section className="surface card col rise rise-2" style={{ gap: 16 }}>
+              {incident.acknowledged && (
+                <p className="t-body num" role="status">
+                  {COPY.acknowledgedNotice(incident.acknowledged.name, fmtTime(incident.acknowledged.at))}
+                </p>
+              )}
+              {selfCancelled ? (
+                <div className="header" role="status">
+                  <span className="av fill">
+                    <Icon name="circleCheck" />
+                  </span>
+                  <span className="stack grow">
+                    <span className="t-body num">
+                      {payload.participantName} cancelled this alert from their own device at {fmtTime(incident.resolution!.at)}: false alarm.
+                    </span>
+                    <span className="t-sub">{COPY.cancelledBySelfCaveat}</span>
+                  </span>
+                </div>
+              ) : incident.status === 'resolved' ? (
                 <div className="header">
-                  <span className="av glass-2">
+                  <span className="av fill">
                     <Icon name="circleCheck" />
                   </span>
                   <p className="t-body num grow">
@@ -155,22 +216,27 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
                     value={outcome}
                     onChange={setOutcome}
                   />
-                  <label htmlFor="resnote" className="sr-only">
-                    What happened (optional)
-                  </label>
-                  <textarea id="resnote" className="field" placeholder="What happened? (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
-                  <button
-                    type="button"
-                    className="btn pbtn on-accent"
-                    disabled={!outcome}
-                    onClick={() => outcome && store.dispatch((d, t) => resolve(d, incident.id, recipientId, outcome, note, t))}
-                  >
+                  {/* The server records the outcome only, so no note is offered for its alerts. */}
+                  {!onServer && (
+                    <>
+                      <label htmlFor="resnote" className="sr-only">
+                        What happened (optional)
+                      </label>
+                      <textarea id="resnote" className="field" placeholder="What happened? (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+                    </>
+                  )}
+                  <button type="button" className="btn pbtn on-accent" disabled={!outcome || busy} onClick={doResolve}>
                     {COPY.resolve}
                   </button>
+                  {flash && (
+                    <p className="t-cap center" role="status">
+                      {flash}
+                    </p>
+                  )}
                 </>
               )}
               <div className="inline" style={{ justifyContent: 'center' }}>
-                <button type="button" className="btn chip glass" onClick={() => go({ name: 'card', id: incident.id })}>
+                <button type="button" className="btn chip fill" onClick={() => go({ name: 'card', id: incident.id })}>
                   <Icon name="file" />
                   Incident card
                 </button>
@@ -178,14 +244,14 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
             </section>
           )}
           {callReached && (
-            <button type="button" className="btn pbtn glass" onClick={() => go({ name: 'call', id: incident.id })}>
+            <button type="button" className="btn pbtn fill" onClick={() => go({ name: 'call', id: incident.id })}>
               Simulated emergency call <SimulatedTag />
             </button>
           )}
         </div>
 
         <div className="col">
-          <section className="glass card card-list rise rise-3" aria-labelledby="esc-h">
+          <section className="surface card card-list rise rise-3" aria-labelledby="esc-h">
             <div className="card-head">
               <h2 className="t-card" id="esc-h">
                 Escalation
@@ -194,7 +260,7 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
             <EscalationLadder incident={incident} now={now} showNames={isHost} />
           </section>
 
-          <section className="glass card rise rise-4" aria-labelledby="loc-h" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <section className="surface card rise rise-4" aria-labelledby="loc-h" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <h2 className="t-card" id="loc-h">
               Last-known location
             </h2>
@@ -211,7 +277,7 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
           </section>
 
           {payload.emergencyNote && (
-            <section className="glass card stack rise rise-4" style={{ gap: 8 }}>
+            <section className="surface card stack rise rise-4" style={{ gap: 8 }}>
               <h2 className="t-card">Note they chose to share</h2>
               <p className="t-body">"{payload.emergencyNote}"</p>
             </section>

@@ -2,10 +2,16 @@ import { useState } from 'react';
 import { recalibrate, updateConsent } from '../../domain/session';
 import type { LocationSharing, ParticipantConsent } from '../../domain/types';
 import { SHARING_LABEL } from '../copy';
+import { updateConsentOnServer } from '../api';
 import { useApp } from '../context';
 import { SettingsButton } from '../components/AppNav';
 import { OptionList, ToggleRow, initials } from '../components/Controls';
 import { Icon } from '../components/Icon';
+
+const SHARING_HELP: Partial<Record<LocationSharing, string>> = {
+  group: 'Everyone in this session sees where you are.',
+  host: 'Only the host sees where you are.',
+};
 
 /** A participant's own sharing settings. No one else can open or change these. */
 export function MySharingScreen() {
@@ -13,8 +19,20 @@ export function MySharingScreen() {
   const [relearned, setRelearned] = useState(false);
   const p = me!;
   const isHost = p.id === state.session?.hostId;
-  const set = (patch: Partial<Omit<ParticipantConsent, 'joinedAt'>>) => store.dispatch((d) => updateConsent(d, p.id, p.id, patch));
-  const options: LocationSharing[] = isHost ? ['group', 'off'] : ['group', 'host', 'off'];
+  const [syncError, setSyncError] = useState(false);
+  const set = (patch: Partial<Omit<ParticipantConsent, 'joinedAt'>>) => {
+    store.dispatch((d) => updateConsent(d, p.id, p.id, patch));
+    const serverId = state.session?.serverId;
+    if (!serverId) return;
+    const next = { ...p.consent, ...patch };
+    updateConsentOnServer(serverId, {
+      monitoring: next.motionMonitoring,
+      locationSharing: next.locationSharing,
+      shareLocationWithResponders: next.shareLocationWithResponders,
+    }).then((ok) => setSyncError(!ok));
+  };
+  // Location always reaches at least the host; that is what lets the host respond.
+  const options: LocationSharing[] = ['group', 'host'];
   return (
     <div className="screen">
       <div className="narrow">
@@ -23,14 +41,28 @@ export function MySharingScreen() {
           <SettingsButton />
         </header>
         <div className="rise">
-          <OptionList
-            label="Who can see your location"
-            options={options.map((o) => ({ value: o, label: SHARING_LABEL[o] }))}
-            value={p.consent.locationSharing}
-            onChange={(o) => set({ locationSharing: o })}
-          />
+          {isHost ? (
+            <section className="surface card stack" style={{ gap: 4 }}>
+              <span className="lbl">Who can see your location</span>
+              <span className="t-name">{SHARING_LABEL.group}</span>
+              <span className="t-sub">As host, your location is always shared with the group.</span>
+            </section>
+          ) : (
+            <OptionList
+              label="Who can see your location"
+              options={options.map((o) => ({ value: o, label: SHARING_LABEL[o], help: SHARING_HELP[o] }))}
+              value={p.consent.locationSharing}
+              onChange={(o) => set({ locationSharing: o })}
+            />
+          )}
         </div>
-        <section className="glass card card-list rise rise-2" aria-label="Check-ins and responders">
+        {syncError && (
+          <p className="error" role="alert">
+            <Icon name="alert" />
+            Saved on this device, but the server didn't get the change. Try again.
+          </p>
+        )}
+        <section className="surface card card-list rise rise-2" aria-label="Check-ins and responders">
           <ToggleRow
             label="Movement check-ins"
             sub={p.consent.motionMonitoring ? undefined : 'Off. Open alerts are not affected.'}
@@ -40,7 +72,7 @@ export function MySharingScreen() {
             {p.consent.motionMonitoring && (
               <button
                 type="button"
-                className="btn chip glass-2"
+                className="btn chip fill"
                 style={{ alignSelf: 'flex-start', marginTop: 8 }}
                 onClick={() => {
                   store.dispatch((d) => recalibrate(d, p.id, p.id));
@@ -63,7 +95,7 @@ export function MySharingScreen() {
             onChange={(v) => set({ shareNoteWithResponders: v })}
           />
         </section>
-        <section className="glass card card-list rise rise-3" aria-labelledby="backups-h">
+        <section className="surface card card-list rise rise-3" aria-labelledby="backups-h">
           <div className="card-head">
             <h2 className="t-card" id="backups-h">
               Backup contacts
@@ -75,7 +107,7 @@ export function MySharingScreen() {
             <ul>
               {p.backupContacts.map((c) => (
                 <li key={c.id} className="row">
-                  <span className="av glass-2">{initials(c.name)}</span>
+                  <span className="av fill">{initials(c.name)}</span>
                   <span className="t-name grow">{c.name}</span>
                   {c.relation && <span className="t-sub">{c.relation}</span>}
                 </li>

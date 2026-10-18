@@ -34,6 +34,14 @@ export const COPY = {
     other: 'Other',
   },
 
+  cancelAlert: 'Cancel alert: false alarm',
+  cancelAlertTitle: 'Cancel this alert?',
+  cancelAlertKeep: 'Keep the alert open',
+  cancelAlertConfirm: 'Yes, cancel it',
+  cancelAlertCaveat: 'Responders will see that you cancelled it yourself. If you need help later, ask again: that starts a new alert.',
+  cancelledBySelf: (name: string) => `Cancelled by ${name}: false alarm`,
+  cancelledBySelfCaveat: 'This is their own report from their device. No one has checked on them in person.',
+
   emergencySimulated: 'Emergency services (simulated)',
   simulatedTag: 'Simulated',
   simulatedCallBanner: 'Simulated call to a mock operator. No real number is dialed and no real service is contacted.',
@@ -46,7 +54,7 @@ export const COPY = {
   ],
   hostCommitmentCheck: "I'll be this group's sober, available contact until the session ends.",
 
-  hostCannotEnable: "Each person scans, joins, and chooses what they share on their own phone. You can't turn on sharing or monitoring for anyone else.",
+  hostCannotEnable: "Each person scans and joins on their own phone. Their location reaches at least you; check-ins are their choice. You can't turn on monitoring for anyone else.",
 
   leaveSession: 'Leave session',
   leaveConfirmParticipant: 'Your location and motion check-ins stop immediately. Any open alert about you stays open for your host.',
@@ -55,10 +63,11 @@ export const COPY = {
   locationNotShared: 'Location not shared with you',
   locationOff: 'Not sharing location',
   locationNone: 'No reading yet',
+  locationNotYetShared: 'No location shared with you yet',
 } as const;
 
 export const SHARING_LABEL = {
   group: 'Everyone in the group',
   host: 'Host only',
-  off: "Don't share",
+  off: 'Off for this session',
 } as const;

@@ -21,5 +21,9 @@ export const DEFAULT_CONFIG: SessionConfig = {
 
 export const UNVALIDATED_LABEL = 'Unvalidated demo value';
 
+/** The shortest and longest a host may make a session, in minutes. The server mirrors these (src/server/config.ts). */
+export const MIN_DURATION_MIN = 30;
+export const MAX_DURATION_MIN = 24 * 60;
+
 export const MAX_LOCATION_HISTORY = 20;
 export const MAX_BACKUP_CONTACTS = 2;

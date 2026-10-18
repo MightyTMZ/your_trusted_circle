@@ -42,7 +42,7 @@ export function accessTo(incident: IncidentDoc, session: SessionDoc | null, user
 }
 
 const ackView = (i: IncidentDoc) => (i.acknowledged ? { by: i.acknowledged.name, at: i.acknowledged.at, note: ACK_CAVEAT } : null);
-const resolvedView = (i: IncidentDoc) => (i.resolved ? { by: i.resolved.name, at: i.resolved.at, outcome: i.resolved.outcome } : null);
+const resolvedView = (i: IncidentDoc) => (i.resolved ? { by: i.resolved.name, at: i.resolved.at, outcome: i.resolved.outcome, bySubject: i.resolved.bySubject === true } : null);
 
 export function incidentView(incident: IncidentDoc, session: SessionDoc | null, jobs: NotificationJobDoc[]) {
   const subject = session?.participants.find((p) => p.participantId === incident.participantId);

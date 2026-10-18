@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 const C = 150;
 const R = 120;
@@ -16,6 +16,9 @@ function arc(from: number, to: number): string {
   const large = from - to > 180 ? 1 : 0;
   return `M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${R} ${R} 0 ${large} 1 ${x2.toFixed(1)} ${y2.toFixed(1)}`;
 }
+
+/** Words ("All alerted") get a smaller hero than numerals so they stay inside the arc. */
+const heroSize = (v: ReactNode) => (typeof v === 'string' && !/\d/.test(v) ? 't-hero-word' : '');
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, Number.isFinite(n) ? n : 0));
 
@@ -44,27 +47,20 @@ export function ArcGauge({
   ariaLabel: string;
   role?: 'img' | 'timer';
 }) {
-  const gid = useId().replace(/:/g, '');
   const end = START - SPAN * clamp01(progress);
   const [kx, ky] = pt(end);
   return (
     <div className="gauge" role={role} aria-label={ariaLabel}>
       <svg viewBox="0 0 300 200" aria-hidden="true">
-        <defs>
-          <linearGradient id={gid} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" style={{ stopColor: 'var(--accent-dark)' }} />
-            <stop offset="1" style={{ stopColor: 'var(--accent-light)' }} />
-          </linearGradient>
-        </defs>
         <path className="gauge-track" d={arc(START, START - SPAN)} />
         {progress > 0 && (
-          <path className="gauge-fill" d={arc(START, end)} style={{ stroke: stopped ? 'var(--text-tertiary)' : `url(#${gid})` }} />
+          <path className="gauge-fill" d={arc(START, end)} style={{ stroke: stopped ? 'var(--text-tertiary)' : 'var(--danger)' }} />
         )}
         {!stopped && <circle className="gauge-knob" cx={kx.toFixed(1)} cy={ky.toFixed(1)} r={9} />}
       </svg>
       <div className="gauge-center">
         <span className="t-sub">{label}</span>
-        <span className="t-hero num">{value}</span>
+        <span className={`t-hero num ${heroSize(value)}`}>{value}</span>
         {sub && <span className="t-sub num">{sub}</span>}
       </div>
       {startLabel && (
@@ -130,7 +126,7 @@ export function TickDial({
       })}
       <div className="dial-center">
         <span className="t-sub">{label}</span>
-        <span className="t-hero num">{value}</span>
+        <span className={`t-hero num ${heroSize(value)}`}>{value}</span>
       </div>
       {startLabel && (
         <span className="t-cap num dial-end" style={{ left: 16 }}>

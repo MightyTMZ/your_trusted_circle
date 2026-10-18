@@ -20,6 +20,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { alertRoutes } from "./alerts/routes.js";
 import { RateLimiter, rateLimit } from "./auth/ratelimit.js";
 import { authRoutes } from "./auth/routes.js";
@@ -45,6 +46,13 @@ export function createApp(deps: Deps) {
   const allowedOrigins = new Set([config.appOrigin, config.apiOrigin]);
   const limiter = new RateLimiter(deps.now);
   const limit = (name: string, n: number, windowMs: number) => rateLimit(limiter, name, n, windowMs, config.trustProxy);
+  // Test sign-in: localhost and 127.0.0.1 keep separate cookies, so each acts as its own phone.
+  if (deps.config.testSignIn) {
+    for (const o of [deps.config.appOrigin, deps.config.apiOrigin]) {
+      const u = new URL(o);
+      for (const host of ["localhost", "127.0.0.1"]) allowedOrigins.add(`${u.protocol}//${host}${u.port ? `:${u.port}` : ""}`);
+    }
+  }
 
   app.use("*", secureHeaders());
   app.use("/api/*", cors({ origin: config.appOrigin, credentials: true, allowMethods: ["GET", "POST", "PATCH", "DELETE"] }));
@@ -120,10 +128,19 @@ export function createApp(deps: Deps) {
   // 6. Simulated voice-agent escalation
   if (deps.calls) app.route("/api/calls", voiceRoutes(deps.calls));
 
+  // Serve Vite build output for non-API routes (production only).
+  // root is relative to the working directory (repo root); Vite outputs to dist/.
+  app.get("*", async (c, next) => {
+    if (c.req.path.startsWith("/api")) return next();
+    const res = await serveStatic({ root: "dist" })(c, async () => {});
+    if (c.res.status !== 404) return res;
+    // SPA fallback: serve index.html for client-side routes.
+    return serveStatic({ root: "dist", path: "index.html" })(c, next);
+  });
+
   app.notFound((c) => fail(c, 404, "not_found", "No such endpoint."));
   app.onError((err, c) => {
-    // Log the error type only; messages can contain request data.
-    console.error(`[api] ${c.req.method} ${c.req.path} failed: ${err.name}`);
+    console.error(`[api] ${c.req.method} ${c.req.path} failed: ${err.name}: ${err.message}`);
     return fail(c, 500, "server_error", "Something went wrong on our side. Try again.");
   });
   return app;

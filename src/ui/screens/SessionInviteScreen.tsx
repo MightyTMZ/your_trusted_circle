@@ -31,7 +31,7 @@ export function SessionInviteScreen() {
           <h1 className="t-title">Invite your group</h1>
           <span className="t-sub">Scan to join {session.name}</span>
         </header>
-        <section className="glass card rise" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, padding: 24 }}>
+        <section className="surface card rise" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, padding: 24 }}>
           <QrCode value={url} label={`QR code to join session ${session.code}`} />
           <div className="stack" style={{ alignItems: 'center', gap: 6 }}>
             <span className="t-sub">Or enter this code</span>
@@ -55,7 +55,7 @@ export function SessionInviteScreen() {
           </span>
         </div>
         <div className="screen-footer">
-          <button type="button" className="btn pbtn glass" onClick={copy}>
+          <button type="button" className="btn pbtn fill" onClick={copy}>
             <Icon name="copy" />
             {copied ? 'Link copied' : 'Copy join link'}
           </button>

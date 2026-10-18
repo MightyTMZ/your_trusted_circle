@@ -1,7 +1,7 @@
 import { useId, type ReactNode } from 'react';
 import { Icon } from './Icon';
 
-/** On/off switch: 88×44 track, knob slides right and fills with the accent when on. */
+/** iOS-style switch: 52×32 track (44px hit area), the track fills with the accent when on. */
 export function Toggle({
   checked,
   onChange,
@@ -26,10 +26,7 @@ export function Toggle({
       disabled={disabled}
       onClick={() => onChange(!checked)}
     >
-      <span className="knob">
-        <Icon name="power" />
-      </span>
-      <span className="tl">{checked ? 'On' : 'Off'}</span>
+      <span className="knob" />
     </button>
   );
 }
@@ -72,7 +69,7 @@ export interface Option<T extends string> {
   help?: string;
 }
 
-/** Single-choice list. Selected row gets the accent ring and a filled check. */
+/** Single-choice grouped list. The selected row shows an accent checkmark. */
 export function OptionList<T extends string>({
   label,
   options,
@@ -86,36 +83,38 @@ export function OptionList<T extends string>({
 }) {
   const id = useId();
   return (
-    <div className="fgroup" role="radiogroup" aria-labelledby={id}>
+    <div className="fgroup">
       <span className="lbl" id={id}>
         {label}
       </span>
-      {options.map((o) => {
-        const sel = o.value === value;
-        return (
-          <button
-            key={o.value}
-            type="button"
-            role="radio"
-            aria-checked={sel}
-            className={`btn opt ${sel ? 'is-sel' : ''}`}
-            onClick={() => onChange(o.value)}
-          >
-            <span className="stack grow">
-              <span className="t-name">{o.label}</span>
-              {sel && o.help && <span className="t-sub">{o.help}</span>}
-            </span>
-            <span className="radio">
-              <Icon name="check" />
-            </span>
-          </button>
-        );
-      })}
+      <div className="opt-list" role="radiogroup" aria-labelledby={id}>
+        {options.map((o) => {
+          const sel = o.value === value;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              role="radio"
+              aria-checked={sel}
+              className={`btn opt ${sel ? 'is-sel' : ''}`}
+              onClick={() => onChange(o.value)}
+            >
+              <span className="stack grow">
+                <span className="t-name">{o.label}</span>
+                {sel && o.help && <span className="t-sub">{o.help}</span>}
+              </span>
+              <span className="check">
+                <Icon name="check" />
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-/** Segmented choice as a row of chips. */
+/** Segmented control: a neutral track with a raised thumb on the selected segment. */
 export function ChipChoice<T extends string | number>({
   label,
   options,
@@ -133,14 +132,14 @@ export function ChipChoice<T extends string | number>({
       <span className="lbl" id={id}>
         {label}
       </span>
-      <div className="seg-chips" role="radiogroup" aria-labelledby={id}>
+      <div className="segmented" role="radiogroup" aria-labelledby={id}>
         {options.map((o) => (
           <button
             key={String(o.value)}
             type="button"
             role="radio"
             aria-checked={o.value === value}
-            className={`btn chip num ${o.value === value ? 'on-accent' : 'glass'}`}
+            className="btn segment num"
             onClick={() => onChange(o.value)}
           >
             {o.label}
@@ -172,7 +171,7 @@ export function Stepper({
       <span className="t-body grow">{label}</span>
       <button
         type="button"
-        className="btn ibtn ibtn-sm glass-2"
+        className="btn ibtn ibtn-sm fill"
         aria-label={`Decrease ${label}`}
         disabled={value - step < min}
         onClick={() => onChange(Math.max(min, value - step))}
@@ -182,7 +181,7 @@ export function Stepper({
       <span className="t-name num center" style={{ width: 56 }} aria-live="polite">
         {value} {unit}
       </span>
-      <button type="button" className="btn ibtn ibtn-sm glass-2" aria-label={`Increase ${label}`} onClick={() => onChange(value + step)}>
+      <button type="button" className="btn ibtn ibtn-sm fill" aria-label={`Increase ${label}`} onClick={() => onChange(value + step)}>
         <Icon name="plus" />
       </button>
     </div>
@@ -215,7 +214,7 @@ export function ScreenHeader({
   return (
     <header className="header-back">
       {onBack ? (
-        <button type="button" className="btn ibtn glass" aria-label={backLabel} onClick={onBack}>
+        <button type="button" className="btn ibtn fill" aria-label={backLabel} onClick={onBack}>
           <Icon name="chevronLeft" />
         </button>
       ) : (
@@ -228,7 +227,7 @@ export function ScreenHeader({
 }
 
 /** Profile picture when there is one, initials otherwise. */
-export function Avatar({ name, src, size = 40, className = 'glass-2' }: { name: string; src?: string | null; size?: number; className?: string }) {
+export function Avatar({ name, src, size = 40, className = 'fill' }: { name: string; src?: string | null; size?: number; className?: string }) {
   return (
     <span className={`av ${className}`} style={{ width: size, height: size, fontSize: Math.round(size * 0.3), overflow: 'hidden' }}>
       {src ? <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initials(name)}

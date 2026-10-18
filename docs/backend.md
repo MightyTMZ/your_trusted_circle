@@ -36,6 +36,7 @@ All bodies are JSON. Browser requests need the `ytc_session` cookie, and every w
 | `GET /api/auth/providers` | anyone | Configured sign-in providers: Google, Apple, Microsoft |
 | `GET /api/auth/:provider/start?returnTo=/path` | anyone | Redirect to the provider |
 | `GET\|POST /api/auth/:provider/callback` | provider | Signs in; creates the account on first sign-in |
+| `POST /api/auth/test/signin` | anyone on this computer | Development only: signs in as a made-up name, no password. Off unless `TEST_SIGN_IN=true`, the app and API origins are localhost, and `NODE_ENV` is not `production`; also refuses requests not addressed to localhost. `localhost` and `127.0.0.1` keep separate cookies, so they act as two phones. |
 | `POST /api/auth/logout` | signed in | Ends this browser's sign-in |
 | `POST /api/sessions` | signed in | Create a session; you are its host. Needs `consentTextVersion` |
 | `GET /api/sessions/join/:code` | signed in | Preview before joining |
@@ -142,6 +143,7 @@ A help request with no pending check-in is recorded as a manual check-in answere
 - **Live, stale, gone.** A fix is shown as `live` for `locationStaleAfterSec` (90 s by default), then as `stale` (last known) until twice that, and after that it's forgotten.
 - **Cleared at once** when someone turns sharing off, leaves, deletes their account, when the host ends, suspends or turns location off for the session, and when the session expires.
 - **The only stored positions** are the person's fixes during an active incident, which are kept for responders, the timeline and the Incident Card.
+- **Demo venue ("teleport").** The host may set `rules.demoVenue`, a public place such as a club, through `PATCH /api/sessions/:id/rules`. While it is set, every phone in the session relays a made-up position around it instead of its GPS, sent with `simulated: true` and returned that way to everyone, so it is never shown as a real location. Clearing it (`demoVenue: null`) drops those positions at once. The venue is the host's chosen public place, not anyone's position.
 - **Limitation:** the relay lives in one process's memory. Running more than one API instance would need a shared in-memory cache with expiry (for example Redis TTL keys) instead.
 
 ## Voice-agent service

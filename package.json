@@ -4,7 +4,8 @@
   "description": "YTC — opt-in buddy system prototype (Project KAZE, HTV XI). Simulation only.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && tsc -p tsconfig.node.json",
+    "start": "node dist/src/server/main.js",
     "preview": "vite preview",
     "test": "vitest run && npm run test:node",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit",
@@ -47,5 +48,8 @@
     "vitest": "^2.1.4"
   },
   "private": true,
-  "type": "module"
+  "type": "module",
+  "allowScripts": {
+    "protobufjs@7.6.6": true
+  }
 }

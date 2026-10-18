@@ -6,7 +6,7 @@ import { APP_ORIGIN, Client, setup, signIn } from "./helpers.js";
 test("lists only configured sign-in providers", async () => {
   const { app } = setup();
   const res = await new Client(app).call("GET", "/api/auth/providers");
-  assert.deepEqual(res.body, { providers: ["google"] });
+  assert.deepEqual(res.body, { providers: ["google"], testSignIn: false });
 });
 
 test("unknown provider is refused", async () => {
