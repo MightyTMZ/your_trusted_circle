@@ -5,6 +5,7 @@ import { fetchAccount, type Account } from './api';
 
 export type Route =
   | { name: 'home' }
+  | { name: 'landing' }
   | { name: 'invite' }
   | { name: 'sharing' }
   | { name: 'alert'; id: string }
