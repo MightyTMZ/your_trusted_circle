@@ -6,7 +6,7 @@
  */
 export const COPY = {
   appName: 'YTC',
-  appTagline: 'Your Trusted Companion',
+  appTagline: 'Your Trusted Circle',
   prototypeNotice: 'Prototype. Emergency services are simulated. Nothing in this app can place a real call or send a real message.',
 
   movementChanged: 'Movement changed',

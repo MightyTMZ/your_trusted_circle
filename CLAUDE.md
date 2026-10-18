@@ -1,4 +1,4 @@
-# Your Trusted Companion (YTC)
+# Your Trusted Circle (YTC)
 
 ## Project purpose
 YTC is an opt-in buddy system for nights out, built for the
