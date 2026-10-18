@@ -267,4 +267,8 @@ test("the wearer cancels their own false alarm: escalation stops, it is saved, a
   const again = await jo.call("POST", `/api/sessions/${session.id}/help`);
   assert.equal(again.status, 201);
   assert.notEqual(again.body.incidentId, incidentId);
+  await tick();
+  const alerts = await alertsFor(maya);
+  assert.equal(alerts.length, 2);
+  assert.ok(alerts.some((alert: any) => alert.incidentId === again.body.incidentId));
 });

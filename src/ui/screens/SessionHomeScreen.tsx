@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { UNVALIDATED_LABEL } from '../../domain/config';
 import { GROUP_RECIPIENT_PREFIX, HOST_RECIPIENT_PREFIX, alertedNames, nextDeadline } from '../../domain/incident';
 import { canViewLocation, latestReading, participantFreshness } from '../../domain/location';
@@ -181,10 +181,18 @@ export function SessionHomeScreen() {
   const visibleAlerts = isHost ? alerts : alerts.filter((i) => state.notifications.some((n) => n.incidentId === i.id && n.recipientId === recipientId));
   const alerting = new Set(state.incidents.filter((i) => i.status === 'open').map((i) => i.participantId));
   const hostName = state.participants[session.hostId]?.displayName;
-  // The alert this person most recently cancelled themselves, shown for ten minutes as a receipt.
-  const myCancelled = state.incidents
+  const latestCancelled = state.incidents
     .filter((i) => i.participantId === viewer.id && i.resolution?.by === 'participant' && now - i.resolution.at < 10 * 60_000)
     .sort((a, b) => b.resolution!.at - a.resolution!.at)[0];
+  const [cancelledNotice, setCancelledNotice] = useState<Incident | null>(null);
+  const seenCancelledId = useRef<string | null>(latestCancelled?.id ?? null);
+  useEffect(() => {
+    if (!latestCancelled || latestCancelled.id === seenCancelledId.current) return;
+    seenCancelledId.current = latestCancelled.id;
+    setCancelledNotice(latestCancelled);
+    const id = window.setTimeout(() => setCancelledNotice(null), 5000);
+    return () => window.clearTimeout(id);
+  }, [latestCancelled?.id]);
   const myIncident = state.incidents.find((i) => i.participantId === viewer.id && i.status !== 'resolved');
   const live = useLive();
   const { points, anchor } = useGroupPoints(viewer, now);
@@ -283,14 +291,16 @@ export function SessionHomeScreen() {
         <SettingsButton />
       </header>
 
-      {myCancelled && (
-        <section className="surface card stack rise" style={{ gap: 8 }} role="status">
-          <h2 className="t-card num">You cancelled the alert at {fmtTime(myCancelled.resolution!.at)}</h2>
-          <p className="t-sub">
-            Escalation stopped. {alertedNames(state, myCancelled)} can see you cancelled it as a false alarm. If you need help, use the
-            help button: that starts a new alert.
-          </p>
-        </section>
+      {cancelledNotice && (
+        <div className="toast material" role="status" aria-live="polite">
+          <Icon name="circleCheck" />
+          <span className="stack">
+            <span className="t-name">Alert cancelled</span>
+            <span className="t-sub">
+              Escalation stopped. {alertedNames(state, cancelledNotice)} can see this was a false alarm.
+            </span>
+          </span>
+        </div>
       )}
 
       {/* Access prompts wait while an alert about you is open: that notification comes first. */}

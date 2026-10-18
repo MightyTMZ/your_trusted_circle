@@ -45,6 +45,18 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
   const recipientId = meRecipient?.id ?? (me ? (isHost ? HOST_RECIPIENT_PREFIX : GROUP_RECIPIENT_PREFIX) + me.id : '');
   const payload = incident ? latestPayloadFor(state, incident.id, recipientId) : undefined;
   const back = () => go({ name: 'home' });
+  const newerAlert = state.incidents
+    .filter(
+      (i) =>
+        i.status === 'open' &&
+        i.id !== incidentId &&
+        i.openedAt > (incident?.openedAt ?? 0) &&
+        (isHost || state.notifications.some((n) => n.incidentId === i.id && n.recipientId === recipientId)),
+    )
+    .sort((a, b) => b.openedAt - a.openedAt)[0];
+  useEffect(() => {
+    if (newerAlert) go({ name: 'alert', id: newerAlert.id });
+  }, [go, newerAlert?.id]);
 
   const callReached = !!incident?.server && incident.steps.some((s) => s.level === 'emergency_simulated' && s.notifiedAt !== undefined);
   useEffect(() => {
