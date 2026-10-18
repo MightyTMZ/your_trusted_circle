@@ -3,6 +3,7 @@ import { PROVIDERS, PROVIDER_LABEL, fetchProviders, fetchTestSignInEnabled, sign
 import { useApp } from '../context';
 import { ScreenHeader } from '../components/Controls';
 import { Icon } from '../components/Icon';
+import { SafetyNet } from '../components/SafetyNet';
 
 /**
  * Sign in and sign up are one flow: the server creates the account on the
@@ -58,7 +59,8 @@ export function SignInScreen() {
               : 'New to YTC? Your account is created the first time you sign in.'}
           </p>
         </div>
-        <div className="screen-footer rise rise-2">
+        <SafetyNet height={240} className="rise rise-2" />
+        <div className="rise rise-2">
           {error && (
             <p className="error" role="alert">
               <Icon name="alert" />
