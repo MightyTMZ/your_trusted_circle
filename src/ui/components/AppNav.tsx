@@ -136,7 +136,7 @@ export function AppNav({ variant }: { variant: 'rail' | 'bottom' }) {
   return (
     <div className="app-rail">
       <nav aria-label="Main" className="material sidebar">
-        <div className="side-brand t-card">Your Trusted Companion</div>
+        <div className="side-brand t-card">Your Trusted Circle</div>
         <SessionStatus variant="sidebar" />
         {canAskForHelp && (
           <button type="button" className="btn side-help" onClick={open}>
