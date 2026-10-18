@@ -1,0 +1,23 @@
+{
+  "skill_name": "ytc-audit",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "we have judging tomorrow. can you check whether the repo actually follows what's in CLAUDE.md, especially the safety guardrails? i want to know if anything could embarrass us",
+      "expected_output": "A prioritised report that leads with critical/high findings and a guardrail strength table. It runs scripts/guardrail-check.mjs, cites evidence (file:line or command output) for each claim, distinguishes enforced from convention-only guardrails, notes blind spots in the build guard scope and any fail-open path in the hook, and separates known environment failures from real defects. It does not edit files.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "audit just the front end against our ui guidelines and claude.md. both themes, phone and desktop. dont touch anything",
+      "expected_output": "A front-end-only report using references/frontend-audit.md: token compliance, contrast per theme, one-primary-action, whether the help action stays reachable, safety wording and location freshness, touch targets, loading/empty/error states, and UI calls with no matching server route. States which widths and themes were actually viewed (or that no browser was available). Makes no code changes.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "are our guardrails actually enforced or are they just written down? like if someone added a twilio dependency or put a phone number in a test file would anything catch it?",
+      "expected_output": "Answers the question by evidence, not assertion. Runs the guardrail checker (and, if appropriate, the self-test), explains that the build guard scans only some directories and the hook covers only some tools, names what would and would not catch each scenario, and rates each guardrail L0-L3. Does not type a real emergency number into a tool call.",
+      "files": []
+    }
+  ]
+}
