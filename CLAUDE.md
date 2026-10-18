@@ -168,6 +168,5 @@ data schema, and evaluation protocol linked here.
 If these conflict, explain the conflict before changing behavior.
 
 - KAZE brief: [`HTV 11_ Project KAZE.pdf`](./HTV%2011_%20Project%20KAZE.pdf)
-- YTC Grand Architecture (./docs/YTC Grand Architecture.png)
 - Backend API, responsibilities and endpoints: [`docs/backend.md`](./docs/backend.md)
 - UI guidelines (themes, tokens, components): [`docs/ui-guidelines.md`](./docs/ui-guidelines.md)
