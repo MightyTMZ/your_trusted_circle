@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { COPY } from '../copy';
 import { useApp } from '../context';
 import { Avatar } from '../components/Controls';
-import { CuttingMat, type MatItem } from '../components/CuttingMat';
 import { Icon } from '../components/Icon';
 
 // One short line each: the verb first, no mechanism. Setup explains the rest when it matters.
@@ -11,10 +10,6 @@ const STEPS = [
   { title: 'Friends join', body: 'They scan a QR code and choose what to share.' },
   { title: 'Check-ins keep watch', body: 'A missed check-in alerts the host first.' },
 ];
-
-// Pictures on the hero mat. Swap `src` for your own photos (drop them in public/mat/); positions are fractions of the mat.
-// e.g. { id: 'patch', src: '/mat/patch.png', alt: 'Toronto patch', x: 0.15, y: 0.25, width: 0.16, rotate: -6 }
-const MAT_ITEMS: MatItem[] = [];
 
 /** First screen for a visitor: what YTC is, how it works in three lines, and one big way to start. Account and settings sit where they do everywhere else. */
 export function LandingScreen() {
@@ -52,15 +47,6 @@ export function LandingScreen() {
             </button>
           </span>
         </div>
-
-        <CuttingMat items={MAT_ITEMS} label={COPY.appTagline}>
-          <h1 className="mat-title">
-            <span className="mat-title-line">{COPY.appTagline}</span>
-            <span className="mat-title-line">YTC</span>
-          </h1>
-          <p className="mat-sub">Hack the Valley XI</p>
-        </CuttingMat>
-
         <div className="cols" style={{ gap: 32 }}>
           <div className="col" style={{ gap: 24 }}>
             <div className="stack" style={{ gap: 12 }}>
