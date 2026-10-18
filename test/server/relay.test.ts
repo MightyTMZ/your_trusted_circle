@@ -106,6 +106,20 @@ test("old and future fixes are refused", async () => {
   assert.equal((await sam.call("POST", `/api/sessions/${sessionId}/location`, body(at(-10 * 60 * SEC)))).body.reason, "too_old");
 });
 
+test("an older valid fix cannot replace the latest position", async () => {
+  const { sam, sessionId, deps } = await group();
+  const now = deps.now();
+  const latest = { latitude: 43.65321, longitude: -79.3832, accuracyM: 5, fixAt: now.toISOString() };
+  const older = { latitude: 43.70001, longitude: -79.3832, accuracyM: 5, fixAt: new Date(now.getTime() - 10 * SEC).toISOString() };
+
+  assert.equal((await sam.call("POST", `/api/sessions/${sessionId}/location`, latest)).body.relayed, true);
+  assert.equal((await sam.call("POST", `/api/sessions/${sessionId}/location`, older)).body.relayed, true);
+
+  const locations = (await sam.call("GET", `/api/sessions/${sessionId}/locations`)).body.locations as any[];
+  const own = locations.find((location) => location.isYou);
+  assert.equal(own.latitude, latest.latitude);
+});
+
 test("turning sharing off, leaving, and ending the session clear positions at once", async () => {
   const { maya, sam, jo, sessionId, send, seen, deps } = await group();
   await send(maya);

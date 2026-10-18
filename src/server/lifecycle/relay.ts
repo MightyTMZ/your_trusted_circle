@@ -49,6 +49,8 @@ export class LocationRelay {
   put(sessionId: string, fix: LiveFix): void {
     let fixes = this.bySession.get(sessionId);
     if (!fixes) this.bySession.set(sessionId, (fixes = new Map()));
+    const current = fixes.get(fix.participantId);
+    if (current && current.fixAt.getTime() > fix.fixAt.getTime()) return;
     fixes.set(fix.participantId, fix);
   }
 

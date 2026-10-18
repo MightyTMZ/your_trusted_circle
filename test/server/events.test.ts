@@ -67,6 +67,26 @@ test("you cannot send data into a session you are not in", async () => {
   assert.equal(res.body.rejected[0].code, "not_in_session");
 });
 
+test("sensor ingestion respects the participant's monitoring consent", async () => {
+  const { sam, sessionId, store } = await setupGroup();
+  const consent = await sam.call("PATCH", `/api/sessions/${sessionId}/me/consent`, {
+    monitoring: false,
+    locationSharing: "group",
+    shareLocationWithResponders: true,
+    consentTextVersion: "consent-v1",
+  });
+  assert.equal(consent.status, 200);
+
+  const res = await ingest(sam, [
+    { kind: "sensor", sessionId, dataOrigin: "live_device", dataClass: "raw", units: "m/s^2", data: { accel: [0.1, 9.8, 0.2] } },
+  ]);
+
+  assert.equal(res.body.accepted, 0);
+  assert.equal(res.body.rejected[0].code, "monitoring_off");
+  assert.equal(store.rawRecordings.length, 0);
+  assert.equal(store.traces.filter((t) => t.kind === "sensor").length, 0);
+});
+
 test("location is stored only while the server has an active incident for that person", async () => {
   const { maya, sam, sessionId, samPid, store, tick } = await setupGroup();
   const t = timeline(sessionId);

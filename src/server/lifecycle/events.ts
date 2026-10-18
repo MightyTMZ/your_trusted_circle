@@ -200,6 +200,10 @@ export function ingestRoutes(deps: Deps) {
           reject("sensor_metadata_required", 'Sensor data needs dataClass ("raw" or "derived") and units (e.g. "m/s^2").');
           continue;
         }
+        if (item.kind === "sensor" && session && me && !me.consent.monitoring) {
+          reject("monitoring_off", "Movement monitoring is off for you in this session.");
+          continue;
+        }
 
         let data = item.data;
         let redacted = false;
