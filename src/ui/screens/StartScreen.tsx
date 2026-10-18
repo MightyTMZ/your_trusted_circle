@@ -3,6 +3,8 @@ import { COPY } from '../copy';
 import { useApp } from '../context';
 import { Avatar } from '../components/Controls';
 import { Icon } from '../components/Icon';
+import { ItemBoard } from '../components/ItemBoard';
+import { SafetyNet } from '../components/SafetyNet';
 
 export function StartScreen() {
   const { go, account } = useApp();
@@ -43,6 +45,7 @@ export function StartScreen() {
           <h1 className="t-display">A buddy system for nights out that can ask for help when you can't.</h1>
           <p className="t-lead">One sober host keeps watch. Everyone else joins on their own phone and shares their location with the group or just the host.</p>
         </div>
+        <SafetyNet height={220} />
         <div className="screen-footer rise rise-3">
           <button type="button" className="btn pbtn on-accent" onClick={() => go({ name: 'host-setup' })}>
             Host a session
