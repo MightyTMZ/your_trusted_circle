@@ -1,7 +1,7 @@
-**Project Summary**
+# Project Summary
 YTC is a summation of our initials (Yianni, Tom, Tim, Chris), but it also happens to stand for Your Trusted Circle. As a group of friends, we realize the importance of looking out for each other in environments where someone may be intoxicated, unconscious, or in scenarios where they cannot look out for themselves. We created Your Trusted Circle to rectify situations when someone isn't able to support themselves. We do this using two main systems.
 
-**Time-series Gyroscopic and Accelerometer Classifier Model**
+# Time-series Gyroscopic and Accelerometer Classifier Model
 We trained a proprietary random forest classifier model on the MotionSense Dataset, where we can classify time-series gyroscopic and accelerometer data as specific movements such as downstairs, upstairs, walking, jogging, sitting, and standing.
 
 The model takes a 12-feature input layer: Altitude (roll, pitch, yaw), Gravity (x, y, z), Rotation Rate (x, y, z), Acceleration (x, y, z). We trained using a supervised random forest algorithm, where we reached 98.24% on a validation dataset we collected from ourselves and from fellow Hack the Valley participants by making them recreate the classification actions (dance off!). 
@@ -16,7 +16,7 @@ If they don't respond within the check-in window, YTC alerts the session host, t
 
 All of these deadlines run on our server, not the phone. If the phone dies, loses signal or gets damaged, the countdown keeps going. Losing the connection can never silently cancel a call for help.
 
-**Automatic Distress Call**
+# Automatic Distress Call
 When escalation reaches emergency services, our AI voice agent calls an operator and explains the situation, because the person can't. It identifies itself as an automated assistant, then gives a clear breakdown: who the person is, what the phone recorded, their last-known location and when it was, any emergency notes they chose to share, and who has already been alerted. It then answers any of the operator's follow-up questions out loud in a natural ElevenLabs voice and understands their spoken replies.
 
 We acknowledge that in an emergency, a wrong detail relayed by our agent is worse than none. So the agent is built to never make things up.
