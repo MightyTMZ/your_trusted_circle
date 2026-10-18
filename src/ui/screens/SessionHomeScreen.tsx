@@ -14,6 +14,7 @@ import { GroupMap, liveFixFor, useGroupPoints } from '../components/GroupMap';
 import { Icon } from '../components/Icon';
 import { LocationStamp } from '../components/LocationStamp';
 import { Sheet } from '../components/Sheet';
+import { useActivityInference } from '../hooks/useActivityInference';
 import { useMotionTracking } from '../hooks/useMotionTracking';
 import { useLive } from '../hooks/useServerSession';
 import { endSessionOnServer, type LiveFix } from '../api';
@@ -158,6 +159,12 @@ export function SessionHomeScreen() {
   const { permissionState: motionPerm, requestPermission: requestMotion } = useMotionTracking(
     store,
     trackingActive ? viewer.id : null,
+  );
+  // Activity inference: collects 12 sensor features, runs TFJS model, sends
+  // predictions as sensor traces to the MongoDB traces collection.
+  useActivityInference(
+    trackingActive ? session.serverId ?? null : null,
+    trackingActive ? session.serverId ?? null : null,
   );
   const isHost = viewer.id === session.hostId;
   const ended = session.status === 'ended' || viewer.status === 'left';
