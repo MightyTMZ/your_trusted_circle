@@ -5,6 +5,7 @@ import type {
   CallView,
   CapabilitiesResponse,
   ErrorResponse,
+  IncomingCall,
   SpeechRequest,
   StartCallResponse,
   TurnResponse,
@@ -58,6 +59,8 @@ async function toBase64(blob: Blob): Promise<string> {
 export const callApi = {
   capabilities: () => request<CapabilitiesResponse>('GET', '/api/calls/capabilities'),
   start: () => request<StartCallResponse>('POST', '/api/calls'),
+  incoming: () => request<{ calls: IncomingCall[] }>('GET', '/api/calls/incoming'),
+  answer: (id: string) => request<StartCallResponse>('POST', `/api/calls/${id}/answer`),
   state: (id: string) => request<{ call: CallView }>('GET', `/api/calls/${id}`),
   say: (id: string, text: string) => request<TurnResponse>('POST', `/api/calls/${id}/turns`, { text }),
   speak: async (id: string, audio: Blob) => {

@@ -2,7 +2,7 @@
 
 The visual language for every YTC screen, after Apple's Human Interface
 Guidelines: opaque grouped content, a translucent material only on the
-floating controls, no colour (white or black marks what's active), the system font at Apple's text-style sizes.
+floating controls, no colour (white or black marks what's active; one green, `--positive`, only for accepting a call and confirming a message reached responders; one red, `--alert`, only for "an alert about you is open"), the system font at Apple's text-style sizes.
 Follow this for any UI change so new screens match the rest of the app on
 iPhone, iPad and desktop.
 
@@ -101,6 +101,8 @@ override tokens on the same element.
 | Labels | `--text-primary`, `--text-secondary` (≥ 4.5:1 everywhere), `--text-tertiary` (placeholders and decoration only, ≥ 3:1) |
 | Icons | `--icon` (default), `--icon-muted` (inactive sidebar icons) |
 | Accent | `--accent`, `--accent-ink` (text on accent), `--accent-icon` (icons on accent), `--accent-ring` (focus, selection outline, help ring), `--accent-soft` |
+| Positive | `--positive` (outline and icon, Mono `#30d158`, Onyx `#248a3d`), `--positive-fill` `#248a3d` with `--positive-ink` white (4.6:1). The only colour in the app, for exactly two things people know from their phones: accepting a call, and "your message reached responders". Never for anyone's condition. |
+| Alert | `--alert` (Mono `#ff453a`, Onyx `#d70015`, 5.4:1 on white), `--alert-soft` (its pulse). Only for the "Alert about you" pill's outline and bell: an alert about this person is open (green once they told responders they're OK). Never for errors, which stay grey. |
 | Danger | `--danger` (#ff3b30, Apple system red), `--danger-ink`, `--danger-icon`, `--danger-ring`, `--danger-soft`, `--danger-glow`. Used for open/unacknowledged alerts only. `.on-danger` replaces `.on-accent` on alert avatars, tags, badges, buttons, and cards. `.card.alert-open` adds a red border and glow. |
 | Switch | `--switch-off`, `--switch-knob`, `--switch-knob-on` (dark in Mono, where the track is white), `--segment-thumb` |
 | Data | `--track-inactive`, `--tick-inactive`, `--knob` |
@@ -190,11 +192,13 @@ pointer events. Minimum hit area 44×44 (`accessibility.md › Mobility`).
 | Avatar | `.av` / `<Avatar name src>` | 40px circle, `fill` by default. Profile picture when the account has one, initials otherwise. `.on-danger` for the person with an open alert; `.on-accent` for non-alert active states. |
 | Avatar stack | `.av-stack` > `.av` | 32px solid avatars overlapping 10px, ringed in `--surface`. Leftmost on top: set `z-index` descending left to right. |
 | Step progress | `.seg` > `span` | Multi-step flows; done/current segments `.is-on`. |
-| Sheet | `<Sheet title onClose>` | Confirmations, portalled to `<body>`. Material bottom sheet on phone, centered dialog on larger screens, blurred scrim, Escape closes. Most likely button on top of the stack (`alerts.md › Buttons`). Destructive confirms use a grey primary, not the accent; irreversible ones (delete account) also need typed confirmation. |
+| Sheet | `<Sheet title onClose centered? className?>` | Confirmations, portalled to `<body>`. Material bottom sheet on phone, centered dialog on larger screens (`centered` centres it on phones too, as for the operator's incident record). `className="sheet-capped"` caps its height for a long list: the title and buttons stay put and only a `.sheet-scroll` child scrolls, blurred scrim, Escape closes. Most likely button on top of the stack (`alerts.md › Buttons`). Destructive confirms use a grey primary, not the accent; irreversible ones (delete account) also need typed confirmation. |
 | Tab | `button.btn.tab` > `.slot-ic` + `.slot-label` | Phone tab bar item: icon over an 11px label. Selected: accent icon and label on a grey fill. Badge `.badge` for an unacknowledged alert. |
 | Sidebar item | `button.btn.side-item` | Tablet and desktop: icon and 15px label in a 44px row. Selected: grey fill, accent icon. |
-| Help button | `button.btn.material.help-fab` (phone), `button.btn.side-help` (sidebar) | "I need help". Never a tab: tabs navigate, help acts (`tab-bars.md › Best practices`). 62px material circle with an accent ring beside the tab bar; a labelled ringed row at the top of the sidebar. |
+| Help button | `button.btn.material.help-fab` (phone), `button.btn.side-help` (sidebar) | "I need help". Never a tab: tabs navigate, help acts (`tab-bars.md › Best practices`). 62px material circle with an accent ring hanging off the tab bar's left edge (the tabs are centred on their own, so help never shifts them); a labelled ringed row at the top of the sidebar. |
 | Error | `p.error[role=alert]` + `alert` icon | Grey-fill box, primary text. No red. |
+| Access prompt | `<AccessPrompt icon title primary secondary>` | Access the session can't work without (motion for check-ins, location for the map): a centred material card over a blurred, locked app, shown before the browser's own request (`privacy.md › Pre-alert screens`). One at a time. Always a way out (`modality.md › Best practices`): "Turn off check-ins" (their consent choice) or "Not now" (this visit only). Waits while an alert about the person is open. |
+| Alert about you | `<AlertAboutYou>` → `.alert-island` | While an alert about you is open, floating at the top centre (over the main column on larger screens), over the page rather than in it. Waiting for "I'm OK": the full card with a 2px `--alert` outline, the status and "Tell responders I'm OK"; its close button (or Escape) shrinks it to the red "Alert about you" pill, sized to its content, with a gentle pulse; tap to open again. Once the record shows "I'm OK": the outline and bell turn `--positive` (the message reached responders; the alert is still open), the card says "Okay, understood" with the time from the record, and after 4 s it shrinks into the green pill. The card is laid out once at full size and the pill is a window onto its top centre, so opening and shrinking grow the window and the outlined shape together (like the Dynamic Island) and nothing inside moves or resizes. Collapsed, only the pill takes taps. Reduce Motion: no pulse, no animation. Help hides meanwhile; `.help-fab-slot` keeps its place. |
 
 React wrappers in `src/ui/components/Controls.tsx`: `Toggle`, `ToggleRow`,
 `OptionList`, `ChipChoice`, `Stepper`, `StepBar`, `ScreenHeader`, plus
@@ -206,8 +210,9 @@ React wrappers in `src/ui/components/Controls.tsx`: `Toggle`, `ToggleRow`,
 | --- | --- | --- |
 | Arc gauge | Countdowns (next escalation, check-in window) | ~200° SVG arc, 8px round stroke, flat accent active stroke, white knob with accent ring, hero numeral + label inside, start/end times at the arc ends. Turns grey with no knob when stopped. Word values use `.t-hero-word` so they stay inside the arc. |
 | Tick dial | Elapsed time across a window (incident card) | 48 radial ticks generated in JS. Lit ticks fade in and grow toward the current point; the leading tick is tallest; unlit ticks fade out toward the end. Hero numeral sits inside the arc. |
-| Group map | Where people are (`GroupMap`) | Google satellite imagery with labels (`GoogleMap`, hybrid map type) when `GOOGLE_MAPS_API_KEY` is set at build time; otherwise, or if the key is rejected, the synthetic venue plot (`--map-*` tokens). Markers are avatars (`.av.pin` on Google, `.av.mark` on the plot): `fill` live, `stale` dashed, `on-accent` open alert. Simulated positions also get a dotted outline (`.sim`) and the map chip counts them, so they never pass for a real fix. **Auto-fit** (`src/ui/mapFit.ts`): both maps centre on the midpoint of the group's bounding box and zoom so everyone fits with a margin. The zoom follows the map's measured size in CSS px, so a small map zooms out further for the same group; the margin is about 12% of the map's shorter side (24–72px, `fitPadding`), with at least 64px clear at the top for the map chip on the plot. A lone person shows about 60 m across at any size. Screen pixel density doesn't change the zoom: the maths is in CSS px and Google serves sharper tiles on its own. The closest view is about 10 m across on the plot and the imagery's deepest zoom at the venue (Google's MaxZoomService, at most 21) on Google; GPS isn't more precise than that. Avatars that still overlap are nudged apart on screen (in a ring when at the same spot); their positions and labels stay true. Google re-fits when someone joins or leaves, walks out of view, or the map is resized (window, rotation, fullscreen), and stops auto-fitting once the person pans or zooms, until the group changes. |
-| Scrubber | Session progress | 4px accent line on grey, white knob with accent ring, elapsed left, remaining right (13px). |
+| Group map | Where people are (`GroupMap`) | Google satellite imagery with labels (`GoogleMap`, hybrid map type) when `GOOGLE_MAPS_API_KEY` is set at build time; otherwise, or if the key is rejected, the synthetic venue plot (`--map-*` tokens). Markers are avatars (`.av.pin` on Google, `.av.mark` on the plot): `fill` live, `stale` dashed, `on-accent` open alert. Simulated positions also get a dotted outline (`.sim`) and the map chip counts them, so they never pass for a real fix. **Auto-fit** (`src/ui/mapFit.ts`): both maps centre on the midpoint of the group's bounding box and zoom so everyone fits with a margin. The zoom follows the map's measured CSS size; the margin is about 12% of the shorter side (24–72px, `fitPadding`), with at least 64px clear at the top for the map chip on the plot. A lone person shows about 60 m across. Avatars that still overlap are nudged apart on screen while their positions and labels stay true. Google re-fits when someone joins or leaves, walks out of view, or the map is resized, and stops auto-fitting after a manual pan or zoom until the group changes. |
+| Scrubber | Progress (`Scrubber`) | 4px accent line on grey, white knob with accent ring, elapsed left, remaining right (13px). |
+| Live time bar | Session time (`LiveScrubber`) | Like a live stream: always full to now, "Live · time left" on the right. Drag (44px hit area) or arrow keys to look back; a "−12:34 · Back to live" chip returns. A "What happened" chip opens a capped sheet that tells, in sentences, what happened up to that moment (or so far, when live): joins, alerts and their escalation, and movements where a record of positions exists (`GET /api/sessions/:id/story`; only the incident demo's person, to whoever they share location with), with a line naming whose movements aren't kept. Nothing expands under the bar. Positions are never stored, so the map always shows now. `role="slider"`. |
 
 Read-only data components use `role="img"` or `role="timer"` with an
 `aria-label` that states the values in words. Never use native `<input
@@ -292,6 +297,27 @@ is set, every phone reports a simulated position there instead of its GPS,
 and the map and People list label those positions "Simulated". Sessions only
 on one device keep a per-browser venue, or the build's `DEMO_VENUE`. Google requires its logo, map data, Terms and
 "Report a map error" links on the map; never hide them.
+
+The Demo panel's "Incident demo" appears only for the host of a server
+session, and only when the server has the demo on (`GET
+/api/sessions/:id/demo` answers); otherwise it says how to turn it on. A
+check-in the server started appears on that person's phone like one their
+phone started. When escalation reaches simulated emergency services, the
+host's alert screen moves to the call screen, which shows whether the call
+is ringing or connected, its transcript, and one primary action to answer
+it on the operator console. The console shows a ringing call above the
+practice call, and makes it the primary action.
+
+The operator console (`#operator`) is one fixed page that never scrolls on
+any device; only the conversation scrolls inside it. Standby says only that
+calls ring there and that no real phone line or emergency service is connected. An incoming call takes the whole screen like a phone call:
+caller, who it is about, why it escalated, and a single green Accept (no
+decline). On the call: caller and timer on top, "Record" opens the incident
+record in a sheet, the conversation as chat bubbles, then a dock with a live
+strip of the agent's real steps while it prepares an answer (read from
+`activity` on the call), a question field and a round hold-to-talk
+microphone. Touch screens say "Hold the microphone to talk"; a fine pointer
+says "Hold Space to talk".
 
 Profile pictures are stored by the server (`avatar` on `GET`/`PATCH
 /api/me`) as a PNG, JPEG or WebP data URL of at most 100 KB. The app

@@ -83,7 +83,10 @@ export function JoinSessionScreen({ code }: { code: string }) {
         monitoring: input.motionMonitoring,
         locationSharing: input.locationSharing,
         shareLocationWithResponders: input.shareLocationWithResponders,
+        shareNoteWithResponders: input.shareNoteWithResponders,
+        consentTextVersion: 'consent-v1',
       },
+      ...(input.emergencyNote.trim() ? { responderNote: input.emergencyNote.trim().slice(0, 500) } : {}),
       backupContacts: input.backupContacts.filter((c) => c.name.trim() && c.relation.trim()).map((c) => ({ name: c.name.trim(), relation: c.relation.trim() })),
     });
 

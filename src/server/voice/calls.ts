@@ -1,7 +1,8 @@
 /**
- * Live simulated calls. Each call gets its own copy of the synthetic
- * no-response incident, restored onto a clock that moves with real time,
- * and one OperatorCallAgent. The person at the operator console plays the
+ * Live simulated calls. A practice call gets its own copy of the synthetic
+ * no-response incident, restored onto a clock that moves with real time; a
+ * demo call (ring) reads the live demo incident's own timeline. Each call
+ * has one OperatorCallAgent. The person at the operator console plays the
  * mock operator; nothing here can reach a real one.
  *
  * Speech is a transport detail: the operator's audio is transcribed, then
@@ -10,7 +11,7 @@
  */
 import type { Clock } from "../../shared/clock.js";
 import { SequentialIds, type IdGenerator } from "../../shared/ids.js";
-import { OperatorCallAgent, type AgentReply, type CallAgentOptions } from "../../agent/agent.js";
+import { OperatorCallAgent, type AgentReply, type AgentStage, type CallAgentOptions } from "../../agent/agent.js";
 import type { Embedder } from "../../agent/retrieval.js";
 import type { ReasoningModel } from "../../agent/model.js";
 import type { Fact } from "../../agent/facts.js";
@@ -19,7 +20,7 @@ import type { TimelineEvent } from "../../timeline/schema/catalog.js";
 import { Timeline } from "../../timeline/timeline.js";
 import { GEMINI_FAST_MODEL, GEMINI_REASONING_MODEL, createGeminiModels } from "../../agent/gemini.js";
 import { ElevenLabsSpeech, type SpeechProvider } from "./elevenlabs.js";
-import type { CallView, CapabilitiesResponse, FactView, ReplyView, TurnResponse } from "./protocol.js";
+import type { CallView, CapabilitiesResponse, FactView, IncomingCall, ReplyView, TurnResponse } from "./protocol.js";
 
 export class CallError extends Error {
   override name = "CallError";
@@ -50,7 +51,26 @@ interface LiveCall {
   id: string;
   agent: OperatorCallAgent;
   timeline: Timeline;
+  incidentId: string;
+  pool: "practice" | "live";
+  sessionId: string | null;
+  /** Set for a call placed by escalation that nobody has answered yet. */
+  ringing: { since: string; about: string } | null;
+  /** What the agent is doing while it prepares an answer (agent.ts onStage). */
+  activity: CallView["activity"];
   lastActive: number;
+}
+
+/** What escalation hands over when it places a call: the incident's own timeline and clock. */
+export interface RingRequest {
+  timeline: Timeline;
+  clock: Clock;
+  incidentId: string;
+  sessionId: string;
+  /** Shown on the incoming-call card. Only a name the person shared with responders, else a neutral label. */
+  about: string;
+  timeZone: string;
+  scenarioId: string;
 }
 
 const OPERATOR_AUDIO_LIMIT = 5 * 1024 * 1024;
@@ -74,7 +94,7 @@ export class CallService {
 
   /** Builds a fresh incident, places the simulated call, and speaks the opening breakdown. */
   start(): { call: CallView; reply: ReplyView } {
-    this.evict();
+    this.evict("practice");
     const scenario = buildNoResponseScenario({ voiceCall: false });
     // The story's clock stops at the simulated dispatch; from here it follows real time.
     const base = scenario.clock.now();
@@ -86,7 +106,9 @@ export class CallService {
       ids: continuingIds(scenario.timeline.events.length),
     });
     const id = this.callIds.next("call");
+    const holder: { live?: LiveCall } = {};
     const agent = new OperatorCallAgent({
+      onStage: this.tracker(holder, clock),
       timeline,
       clock,
       incidentId: FIXTURE_INCIDENT_ID,
@@ -98,11 +120,90 @@ export class CallService {
       ...this.opts.models,
       ...this.opts.agent,
     });
-    const live: LiveCall = { id, agent, timeline, lastActive: this.wall() };
+    const live: LiveCall = {
+      id,
+      agent,
+      timeline,
+      incidentId: FIXTURE_INCIDENT_ID,
+      pool: "practice",
+      sessionId: null,
+      ringing: null,
+      activity: null,
+      lastActive: this.wall(),
+    };
+    holder.live = live;
     this.calls.set(id, live);
     const started = this.wall();
     const reply = agent.start();
     return { call: this.view(live), reply: this.replyView(live, reply, started) };
+  }
+
+  /**
+   * Places a call about a live incident. It rings until someone at the operator
+   * console answers; only then does the agent speak. The agent reads and
+   * appends to the incident's own timeline, so it sees events that arrive
+   * during the call (an acknowledgment, say).
+   */
+  ring(req: RingRequest): string {
+    this.evict("live");
+    const id = this.callIds.next("call");
+    const holder: { live?: LiveCall } = {};
+    const agent = new OperatorCallAgent({
+      onStage: this.tracker(holder, req.clock),
+      timeline: req.timeline,
+      clock: req.clock,
+      incidentId: req.incidentId,
+      callId: id,
+      timeZone: req.timeZone,
+      dataOrigin: "synthetic_scenario",
+      scenarioId: req.scenarioId,
+      ...this.opts.models,
+      ...this.opts.agent,
+    });
+    const live: LiveCall = {
+      id,
+      agent,
+      timeline: req.timeline,
+      incidentId: req.incidentId,
+      pool: "live",
+      sessionId: req.sessionId,
+      ringing: { since: new Date(req.clock.now()).toISOString(), about: req.about },
+      activity: null,
+      lastActive: this.wall(),
+    };
+    holder.live = live;
+    this.calls.set(id, live);
+    return id;
+  }
+
+  /** Calls placed by escalation that are waiting for the operator, oldest first. */
+  incoming(): IncomingCall[] {
+    return [...this.calls.values()]
+      .filter((c) => c.ringing !== null)
+      .map((c) => ({ call_id: c.id, incident_id: c.incidentId, ringing_since: c.ringing!.since, about: c.ringing!.about }))
+      .sort((a, b) => a.ringing_since.localeCompare(b.ringing_since));
+  }
+
+  access(callId: string): { kind: "practice" | "live"; sessionId: string | null } | null {
+    const live = this.calls.get(callId);
+    return live ? { kind: live.pool, sessionId: live.sessionId } : null;
+  }
+
+  /** The operator picks up: the agent starts and speaks the opening breakdown. */
+  answer(callId: string): { call: CallView; reply: ReplyView } {
+    const live = this.get(callId);
+    if (!live.ringing) throw new CallError(`Call ${callId} is not ringing.`, 409);
+    live.ringing = null;
+    live.lastActive = this.wall();
+    const started = this.wall();
+    const reply = live.agent.start();
+    return { call: this.view(live), reply: this.replyView(live, reply, started) };
+  }
+
+  /** The current state of a call, for the escalation that placed it. */
+  status(callId: string): CallView["status"] | null {
+    const live = this.calls.get(callId);
+    return live ? this.statusOf(live) : null;
   }
 
   /** One operator turn, as text. */
@@ -148,6 +249,8 @@ export class CallService {
 
   end(callId: string): { call: CallView } {
     const live = this.get(callId);
+    // Declining a ringing call still logs that it ended, with no call started.
+    live.ringing = null;
     live.agent.end("operator_hangup");
     return { call: this.view(live) };
   }
@@ -178,20 +281,27 @@ export class CallService {
 
   private active(callId: string): LiveCall {
     const live = this.get(callId);
+    if (live.ringing) throw new CallError(`Call ${callId} has not been answered yet.`, 409);
     if (!live.agent.isActive) throw new CallError(`Call ${callId} has ended.`, 409);
     return live;
   }
 
   /** Ends idle calls and keeps at most maxCalls, dropping ended ones first. */
-  private evict(): void {
+  private evict(pool: "practice" | "live"): void {
     const now = this.wall();
     for (const live of this.calls.values()) {
-      if (live.agent.isActive && now - live.lastActive > (this.opts.idleMs ?? 30 * 60_000)) live.agent.end("timeout");
+      if (live.pool !== pool) continue;
+      if ((live.agent.isActive || live.ringing) && now - live.lastActive > (this.opts.idleMs ?? 30 * 60_000)) {
+        live.ringing = null;
+        live.agent.end("timeout");
+      }
     }
     const max = this.opts.maxCalls ?? 8;
-    const byAge = [...this.calls.values()].sort((a, b) => Number(a.agent.isActive) - Number(b.agent.isActive) || a.lastActive - b.lastActive);
-    while (this.calls.size >= max && byAge.length) {
+    const open = (c: LiveCall) => Number(c.agent.isActive || c.ringing !== null);
+    const byAge = [...this.calls.values()].filter((c) => c.pool === pool).sort((a, b) => open(a) - open(b) || a.lastActive - b.lastActive);
+    while (byAge.length >= max && byAge.length) {
       const drop = byAge.shift()!;
+      drop.ringing = null;
       drop.agent.end("disconnected");
       this.calls.delete(drop.id);
     }
@@ -224,8 +334,8 @@ export class CallService {
     const ended = mine.find((e): e is TimelineEvent<"voice.call_ended"> => e.type === "voice.call_ended");
     return {
       call_id: live.id,
-      incident_id: FIXTURE_INCIDENT_ID,
-      status: live.agent.isActive ? "active" : "ended",
+      incident_id: live.incidentId,
+      status: this.statusOf(live),
       ended_reason: ended?.data.reason ?? null,
       transcript: mine
         .filter((e): e is TimelineEvent<"voice.utterance"> => e.type === "voice.utterance")
@@ -240,7 +350,20 @@ export class CallService {
       log: mine.map((e) => ({ event_id: e.event_id, type: e.type, at: e.occurred_at, summary: e.summary })),
       timeline_events: events.length,
       rejected_drafts: mine.filter((e) => e.type === "voice.draft_rejected").length,
+      activity: live.activity,
     };
+  }
+
+  /** Records the agent's current step on its call, for the console's live view. */
+  private tracker(holder: { live?: LiveCall }, clock: Clock): (stage: AgentStage, attempt: number) => void {
+    return (stage, attempt) => {
+      if (!holder.live) return;
+      holder.live.activity = stage === "idle" ? null : { stage, attempt, since: new Date(clock.now()).toISOString() };
+    };
+  }
+
+  private statusOf(live: LiveCall): CallView["status"] {
+    return live.ringing ? "ringing" : live.agent.isActive ? "active" : "ended";
   }
 }
 

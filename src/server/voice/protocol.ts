@@ -48,7 +48,8 @@ export interface LogLine {
 export interface CallView {
   call_id: string;
   incident_id: string;
-  status: "active" | "ended";
+  /** "ringing": placed by escalation, not answered yet; the agent has said nothing. */
+  status: "ringing" | "active" | "ended";
   ended_reason: string | null;
   transcript: TurnView[];
   /** The fact sheet as of now: everything the agent may say. */
@@ -57,6 +58,17 @@ export interface CallView {
   log: LogLine[];
   timeline_events: number;
   rejected_drafts: number;
+  /** What the agent is doing right now, while it prepares an answer; null when it is not. */
+  activity: { stage: "reading_record" | "finding_facts" | "drafting" | "checking" | "verifying" | "fallback"; attempt: number; since: string } | null;
+}
+
+/** A call placed by escalation, waiting for someone at the operator console. */
+export interface IncomingCall {
+  call_id: string;
+  incident_id: string;
+  ringing_since: string;
+  /** The person's name if they shared it with responders, else a neutral label. */
+  about: string;
 }
 
 export interface StartCallResponse {

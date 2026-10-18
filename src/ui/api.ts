@@ -190,6 +190,16 @@ export async function previewSession(code: string): Promise<SessionPreview | nul
   return body?.session ?? null;
 }
 
+/** A person's own sharing choices, as the server stores them. */
+export interface ServerConsent {
+  monitoring: boolean;
+  locationSharing: string;
+  shareLocationWithResponders: boolean;
+  /** Their name and note go to responders (simulated emergency services) during an alert. */
+  shareNoteWithResponders?: boolean;
+  consentTextVersion: string;
+}
+
 export interface ServerParticipant {
   participantId: string;
   displayName: string;
@@ -211,7 +221,7 @@ export interface ServerSessionView {
     role: string;
     joinedAt: string;
     leftAt: string | null;
-    consent: { monitoring: boolean; locationSharing: string; shareLocationWithResponders: boolean };
+    consent: ServerConsent;
     backupContacts: { name: string; relation: string }[];
   } | null;
   participants: ServerParticipant[];
@@ -221,8 +231,10 @@ export interface ServerSessionView {
 export async function createSessionOnServer(input: {
   name: string;
   durationMin: number;
-  consent: { monitoring: boolean; locationSharing: string; shareLocationWithResponders: boolean };
+  consent: ServerConsent;
   backupContacts?: { name: string; relation: string }[];
+  /** Self-reported note for responders; disclosed only under consent.shareNoteWithResponders. */
+  responderNote?: string;
   rules?: Record<string, number | boolean>;
 }): Promise<{ session: ServerSessionView; joinUrl: string } | string> {
   const result = await postJson<{ session: ServerSessionView; joinUrl: string }>('/sessions', input);
@@ -231,8 +243,10 @@ export async function createSessionOnServer(input: {
 
 export async function joinSessionOnServer(input: {
   code: string;
-  consent: { monitoring: boolean; locationSharing: string; shareLocationWithResponders: boolean };
+  consent: ServerConsent;
   backupContacts?: { name: string; relation: string }[];
+  /** Self-reported note for responders; disclosed only under consent.shareNoteWithResponders. */
+  responderNote?: string;
 }): Promise<ServerSessionView | string> {
   const result = await postJson<{ session: ServerSessionView }>('/sessions/join', input);
   return result.ok ? result.data.session : result.message;
@@ -253,7 +267,7 @@ async function sendJson(method: 'POST' | 'PATCH', path: string, body?: unknown):
 }
 
 export interface ServerSessionPoll extends Omit<ServerSessionView, 'participants'> {
-  participants: (ServerParticipant & { consent?: { monitoring: boolean; locationSharing: string; shareLocationWithResponders: boolean } })[];
+  participants: (ServerParticipant & { consent?: ServerConsent })[];
 }
 
 /** The server's current view of a session, or null when it can't be reached. */
@@ -264,7 +278,7 @@ export async function fetchServerSession(serverId: string): Promise<ServerSessio
 
 export function updateConsentOnServer(
   serverId: string,
-  consent: { monitoring: boolean; locationSharing: string; shareLocationWithResponders: boolean },
+  consent: ServerConsent,
 ): Promise<boolean> {
   return sendJson('PATCH', `/sessions/${encodeURIComponent(serverId)}/me/consent`, consent);
 }
@@ -334,6 +348,7 @@ export interface ServerIncidentView {
 export interface ServerCheckInView {
   id: string;
   status: 'pending' | 'responded_ok' | 'requested_help' | 'missed' | 'cancelled';
+  promptedAt: string;
   dueAt: string;
   incidentId: string | null;
 }
@@ -406,6 +421,72 @@ export function acknowledgeOnServer(alertId: string): Promise<Result<{ incident:
 
 export function resolveOnServer(incidentId: string, outcome: 'false_alarm' | 'assistance_reached' | 'other'): Promise<Result<{ incident: ServerIncidentView }>> {
   return postResult(`/incidents/${encodeURIComponent(incidentId)}/resolve`, { outcome });
+}
+
+/** Mirrors src/server/data/story.ts: what happened, as this viewer may see it. */
+export interface ServerStory {
+  items: { at: string; kind: 'session' | 'movement' | 'alert'; text: string; participantId?: string }[];
+  noMovementRecord: string[];
+}
+
+export async function fetchStory(serverId: string): Promise<ServerStory | null> {
+  return getJson<ServerStory>(`/sessions/${encodeURIComponent(serverId)}/story`);
+}
+
+// ---------------------------------------------------------------------------
+// Live incident demo (presenter tool; the server mounts it only in demo mode)
+// ---------------------------------------------------------------------------
+
+export type DemoPhase =
+  | 'before_impact'
+  | 'watching'
+  | 'checkin_pending'
+  | 'answered_ok'
+  | 'incident_open'
+  | 'calling'
+  | 'on_call'
+  | 'acknowledged'
+  | 'resolved'
+  | 'stopped';
+
+/** Mirrors src/server/demo/live-demo.ts `DemoView`. */
+export interface DemoView {
+  sessionId: string;
+  participantId: string;
+  name: string;
+  phase: DemoPhase;
+  startedAt: string;
+  impactAt: string;
+  checkIn: { id: string; dueAt: string; status: string } | null;
+  incidentId: string | null;
+  call: { id: string; status: 'ringing' | 'active' | 'ended' } | null;
+  timelineEvents: number;
+  rules: { checkInWindowSec: number; hostAckWindowSec: number; backupAckWindowSec: number };
+  stoppedReason: string | null;
+}
+
+/** The session's demo; null when none has run; 'unavailable' when the server has the demo off. */
+export async function fetchDemo(serverId: string): Promise<DemoView | null | 'unavailable'> {
+  try {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(serverId)}/demo`, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+    if (!res.ok) return 'unavailable';
+    return ((await res.json()) as { demo: DemoView | null }).demo;
+  } catch {
+    return 'unavailable';
+  }
+}
+
+export function startDemo(serverId: string, participantId: string): Promise<Result<{ demo: DemoView }>> {
+  return postResult(`/sessions/${encodeURIComponent(serverId)}/demo`, { participantId });
+}
+
+export async function stopDemo(serverId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(serverId)}/demo`, { method: 'DELETE', credentials: 'same-origin' });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 /** Cancel my own open alert as a false alarm. Only works for an alert about me. */

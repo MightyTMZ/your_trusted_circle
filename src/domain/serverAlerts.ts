@@ -41,6 +41,8 @@ export interface ServerIncidentInput {
 export interface ServerCheckInInput {
   id: string;
   status: 'pending' | 'responded_ok' | 'requested_help' | 'missed' | 'cancelled';
+  promptedAt?: string;
+  dueAt?: string;
 }
 
 /** An alert delivered to this viewer (GET /api/alerts). */
@@ -181,7 +183,9 @@ export function applyServerIncident(state: AppState, view: ServerIncidentInput, 
  * Applies one poll of the server: every incident this viewer may see, their
  * own check-ins, and the alerts delivered to them (the host's inbox).
  * Local check-ins the server has closed as missed close here too, so this
- * device stops asking while the server's alert takes over.
+ * device stops asking while the server's alert takes over. A pending check-in
+ * the server started itself (the presenter's live demo) is shown here like
+ * one this phone started, and the answer goes back to the server.
  */
 export function applyServerTimeline(
   state: AppState,
@@ -197,9 +201,19 @@ export function applyServerTimeline(
   }
   for (const view of input.incidents) applyServerIncident(state, view, viewerId, alertFor.get(view.id));
 
+  // A check-in this phone is still sending has no server id yet; never mistake it for a new one.
+  const sending = state.checkIns.some((c) => c.participantId === viewerId && c.status === 'pending' && !c.server);
   for (const sc of input.checkIns) {
     const local = state.checkIns.find((c) => c.server?.id === sc.id);
-    if (!local || local.status !== 'pending') continue;
+    if (!local) {
+      const promptedAt = ms(sc.promptedAt);
+      const dueAt = ms(sc.dueAt);
+      if (sc.status === 'pending' && !sending && promptedAt !== undefined && dueAt !== undefined) {
+        state.checkIns.push({ id: `chk_srv_${sc.id}`, participantId: viewerId, observationId: '', promptedAt, dueAt, status: 'pending', server: { id: sc.id } });
+      }
+      continue;
+    }
+    if (local.status !== 'pending') continue;
     if (sc.status === 'missed' || sc.status === 'cancelled') local.status = sc.status;
   }
 }

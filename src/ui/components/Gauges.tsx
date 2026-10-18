@@ -248,3 +248,62 @@ export function Scrubber({ progress, left, right, ariaLabel }: { progress: numbe
     </div>
   );
 }
+
+/**
+ * Session time as a live stream: the bar is always full up to now and marked
+ * Live. Drag the knob (or use the arrow keys) to look back; `onSeek(null)`
+ * returns to live. The caller shows what had happened by the chosen moment.
+ */
+export function LiveScrubber({
+  start,
+  now,
+  at,
+  onSeek,
+  label,
+}: {
+  start: number;
+  now: number;
+  /** The moment being looked at, or null for live. */
+  at: number | null;
+  onSeek(t: number | null): void;
+  label: (t: number) => string;
+}) {
+  const span = Math.max(1, now - start);
+  const t = at === null ? now : Math.min(Math.max(at, start), now);
+  const pct = `${(((t - start) / span) * 100).toFixed(2)}%`;
+  const seekTo = (clientX: number, el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    const f = clamp01((clientX - r.left) / Math.max(1, r.width));
+    // The last moment of the bar is live.
+    onSeek(f > 0.985 ? null : start + f * span);
+  };
+  const step = 60_000;
+  return (
+    <div
+      className="scrub live-scrub"
+      role="slider"
+      tabIndex={0}
+      aria-label="Session time"
+      aria-valuemin={0}
+      aria-valuemax={Math.round(span / 1000)}
+      aria-valuenow={Math.round((t - start) / 1000)}
+      aria-valuetext={at === null ? 'Live' : label(t)}
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        seekTo(e.clientX, e.currentTarget);
+      }}
+      onPointerMove={(e) => e.buttons === 1 && seekTo(e.clientX, e.currentTarget)}
+      onKeyDown={(e) => {
+        const next =
+          e.key === 'ArrowLeft' ? t - step : e.key === 'ArrowRight' ? t + step : e.key === 'Home' ? start : e.key === 'End' ? now : undefined;
+        if (next === undefined) return;
+        e.preventDefault();
+        onSeek(next >= now ? null : Math.max(start, next));
+      }}
+    >
+      <div className="scrub-track" />
+      <div className="scrub-fill" style={{ width: pct }} />
+      <div className="scrub-knob" style={{ left: pct }} />
+    </div>
+  );
+}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { HOST_RECIPIENT_PREFIX, acknowledge, nextDeadline, repeatAlert, resolve } from '../../domain/incident';
 import { freshness } from '../../domain/location';
 import { applyServerIncident } from '../../domain/serverAlerts';
@@ -13,7 +13,7 @@ import { ArcGauge } from '../components/Gauges';
 import { Icon } from '../components/Icon';
 import { LocationStamp } from '../components/LocationStamp';
 import { SimulatedTag } from '../components/SimulatedTag';
-import { acknowledgeOnServer, resolveOnServer } from '../api';
+import { acknowledgeOnServer, fetchDemo, resolveOnServer } from '../api';
 import { useLive } from '../hooks/useServerSession';
 
 const hm = (t: number) => fmtTime(t).slice(0, 5);
@@ -31,6 +31,7 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
   const [note, setNote] = useState('');
   const [flash, setFlash] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [hasDemoCall, setHasDemoCall] = useState(false);
   const { refreshAlerts } = useLive();
 
   const incident = state.incidents.find((i) => i.id === incidentId);
@@ -38,6 +39,34 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
   const isHost = !!me && me.id === state.session?.hostId;
   const payload = incident ? latestPayloadFor(state, incident.id, recipientId) : undefined;
   const back = () => go({ name: 'home' });
+
+  const callReached = !!incident?.server && incident.steps.some((s) => s.level === 'emergency_simulated' && s.notifiedAt !== undefined);
+  useEffect(() => {
+    const serverId = state.session?.serverId;
+    if (!serverId || !incident?.server) {
+      setHasDemoCall(false);
+      return;
+    }
+    let alive = true;
+    const poll = async () => {
+      const demo = await fetchDemo(serverId);
+      if (!alive) return;
+      setHasDemoCall(demo !== 'unavailable' && demo?.incidentId === incidentId && demo.call !== null);
+    };
+    void poll();
+    const id = window.setInterval(poll, 1500);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [incident?.server, incidentId, state.session?.serverId]);
+  // follow the call only when the live incident demo placed one
+  const calling = callReached && hasDemoCall;
+  const callingBefore = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (callingBefore.current === false && calling) go({ name: 'call', id: incidentId });
+    callingBefore.current = calling;
+  }, [calling, go, incidentId]);
 
   if (!incident || !payload) {
     return (
@@ -51,7 +80,6 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
   }
 
   const staleAfter = state.session?.config.locationStaleAfterSec ?? 90;
-  const callReached = incident.steps.some((s) => s.level === 'emergency_simulated' && s.notifiedAt !== undefined);
   const open = incident.status === 'open';
   const selfCancelled = incident.resolution?.by === 'participant';
   // What the original alert said; the cancellation itself is shown below.
@@ -243,7 +271,7 @@ export function AlertEscalationScreen({ incidentId }: { incidentId: string }) {
               </div>
             </section>
           )}
-          {callReached && (
+          {callReached && hasDemoCall && (
             <button type="button" className="btn pbtn fill" onClick={() => go({ name: 'call', id: incident.id })}>
               Simulated emergency call <SimulatedTag />
             </button>

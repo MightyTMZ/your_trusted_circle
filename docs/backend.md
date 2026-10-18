@@ -40,7 +40,7 @@ All bodies are JSON. Browser requests need the `ytc_session` cookie, and every w
 | `POST /api/auth/logout` | signed in | Ends this browser's sign-in |
 | `POST /api/sessions` | signed in | Create a session; you are its host. Needs `consentTextVersion` |
 | `GET /api/sessions/join/:code` | signed in | Preview before joining |
-| `POST /api/sessions/join` | signed in | Join with a code. Needs `consentTextVersion`; `joinedVia`: `code` or `qr` |
+| `POST /api/sessions/join` | signed in | Join with a code (typed or from the QR link `#join=CODE`). Needs `consentTextVersion`; `joinedVia`: `code` or `qr`; optional `responderNote` reaches responders only if `consent.shareNoteWithResponders` is on |
 | `GET /api/sessions/:id` | member | Session as you may see it |
 | `GET /api/sessions/:id/invite` | host | Code, join link, QR as SVG |
 | `PATCH /api/sessions/:id/rules` | host | Check-in, acknowledgment and heartbeat windows; size; location on/off |
@@ -65,24 +65,30 @@ All bodies are JSON. Browser requests need the `ytc_session` cookie, and every w
 | `GET /api/incidents/:id/card` | subject, host, recipients | The Incident Card, built from the timeline |
 | `POST /api/incidents/:id/repeat` | responder | Re-send the current step (up to 2 times); the deadline does not move |
 | `POST /api/incidents/:id/resolve` | responder | After acknowledging: `false_alarm`, `assistance_reached` or `other` |
-| `GET /api/sessions/:id/timeline` | member | Timeline events you are permitted to see |
+| `GET /api/sessions/:id/timeline` | member | What you are permitted to see |
+| `GET /api/sessions/:id/story` | member | What happened, in sentences, as you may see it: joins and leaves; alerts and their log (host and the person only); movements where a record of positions exists (the live incident demo's person, to whoever they share location with) |
 | `GET /api/me` / `PATCH /api/me` | signed in | Profile: `displayName`, and `avatar` (PNG, JPEG or WebP data URL up to 100 KB, or `null` to remove) |
 | `GET /api/me/export` | signed in | Everything about you, as JSON |
 | `DELETE /api/me` | signed in | `{ "confirm": "DELETE" }` deletes your account and all your data |
 | `GET /api/calls/capabilities` | anyone | Which models reason, listen and speak on simulated calls |
-| `POST /api/calls` | anyone | Start a simulated call to the mock operator about the synthetic incident; returns the opening breakdown |
-| `GET /api/calls/:id` | anyone | Transcript, fact sheet and voice log |
-| `POST /api/calls/:id/turns` / `.../speech` | anyone | An operator turn, typed (`text`) or recorded (`audio_base64`, `mime_type`) |
-| `POST /api/calls/:id/silence` / `.../interrupt` / `.../end` | anyone | Silence, barge-in, hang up |
-| `GET /api/calls/:id/turns/:n/audio` | anyone | Speech (MP3) for an agent turn already in the timeline |
+| `POST /api/calls` | anyone | Start a practice call to the mock operator about the built-in synthetic incident; returns the opening breakdown |
+| `GET /api/calls/incoming` | signed-in session member | Calls the live demo's escalation placed that are still ringing |
+| `POST /api/calls/:id/answer` | session member for live calls | Pick up a ringing call; the agent speaks the opening breakdown from that incident's record |
+| `POST /api/sessions/:id/demo` | host | Demo mode only. `{ participantId }`: start the live incident demo (see below) |
+| `GET /api/sessions/:id/demo` / `DELETE` | host | Demo mode only. Where the demo is; stop it (open alerts stay open) |
+| `GET /api/calls/:id` | session member for live calls | Transcript, fact sheet and voice log |
+| `POST /api/calls/:id/turns` / `.../speech` | session member for live calls | An operator turn, typed (`text`) or recorded (`audio_base64`, `mime_type`) |
+| `POST /api/calls/:id/silence` / `.../interrupt` / `.../end` | session member for live calls | Silence, barge-in, hang up |
+| `GET /api/calls/:id/turns/:n/audio` | session member for live calls | Speech (MP3) for an agent turn already in the timeline |
 | `GET /api/service/incidents/:id/briefing` | voice-agent service | Consent-filtered operator briefing and evidence |
 | `POST /api/service/incidents/:id/voice-events` | voice-agent service | Record one call event (`voice.*`) |
 | `GET /api/internal/tick` | cron (`CRON_SECRET`) | Run one scheduler pass (serverless hosts) |
 
-The call routes use only synthetic data and need no sign-in, but each call
-spends Gemini and ElevenLabs quota; keep the server on localhost or put
-them behind sign-in before exposing it. Details: `docs/timeline.md`, "The
-live call".
+Practice calls use only synthetic data and can start without sign-in. Live
+incident calls require a signed-in member of the session for discovery and
+control. Each call spends Gemini and ElevenLabs quota; keep the server on
+localhost or restrict access before exposing it. Details:
+`docs/timeline.md`, "The live call".
 
 ## Rules worth knowing
 
@@ -146,6 +152,47 @@ A help request with no pending check-in is recorded as a manual check-in answere
 - **Demo venue ("teleport").** The host may set `rules.demoVenue`, a public place such as a club, through `PATCH /api/sessions/:id/rules`. While it is set, every phone in the session relays a made-up position around it instead of its GPS, sent with `simulated: true` and returned that way to everyone, so it is never shown as a real location. Clearing it (`demoVenue: null`) drops those positions at once. The venue is the host's chosen public place, not anyone's position.
 - **Limitation:** the relay lives in one process's memory. Running more than one API instance would need a shared in-memory cache with expiry (for example Redis TTL keys) instead.
 
+## Live incident demo
+
+A presenter tool for a short demo (`src/server/demo/`). It is mounted only
+when `DEMO_INCIDENTS=true`, or with the localhost test sign-in. The host picks
+a participant in Demo > Incident demo. That person must have turned on
+movement check-ins themself; the demo refuses otherwise.
+
+- **Inputs only.** It writes about 90 minutes of synthetic evening for that
+  person (arriving, sitting, a phone left on a table and a check-in answered
+  OK, dancing, walking), then, live, a hard impact about 5 s after the
+  trigger and stillness. The samples go through the real `SensorPipeline`
+  and detectors with 15 s windows.
+- **The server does the rest.** When the detector fires, the server opens the
+  person's private check-in (their phone shows it). If nobody answers, the
+  scheduler opens the incident, alerts the host, then backup contacts, then
+  simulated emergency services, exactly as for any other incident. Starting
+  the demo sets the session's windows to 20 s (check-in) and 30 s (each
+  alert step), unvalidated values chosen to fit a short demo.
+- **The call reads this incident.** The demo keeps the incident's timeline in
+  memory: the synthetic history, the detections, and a mirror of the
+  server's check-in, alerts, acknowledgment and resolution. When escalation
+  reaches simulated emergency services, the voice agent places a call that
+  rings on the operator console (`#operator`) until someone answers. The
+  agent reads only that timeline; an acknowledgment, or the person's own
+  "I'm OK" (`incident.participant_update`, stated as self-reported), reaches
+  it within a second. The call's `activity` shows the agent's current step
+  (reading the record, finding facts, drafting, checking, verifying) while
+  it prepares an answer. The incident's log records that the call rang, was
+  answered and ended.
+- **Consent.** The call names the person and reads their note only if they
+  turned on "Share my name and note" (`consent.shareNoteWithResponders`).
+  Location is shared with the operator only under `shareLocationWithResponders`.
+- **"What happened."** The person's synthetic movements in the demo record
+  are told as sentences by `GET /api/sessions/:id/story`, to whoever they
+  share location with. No other positions are stored, so nobody else's
+  movements can be told.
+- **Memory only**, like the location relay. Positions in the demo are
+  synthetic, around the session's demo venue. Starting the demo sets the
+  venue to Toronto City Hall if none is set, so every phone that shares
+  location appears on the map, labelled simulated.
+
 ## Voice-agent service
 
 Two pieces, for two set-ups. `/api/calls` (`voice/routes.ts`) runs the agent in this process, with a person at the operator console playing the mock operator; today it uses the synthetic no-response incident. `voice/service.ts` is for an external voice-agent service (the Django box in the architecture). Both read only from a timeline. Connecting `/api/calls` to real incidents from the server timeline is the natural next step.
@@ -175,7 +222,7 @@ Without `VOICE_AGENT_URL` and `VOICE_AGENT_TOKEN`, the step is recorded as simul
 - **Deadlines need something to tick.** There is no long-running scheduler. Set `TICK_ON_REQUEST=true` so a pass runs before API requests, and call `GET /api/internal/tick` with `Authorization: Bearer $CRON_SECRET` from a scheduler:
   - **Vercel Cron:** every minute on Pro, once a day on Hobby. It isn't in `vercel.json`, because a more frequent schedule fails deployment on Hobby.
   - **Another pinger:** any external scheduler that can call the URL.
-  
+
   Deadlines are only noticed when a pass runs.
 - **Memory is per instance.** The live location relay and the rate limits don't share state across instances.
 

@@ -7,6 +7,7 @@
  * 4. Alert orchestration                         alerts/      notification jobs, results, retries, repeats, acknowledgment
  * 5. Data access and retention                   data/        permitted timelines, Incident Card, expiry, export, deletion
  * 6. Simulated voice-agent escalation            voice/       the agent's call to the mock operator (src/agent)
+ *    Live incident demo (presenter tool)         demo/        synthetic sensor input that runs 3, 4 and 6 for real
  *
  * Plus: timeline/ (the server's hash-chained record of each session),
  * contacts/ (backup contacts with accounts) and voice/service.ts (token-
@@ -27,6 +28,8 @@ import { authRoutes } from "./auth/routes.js";
 import { contactRoutes } from "./contacts/routes.js";
 import { fail, type AppEnv, type Deps } from "./context.js";
 import { accountRoutes } from "./data/account.js";
+import { demoRoutes } from "./demo/routes.js";
+import { storyRoutes } from "./data/story.js";
 import { runRetention } from "./data/retention.js";
 import { dataRoutes } from "./data/timeline.js";
 import { ingestRoutes } from "./lifecycle/events.js";
@@ -124,9 +127,11 @@ export function createApp(deps: Deps) {
   app.route("/api/service", voiceServiceRoutes(deps));
   // 5. Data access and retention
   app.route("/api", dataRoutes(deps));
+  app.route("/api", storyRoutes(deps));
   app.route("/api/me", accountRoutes(deps));
   // 6. Simulated voice-agent escalation
-  if (deps.calls) app.route("/api/calls", voiceRoutes(deps.calls));
+  if (deps.calls) app.route("/api/calls", voiceRoutes(deps.calls, deps));
+  if (deps.demos) app.route("/api", demoRoutes(deps, deps.demos));
 
   // Serve Vite build output for non-API routes (production only).
   // root is relative to the working directory (repo root); Vite outputs to dist/.

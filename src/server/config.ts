@@ -51,6 +51,12 @@ export interface ServerConfig {
    * on one computer. Only ever on for a localhost app origin outside production.
    */
   testSignIn: boolean;
+  /**
+   * The presenter's live incident demo (demo/): synthetic sensor input that
+   * runs the real check-in, escalation and simulated call. On with
+   * DEMO_INCIDENTS=true, or with the localhost test sign-in.
+   */
+  demoIncidents: boolean;
 }
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -109,6 +115,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     };
   }
 
+  const testSignIn = env.TEST_SIGN_IN === "true" && env.NODE_ENV !== "production" && isLocalUrl(appOrigin) && isLocalUrl(apiOrigin);
   return {
     port: Number.isInteger(port) && port > 0 ? port : 8787,
     mongoUri: env.MONGODB_URI?.trim() || null,
@@ -116,7 +123,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     appOrigin,
     apiOrigin,
     secureCookies: env.COOKIE_SECURE ? env.COOKIE_SECURE === "true" : appOrigin.startsWith("https://"),
-    testSignIn: env.TEST_SIGN_IN === "true" && env.NODE_ENV !== "production" && isLocalUrl(appOrigin) && isLocalUrl(apiOrigin),
+    testSignIn,
+    demoIncidents: env.DEMO_INCIDENTS === "true" || testSignIn,
     authSessionTtlMs: 30 * 24 * 60 * 60 * 1000,
     providers,
     defaultRules: DEFAULT_RULES,

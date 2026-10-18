@@ -228,6 +228,7 @@ All need `monitoring`.
 | `incident.opened` | Starts escalation; names the triggering event. | `trigger`, `trigger_event_id` |
 | `incident.acknowledged` | A responder has the alert. Does **not** mean the person is safe. | `acknowledged_by_role`, `acknowledged_by_id`, `notification_id` |
 | `incident.resolved` | Closed; separate from acknowledgment. | `resolution`, `resolved_by_role`, `resolved_by_id` |
+| `incident.participant_update` | The person added "I'm OK" from their own phone. Self-reported; never acknowledges or resolves. | `update`, `method` |
 
 ### Notifications (simulated transport)
 
@@ -327,11 +328,15 @@ and the UI; open `http://localhost:5173/#operator` and play the operator.
  <audio> ◄──────────────── GET /api/calls/:id/turns/:n/audio ─► ElevenLabs eleven_flash_v2_5 (streamed)
 ```
 
-- Each call restores a fresh copy of the synthetic no-response incident
-  onto a clock that follows real time ("about 13 minutes ago" keeps
-  counting) and opens with a full breakdown read verbatim from the facts:
-  who, why the alert opened, the impact, the last-known location, their
-  note, and that nobody has acknowledged it. No model is involved.
+- A practice call restores a fresh copy of the synthetic no-response
+  incident onto a clock that follows real time ("about 13 minutes ago"
+  keeps counting). A call placed by the live incident demo
+  (`docs/backend.md`, "Live incident demo") instead reads that incident's
+  own timeline, and rings until the operator answers (`GET
+  /api/calls/incoming`, `POST /api/calls/:id/answer`). Either way the agent
+  opens with a full breakdown read verbatim from the facts: who, why the
+  alert opened, the impact, the last-known location, their note, and that
+  nobody has acknowledged it. No model is involved.
 - Speech never changes the pipeline. Operator audio is transcribed, then
   handled exactly like typed text. Audio is made only from the text of an
   agent turn already logged in the timeline; no route speaks arbitrary
@@ -340,7 +345,7 @@ and the UI; open `http://localhost:5173/#operator` and play the operator.
   never its Agents platform, which can connect to phone networks.
 - Holding the talk button while the agent speaks stops playback and logs
   `voice.agent_interrupted` with how much was heard; the next prompt marks
-  that turn as cut off. 25 s of silence gets one prompt, then the agent
+  that turn as cut off. 60 s of silence gets one prompt, then the agent
   ends the call (the alert stays unresolved). Keys stay in the server
   process; the browser only sees `/api`.
 
@@ -356,6 +361,6 @@ and the UI; open `http://localhost:5173/#operator` and play the operator.
 | --- | --- |
 | Implemented | phyphox adapter, streaming windowing, window features, raw store, baseline and pattern detectors, sensor pipeline, timeline with consent enforcement, briefing with activity history, voice-agent reasoning pipeline (fact sheet, retrieval, guard, judge, fallback), backend server with the simulated-call routes, ElevenLabs speech in and out, operator console. |
 | Recorded vs. synthetic | `examples/accelerometer/` holds real Pixel 9 recordings; everything in `docs/examples/` is synthetic. |
-| Simulated | Notification transport, emergency dispatch, voice calls (mock operator only: the person at the operator console, in a browser, over localhost). |
+| Simulated | Notification transport, emergency dispatch, voice calls (mock operator only: the person at the operator console, in a browser, over localhost), the live incident demo's sensor input. |
 | Needs validation | Every threshold and rule; cadence and impact detection on real night-out data; the briefing's usefulness to real operators; the guard's and judge's false-accept and false-reject rates on a labelled set of drafts; answer latency with the chosen models. |
-| Not built | Live in-browser sensor capture, gyroscope fusion, the scheduler and state machines (escalation is scripted in the scenario), connecting the app's own live incidents to the backend (calls use the synthetic incident), streaming speech recognition. Single process; the hash chain is tamper-evident, not signed. |
+| Not built | Live in-browser sensor capture, gyroscope fusion, the scheduler and state machines in the fixture (escalation is scripted in the scenario), a timeline for server incidents outside the live demo (only the demo keeps one, so only demo incidents get a call), streaming speech recognition. Single process; the hash chain is tamper-evident, not signed. |

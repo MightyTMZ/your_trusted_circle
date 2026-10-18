@@ -7,6 +7,7 @@ import type { LocationRelay } from "./lifecycle/relay.js";
 import type { SessionTimelines } from "./timeline/record.js";
 import type { Store } from "./store/store.js";
 import type { UserDoc } from "./types.js";
+import type { DemoRegistry } from "./demo/live-demo.js";
 import type { CallService } from "./voice/calls.js";
 
 /**
@@ -26,6 +27,8 @@ export interface Deps {
   now: () => Date;
   /** Simulated voice-agent calls (voice/). Absent: /api/calls is not mounted. */
   calls?: CallService;
+  /** The presenter's live incident demo (demo/). Absent: its routes are not mounted. */
+  demos?: DemoRegistry;
 }
 
 export type AppEnv = { Variables: { user: UserDoc; tokenHash: string } };

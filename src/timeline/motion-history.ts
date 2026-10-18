@@ -8,7 +8,8 @@
  * - Gaps between windows, and windows with coverage < minCoverage, become
  *   "no_data" segments: missing data is reported, never guessed.
  * - The time after the last window up to `to` is "no_data" too (e.g. the
- *   phone went offline).
+ *   phone went offline), unless it is no longer than one window plus the
+ *   stream's late tolerance: that is the window still being filled.
  * - A single-window blip between two segments of the same level is merged
  *   into them, unless it is still or contains an impact: those are exactly
  *   what responders need to see.
@@ -64,6 +65,8 @@ interface Building {
 
 const LEVELS: SegmentLevel[] = ["still", "light", "moderate", "vigorous", "no_data"];
 const MIN_RHYTHM_REGULARITY = 0.5;
+/** Matches the motion stream's default lateToleranceMs (src/sensors/stream.ts). */
+const LATE_TOLERANCE_MS = 2_000;
 
 export function summarizeMotionHistory(
   windows: readonly TimelineEvent<"sensor.motion_window">[],
@@ -95,7 +98,10 @@ export function summarizeMotionHistory(
     push(Math.max(start, cursor), end, w.data.coverage_ratio < minCoverage ? "no_data" : w.data.activity_level, w);
     cursor = Math.max(cursor, end);
   }
-  push(cursor, opts.to, "no_data");
+  // A tail no longer than one window (plus late samples) is the window still open, not missing data.
+  const last = sorted.at(-1);
+  const openWindowMs = last ? Date.parse(last.data.window_end) - Date.parse(last.data.window_start) + LATE_TOLERANCE_MS : 0;
+  if (opts.to - cursor > openWindowMs) push(cursor, opts.to, "no_data");
 
   const merged = mergeBlips(built);
   const segments = merged.map(toSegment);

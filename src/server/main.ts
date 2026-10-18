@@ -16,6 +16,7 @@ import { runSchedulerPass } from "./safety/scheduler.js";
 import { MemoryStore } from "./store/memory.js";
 import { MongoStore } from "./store/mongo.js";
 import type { Store } from "./store/store.js";
+import { DemoRegistry } from "./demo/live-demo.js";
 import { createCallService } from "./voice/calls.js";
 
 const config = loadConfig();
@@ -29,7 +30,9 @@ if (config.mongoUri) {
   console.warn("[api] MONGODB_URI is not set: using an in-memory store. Data is lost on restart.");
 }
 
-const deps = createDeps(config, store, { calls: createCallService(process.env) });
+const calls = createCallService(process.env);
+const deps = createDeps(config, store, { calls });
+if (config.demoIncidents) deps.demos = new DemoRegistry(calls);
 const app = createApp(deps);
 
 // Deadlines live in the database; this loop only notices them. A pass that is
@@ -40,6 +43,8 @@ setInterval(async () => {
   running = true;
   try {
     await runSchedulerPass(deps);
+    // The demo feeds its next samples and mirrors what this pass decided.
+    await deps.demos?.tick(deps);
   } catch (err) {
     console.error(`[scheduler] pass failed: ${(err as Error).name}`);
   } finally {
@@ -60,4 +65,5 @@ serve({ fetch: app.fetch, port: config.port }, (info) => {
   console.log(`[calls] speech: ${voice.speech_to_text ? `${voice.speech_to_text} / ${voice.text_to_speech}` : "off (no ELEVENLABS_API_KEY): text only"}`);
   console.log(`[calls] operator console: ${config.appOrigin}/#operator (simulation only; no real calls are possible)`);
   console.log(`[api] voice-agent service: ${config.voiceAgentUrl ? "configured" : "not configured (emergency step recorded as simulated only)"}`);
+  if (deps.demos) console.log("[demo] live incident demo is on (host: Demo > Incident demo). Synthetic sensor input only.");
 });

@@ -611,6 +611,22 @@ export const EVENT_CATALOG = {
       `Incident ${ctx.incident_id} resolved as ${d.resolution} by ${d.resolved_by_role} ${d.resolved_by_id}.`,
   }),
 
+  "incident.participant_update": defineEvent({
+    description:
+      "The person the alert is about added an update from their own phone. Self-reported: it neither acknowledges nor resolves the alert.",
+    sensitivity: "none",
+    incident: "required",
+    participant: "required",
+    selfActorOnly: true,
+    payload: v.object({
+      update: v.enum(["reported_ok"] as const),
+      method: v.enum(["tap"] as const),
+    }),
+    summarize: (_d, ctx) =>
+      `${cap(who(ctx))} reported from their own phone that they are OK (self-reported). ` +
+      `The alert for incident ${ctx.incident_id} stays open until a responder resolves it.`,
+  }),
+
   // ── Notifications (simulated transport) ──────────────────────────────
   "notification.sent": defineEvent({
     description: "Alert sent to a recipient. Lists exactly which facts were delivered.",

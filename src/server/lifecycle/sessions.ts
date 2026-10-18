@@ -31,6 +31,7 @@ const consentSchema = v.object({
   monitoring: v.boolean(),
   locationSharing: v.enum(["group", "host", "off"] as const),
   shareLocationWithResponders: v.boolean(),
+  shareNoteWithResponders: v.optional(v.boolean()),
 });
 /** Which consent text the person was shown. Recorded with every choice (the audit trail is the timeline). */
 const consentTextVersion = v.string({ minLength: 1, maxLength: 40 });
@@ -38,8 +39,12 @@ const consentPatchSchema = v.object({
   monitoring: v.boolean(),
   locationSharing: v.enum(["group", "host", "off"] as const),
   shareLocationWithResponders: v.boolean(),
+  shareNoteWithResponders: v.optional(v.boolean()),
   consentTextVersion,
 });
+
+/** Self-reported, for responders. Synthetic in demos (CLAUDE.md). */
+const responderNoteSchema = v.optional(v.string({ minLength: 1, maxLength: 500 }));
 
 /** Synthetic names only in demos (CLAUDE.md). Two at most, as in the client. */
 const backupContactsSchema = v.array(
@@ -72,6 +77,7 @@ const createSchema = v.object({
   consent: consentSchema,
   consentTextVersion,
   backupContacts: v.optional(backupContactsSchema),
+  responderNote: responderNoteSchema,
   rules: v.optional(rulesPatchSchema),
 });
 
@@ -80,6 +86,7 @@ const joinSchema = v.object({
   consent: consentSchema,
   consentTextVersion,
   backupContacts: v.optional(backupContactsSchema),
+  responderNote: responderNoteSchema,
   /** How the code arrived: typed or from a link ("code"), or scanned ("qr"). */
   joinedVia: v.optional(v.enum(["code", "qr"] as const)),
 });
@@ -104,6 +111,7 @@ function newParticipant(
   consent: ParticipantConsent,
   textVersion: string,
   contacts: ContactsInput,
+  note: string | undefined,
   now: Date,
 ): ParticipantDoc {
   return {
@@ -117,6 +125,7 @@ function newParticipant(
     consentTextVersion: textVersion,
     consentUpdatedAt: now,
     backupContacts: (contacts ?? []).map((c) => ({ id: newId("con"), name: c.name.trim(), relation: c.relation.trim(), userId: null })),
+    responderNote: note?.trim() || null,
     lastHeartbeatAt: now,
     deviceOnline: true,
   };
@@ -218,7 +227,9 @@ export function sessionRoutes(deps: Deps) {
       endedAt: null,
       suspendedAt: null,
       rules,
-      participants: [newParticipant(user, "host", capConsent(input.consent, rules), input.consentTextVersion, input.backupContacts, now)],
+      participants: [
+        newParticipant(user, "host", capConsent(input.consent, rules), input.consentTextVersion, input.backupContacts, input.responderNote, now),
+      ],
     };
     await deps.store.insertSession(session);
     await rec.sessionCreated(session, session.participants[0]!);
@@ -255,7 +266,15 @@ export function sessionRoutes(deps: Deps) {
     if (existing && existing.leftAt === null) return c.json({ session: sessionView(s, user, now) });
     if (existing) return fail(c, 409, "already_left", "You left this session. Ask the host for a new one.");
 
-    const participant = newParticipant(user, "participant", capConsent(input.consent, s.rules), input.consentTextVersion, input.backupContacts, now);
+    const participant = newParticipant(
+      user,
+      "participant",
+      capConsent(input.consent, s.rules),
+      input.consentTextVersion,
+      input.backupContacts,
+      input.responderNote,
+      now,
+    );
     if (!(await deps.store.addParticipant(s._id, participant, s.rules.maxParticipants))) {
       return fail(c, 409, "session_full", "This session is full.");
     }
@@ -310,7 +329,7 @@ export function sessionRoutes(deps: Deps) {
     const issues = validate(consentPatchSchema, body);
     if (issues.length > 0) return fail(c, 400, "invalid_request", "Check your sharing choices.", issues);
     const { consentTextVersion: version, ...choice } = body as Infer<typeof consentPatchSchema>;
-    const consent = capConsent(choice, s.rules);
+    const consent = capConsent({ ...me.consent, ...choice }, s.rules);
     const now = deps.now();
     await deps.store.updateParticipant(s._id, me.participantId, { consent, consentTextVersion: version, consentUpdatedAt: now });
     await rec.consentChanged(s, { ...me, consentTextVersion: version }, me.consent, consent);

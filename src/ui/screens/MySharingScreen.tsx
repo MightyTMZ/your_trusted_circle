@@ -29,6 +29,8 @@ export function MySharingScreen() {
       monitoring: next.motionMonitoring,
       locationSharing: next.locationSharing,
       shareLocationWithResponders: next.shareLocationWithResponders,
+      shareNoteWithResponders: next.shareNoteWithResponders,
+      consentTextVersion: 'consent-v1',
     }).then((ok) => setSyncError(!ok));
   };
   // Location always reaches at least the host; that is what lets the host respond.
@@ -90,7 +92,7 @@ export function MySharingScreen() {
             onChange={(v) => set({ shareLocationWithResponders: v })}
           />
           <ToggleRow
-            label="Share my note with responders during an alert"
+            label="Share my name and note with responders (including simulated emergency services) during an alert"
             checked={p.consent.shareNoteWithResponders}
             onChange={(v) => set({ shareNoteWithResponders: v })}
           />

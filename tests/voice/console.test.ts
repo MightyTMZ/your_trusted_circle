@@ -5,10 +5,10 @@ import { describe, expect, it } from "vitest";
 import { OperatorConsole } from "../../src/ui/operator/OperatorConsole";
 
 describe("operator console", () => {
-  it("starts idle, labelled simulated, with one way in", () => {
+  it("starts on standby, with no real line connected", () => {
     const html = renderToString(createElement(OperatorConsole));
-    expect(html).toContain("Simulated emergency operator");
-    expect(html).toContain("simulated emergency services only");
-    expect(html).toContain("Answer the simulated call");
+    expect(html).toContain("Operator line");
+    expect(html).toContain("Standing by");
+    expect(html).toContain("No real phone line or emergency service is connected");
   });
 });

@@ -51,6 +51,8 @@ export interface ParticipantConsent {
   locationSharing: LocationSharing;
   /** Share last-known location with responders during an incident. */
   shareLocationWithResponders: boolean;
+  /** Share their name and note with responders (simulated emergency services) during an incident. */
+  shareNoteWithResponders?: boolean;
 }
 
 /**
@@ -77,6 +79,8 @@ export interface ParticipantDoc {
   consentTextVersion: string;
   consentUpdatedAt: Date;
   backupContacts: BackupContact[];
+  /** Self-reported note for responders (synthetic in demos). Disclosed only under consent.shareNoteWithResponders. */
+  responderNote?: string | null;
   /** Last heartbeat from this participant's device. Missing heartbeats never cancel a deadline. */
   lastHeartbeatAt: Date | null;
   deviceOnline: boolean;
