@@ -6,6 +6,7 @@ import { fmtTime } from './format';
 import { Icon } from './components/Icon';
 import { joinUrl } from './screens/SessionInviteScreen';
 import { createSessionOnServer, endSessionOnServer, fetchDemo, fetchServerSession, setSessionVenueOnServer, startDemo, stopDemo, type DemoView } from './api';
+import { DEMO_STEP } from './demoStatus';
 import { applySessionVenue, resolveVenue, setLocalVenue, useDemoVenue, type Venue } from './venue';
 
 const POS_KEY = 'ytc.demoFab';
@@ -400,19 +401,6 @@ function DemoPanel({ style }: { style: CSSProperties }) {
     </aside>
   );
 }
-
-const DEMO_STEP: Record<DemoView['phase'], string> = {
-  before_impact: 'Evening loaded. Waiting for the impact',
-  watching: 'Impact sent. Waiting for the detector',
-  checkin_pending: 'Check-in on their phone. Leave it unanswered',
-  answered_ok: 'They answered OK. No alert was sent',
-  incident_open: 'No answer. The host is alerted; escalating',
-  acknowledged: 'Acknowledged. Escalation stopped',
-  calling: 'Calling the simulated operator',
-  on_call: 'Operator on the line',
-  resolved: 'Resolved',
-  stopped: 'Stopped',
-};
 
 /**
  * The live incident demo (server sessions, host only). The server writes a

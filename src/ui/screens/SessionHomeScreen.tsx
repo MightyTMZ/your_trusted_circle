@@ -17,8 +17,9 @@ import { Sheet } from '../components/Sheet';
 import { useActivityInference } from '../hooks/useActivityInference';
 import { useMotionTracking } from '../hooks/useMotionTracking';
 import { useLive } from '../hooks/useServerSession';
-import { endSessionOnServer, fetchStory, updateConsentOnServer, type ServerStory, type LiveFix } from '../api';
+import { endSessionOnServer, fetchDemo, fetchStory, updateConsentOnServer, type DemoView, type ServerStory, type LiveFix } from '../api';
 import { AccessPrompt } from '../components/AccessPrompt';
+import { DEMO_STEP } from '../demoStatus';
 
 function fmtHM(ms: number): string {
   const m = Math.max(0, Math.round(ms / 60_000));
@@ -168,8 +169,13 @@ export function SessionHomeScreen() {
   const { state, me, store, go, setViewer } = useApp();
   const now = useNow();
   const [sheet, setSheet] = useState<null | 'end'>(null);
-  /** A moment on the session's time bar, or null for live. */
-  const [lookBack, setLookBack] = useState<number | null>(null);
+  /** a replay starts at the selected timeline moment and advances at the session clock rate */
+  const [replay, setReplay] = useState<{ anchor: number; clockAt: number } | null>(null);
+  const replayAt = replay ? replay.anchor + Math.max(0, now - replay.clockAt) : null;
+  const seek = (at: number | null) => {
+    if (at === null || at >= now) setReplay(null);
+    else setReplay({ anchor: at, clockAt: now });
+  };
   /** The moment whose events are open in a sheet, or null. */
   const [moment, setMoment] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -210,7 +216,7 @@ export function SessionHomeScreen() {
   }, [latestCancelled?.id]);
   const myIncident = state.incidents.find((i) => i.participantId === viewer.id && i.status !== 'resolved');
   const live = useLive();
-  const { points, anchor } = useGroupPoints(viewer, now, lookBack ?? now);
+  const { points, anchor } = useGroupPoints(viewer, now, replayAt ?? now);
   const run = (fn: Parameters<typeof store.dispatch>[0]) => {
     const err = store.dispatch(fn);
     setError(err);
@@ -315,6 +321,7 @@ export function SessionHomeScreen() {
           </span>
         </div>
       )}
+      <DemoStatusNotice />
 
       {/* Access prompts wait while an alert about you is open: that notification comes first. */}
       {!myIncident && trackingActive && motionPerm === 'prompt' && (
@@ -391,21 +398,21 @@ export function SessionHomeScreen() {
                 )}
               </div>
               <div className="stack" style={{ gap: 6 }}>
-                <LiveScrubber start={session.createdAt} now={now} at={lookBack} onSeek={setLookBack} label={(t) => `${fmtTime(t)}, ${fmtHM(now - t)} ago`} />
+                <LiveScrubber start={session.createdAt} now={now} at={replayAt} onSeek={seek} label={(t) => `${fmtTime(t)}, ${fmtHM(now - t)} ago`} />
                 <div className="spread t-cap num">
                   <span>Started {fmtTime(session.createdAt).slice(0, 5)}</span>
                   <span className="inline">
-                  <button type="button" className="btn chip fill live-back" onClick={() => setMoment(lookBack ?? now)}>
+                  <button type="button" className="btn chip fill live-back" onClick={() => setMoment(replayAt ?? now)}>
                     What happened
                   </button>
-                  {lookBack === null ? (
+                  {replayAt === null ? (
                     <span className="live-tag">
                       <span className="dot live" aria-hidden="true" />
                       Live · {fmtHM(session.expiresAt - now)} left
                     </span>
                   ) : (
-                    <button type="button" className="btn chip fill live-back" onClick={() => setLookBack(null)}>
-                      −{fmtHM(now - lookBack)} · Back to live
+                    <button type="button" className="btn chip fill live-back" onClick={() => setReplay(null)}>
+                      −{fmtHM(now - replayAt)} · Back to live
                     </button>
                   )}
                   </span>
@@ -437,7 +444,7 @@ export function SessionHomeScreen() {
         </div>
       </div>
 
-      {moment !== null && <MomentSheet at={moment} live={lookBack === null} onClose={() => setMoment(null)} />}
+      {moment !== null && <MomentSheet at={moment} live={replayAt === null} onClose={() => setMoment(null)} />}
 
       {sheet === 'end' && (
         <Sheet title="End the session for everyone?" onClose={() => setSheet(null)}>
@@ -461,6 +468,43 @@ export function SessionHomeScreen() {
         </Sheet>
       )}
 
+    </div>
+  );
+}
+
+function DemoStatusNotice() {
+  const { state, me } = useApp();
+  const serverId = state.session?.serverId;
+  const isHost = !!me && me.id === state.session?.hostId;
+  const [demo, setDemo] = useState<DemoView | null | 'unavailable'>(null);
+
+  useEffect(() => {
+    if (!serverId || !isHost) {
+      setDemo(null);
+      return;
+    }
+    let alive = true;
+    const poll = async () => {
+      const next = await fetchDemo(serverId);
+      if (alive) setDemo(next);
+    };
+    poll();
+    const id = window.setInterval(poll, 1000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [serverId, isHost]);
+
+  if (!demo || demo === 'unavailable' || ['answered_ok', 'resolved', 'stopped'].includes(demo.phase)) return null;
+  const icon = demo.phase === 'calling' || demo.phase === 'on_call' ? 'phone' : demo.phase === 'incident_open' ? 'alert' : 'activity';
+  return (
+    <div className="toast material demo-toast" role="status" aria-live="polite" key={demo.phase}>
+      <Icon name={icon} />
+      <span className="stack">
+        <span className="t-name">Simulation update</span>
+        <span className="t-sub">{DEMO_STEP[demo.phase]}</span>
+      </span>
     </div>
   );
 }

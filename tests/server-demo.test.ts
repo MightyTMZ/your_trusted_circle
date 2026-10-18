@@ -58,7 +58,7 @@ describe("live incident demo", () => {
     const prepared = (await store.getSession(session._id))!;
 
     expect(prepared.participants).toHaveLength(4);
-    expect(prepared.participants.filter((p) => p.displayName.includes("(synthetic)"))).toHaveLength(3);
+    expect(prepared.participants.filter((p) => p.displayName.includes("(synthetic "))).toHaveLength(3);
     expect(run.view()).toMatchObject({ unskippable: true });
     expect(run.view().participantId).not.toBe("par_host");
     const before = deps.relay.list(session._id, now);

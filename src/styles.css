@@ -605,6 +605,7 @@ textarea.field { height: 100px; padding: 13px 16px; resize: none; line-height: 1
   display: flex; align-items: flex-start; gap: 10px; animation: ytc-rise 200ms var(--ease) both;
 }
 .toast .ic { flex: none; margin-top: 2px; }
+.demo-toast { top: calc(80px + env(safe-area-inset-top)); }
 /* Centred over the main column, beside the 248px sidebar. */
 @media (min-width: 768px) { .alert-island { left: calc(50% + 124px); top: 16px; width: min(420px, calc(100vw - 296px)); } }
 @keyframes ytc-alert-pulse {

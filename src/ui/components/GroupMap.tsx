@@ -109,7 +109,7 @@ export function useGroupPoints(viewer: Participant, now: number, at = now): { po
 
 function simulatedParticipantIndex(p: Participant): number | null {
   if (p.role === 'host') return -1;
-  const match = p.displayName.match(/^Demo guest ([1-3]) \(synthetic\)$/);
+  const match = p.displayName.match(/\(synthetic ([1-3])\)$/);
   return match ? Number(match[1]) - 1 : null;
 }
 

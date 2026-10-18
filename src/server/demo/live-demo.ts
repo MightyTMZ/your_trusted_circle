@@ -47,7 +47,7 @@ export const FALLBACK_VENUE = { label: "Toronto City Hall", lat: 43.6532, lng: -
 
 const MAX_SYNTHETIC_PARTICIPANTS = 3;
 const SYNTHETIC_USER_PREFIX = "demo_user:";
-const SYNTHETIC_NAMES = ["Demo guest 1 (synthetic)", "Demo guest 2 (synthetic)", "Demo guest 3 (synthetic)"];
+const SYNTHETIC_NAMES = ["Avery (synthetic 1)", "Jordan (synthetic 2)", "Morgan (synthetic 3)"];
 const SCENARIO = "live-demo-v1";
 const WINDOW_MS = 15_000;
 const RATE_HZ = 25;
