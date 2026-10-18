@@ -18,15 +18,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MightyTMZ/your_trusted_companion.git"
+    "url": "git+https://github.com/MightyTMZ/your_trusted_circle.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/MightyTMZ/your_trusted_companion/issues"
+    "url": "https://github.com/MightyTMZ/your_trusted_circle/issues"
   },
-  "homepage": "https://github.com/MightyTMZ/your_trusted_companion#readme",
+  "homepage": "https://github.com/MightyTMZ/your_trusted_circle#readme",
   "dependencies": {
     "@google/genai": "^2.30.0",
     "@hono/node-server": "^2.1.5",
