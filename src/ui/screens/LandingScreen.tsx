@@ -54,7 +54,10 @@ export function LandingScreen() {
         </div>
 
         <CuttingMat items={MAT_ITEMS} label={COPY.appTagline}>
-          <h1 className="mat-title">YTC: {COPY.appTagline}</h1>
+          <h1 className="mat-title">
+            <span className="mat-title-line">{COPY.appTagline}</span>
+            <span className="mat-title-line">YTC</span>
+          </h1>
           <p className="mat-sub">Hack the Valley XI</p>
         </CuttingMat>
 
