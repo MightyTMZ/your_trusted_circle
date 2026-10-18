@@ -1,23 +1,23 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { UNVALIDATED_LABEL } from '../../domain/config';
 import { activeIncidentFor, nextDeadline } from '../../domain/incident';
 import { canViewLocation, latestReading, participantFreshness } from '../../domain/location';
-import { endSession, participantUpdate, resumeSession, suspendSession } from '../../domain/session';
+import { endSession, resumeSession, suspendSession, updateConsent } from '../../domain/session';
 import type { Incident, Participant } from '../../domain/types';
 import { COPY } from '../copy';
 import { useApp, useNow } from '../context';
 import { fmtAgo, fmtCountdown, fmtTime } from '../format';
 import { SettingsButton } from '../components/AppNav';
 import { initials } from '../components/Controls';
-import { Scrubber } from '../components/Gauges';
+import { LiveScrubber } from '../components/Gauges';
 import { GroupMap, liveFixFor, useGroupPoints } from '../components/GroupMap';
 import { Icon } from '../components/Icon';
 import { LocationStamp } from '../components/LocationStamp';
-import { useFirstContact } from '../components/HelpSheet';
 import { Sheet } from '../components/Sheet';
 import { useMotionTracking } from '../hooks/useMotionTracking';
 import { useLive } from '../hooks/useServerSession';
-import { endSessionOnServer, sendImOkOnServer, type LiveFix } from '../api';
+import { endSessionOnServer, fetchStory, updateConsentOnServer, type ServerStory, type LiveFix } from '../api';
+import { AccessPrompt } from '../components/AccessPrompt';
 
 function fmtHM(ms: number): string {
   const m = Math.max(0, Math.round(ms / 60_000));
@@ -150,6 +150,10 @@ export function SessionHomeScreen() {
   const { state, me, store, go, setViewer } = useApp();
   const now = useNow();
   const [sheet, setSheet] = useState<null | 'end'>(null);
+  /** A moment on the session's time bar, or null for live. */
+  const [lookBack, setLookBack] = useState<number | null>(null);
+  /** The moment whose events are open in a sheet, or null. */
+  const [moment, setMoment] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const session = state.session!;
   const viewer = me!;
@@ -167,7 +171,6 @@ export function SessionHomeScreen() {
   const alerting = new Set(state.incidents.filter((i) => i.status === 'open').map((i) => i.participantId));
   const myIncident = activeIncidentFor(state, viewer.id);
   const hostName = state.participants[session.hostId]?.displayName;
-  const firstContact = useFirstContact();
   const live = useLive();
   const { points, anchor } = useGroupPoints(viewer, now);
   const run = (fn: Parameters<typeof store.dispatch>[0]) => {
@@ -175,11 +178,35 @@ export function SessionHomeScreen() {
     setError(err);
     return !err;
   };
-  const sendImOk = async () => {
-    if (!myIncident?.server || !session.serverId) return void run((d, t) => participantUpdate(d, viewer.id, t));
-    const r = await sendImOkOnServer(session.serverId);
-    setError(r.ok ? null : r.message);
-    if (r.ok) await live.refreshAlerts();
+  // Turning check-ins off is the person's own choice (consent); it also syncs to the server.
+  const turnOffCheckIns = () => {
+    if (!run((d) => updateConsent(d, viewer.id, viewer.id, { motionMonitoring: false }))) return;
+    if (session.serverId) {
+      void updateConsentOnServer(session.serverId, {
+        monitoring: false,
+        locationSharing: viewer.consent.locationSharing,
+        shareLocationWithResponders: viewer.consent.shareLocationWithResponders,
+        shareNoteWithResponders: viewer.consent.shareNoteWithResponders,
+      });
+    }
+  };
+  // "Not now" on a blocked-access prompt lasts for this visit only (this tab's session storage).
+  const snoozeKey = (what: 'motion' | 'location') => `ytc.accessPrompt.${what}.${session.id}`;
+  const readSnooze = (what: 'motion' | 'location') => {
+    try {
+      return sessionStorage.getItem(snoozeKey(what)) === '1';
+    } catch {
+      return false;
+    }
+  };
+  const [snoozed, setSnoozed] = useState(() => ({ motion: readSnooze('motion'), location: readSnooze('location') }));
+  const snooze = (what: 'motion' | 'location') => {
+    setSnoozed((s) => ({ ...s, [what]: true }));
+    try {
+      sessionStorage.setItem(snoozeKey(what), '1');
+    } catch {
+      // Lasts until the page reloads.
+    }
   };
   const errorBox = error && (
     <p className="error" role="alert">
@@ -215,9 +242,17 @@ export function SessionHomeScreen() {
     );
   }
 
-  const elapsed = now - session.createdAt;
-  const total = session.expiresAt - session.createdAt;
   const simulatedCount = points.filter((pt) => pt.source === 'simulated').length;
+  // Nobody is left off silently: say who is missing and why.
+  const onMap = new Set(points.map((pt) => pt.participantId));
+  const offMap = people.filter((p) => !onMap.has(p.id));
+  // Only the host knows others' sharing choices, so for anyone else this never guesses why.
+  const offMapReason = (p: (typeof people)[number]) =>
+    p.id === viewer.id
+      ? live.geo === 'denied' || live.geo === 'unavailable'
+        ? 'location is off'
+        : 'no position yet'
+      : 'no position shared with you yet';
 
   return (
     <div className="screen">
@@ -234,44 +269,39 @@ export function SessionHomeScreen() {
         <SettingsButton />
       </header>
 
-      {myIncident && (
-        <section className="surface card stack rise" style={{ gap: 12 }}>
-          <h2 className="t-card">An alert about you is open</h2>
-          <p className="t-sub num">
-            {myIncident.acknowledged
-              ? `${myIncident.acknowledged.name} acknowledged at ${fmtTime(myIncident.acknowledged.at)} and is responding.`
-              : `${firstContact[0].toUpperCase()}${firstContact.slice(1)} ${isHost ? 'were' : 'was'} alerted at ${fmtTime(myIncident.openedAt)}.`}{' '}
-            Only a recipient can resolve it.
-          </p>
-          <button type="button" className="btn pbtn fill" onClick={sendImOk}>
-            Tell responders I'm OK
-          </button>
-          <span className="t-cap">Adds to the alert's record. It does not close the alert.</span>
-        </section>
-      )}
 
-      {trackingActive && motionPerm === 'prompt' && (
-        <section className="surface card stack rise" style={{ gap: 8 }}>
-          <h2 className="t-card">Motion sensor needed</h2>
-          <p className="t-sub">Allow access so check-ins can work. Your phone's motion data stays private and is only used to notice unusual movement changes.</p>
-          <button type="button" className="btn pbtn on-accent" onClick={requestMotion}>
-            Enable motion sensor
-          </button>
-        </section>
+      {/* Access prompts wait while an alert about you is open: that notification comes first. */}
+      {!myIncident && trackingActive && motionPerm === 'prompt' && (
+        <AccessPrompt
+          icon="activity"
+          title="Motion sensor needed"
+          primary={{ label: 'Allow motion access', onClick: requestMotion }}
+          secondary={{ label: 'Turn off check-ins', onClick: turnOffCheckIns }}
+        >
+          Check-ins need your phone's motion sensor to notice a sudden change in how you move. The readings stay on this session and are
+          only used for your private check-ins.
+        </AccessPrompt>
       )}
-      {trackingActive && motionPerm === 'denied' && (
-        <section className="surface card stack rise" style={{ gap: 8 }}>
-          <p className="t-sub">Motion sensor access was denied. Check-ins based on movement won't work. You can change this in your browser settings.</p>
-        </section>
+      {!myIncident && trackingActive && motionPerm === 'denied' && !snoozed.motion && (
+        <AccessPrompt
+          icon="activity"
+          title="Motion access is blocked"
+          primary={{ label: 'Reload after allowing', onClick: () => window.location.reload() }}
+          secondary={{ label: 'Not now', onClick: () => snooze('motion') }}
+        >
+          Check-ins can't work without it. Allow motion and orientation access for this site in your browser settings, then reload.
+        </AccessPrompt>
       )}
-
-      {live.geo === 'denied' && (
-        <section className="surface card stack rise" style={{ gap: 8 }}>
-          <h2 className="t-card">Location access is off</h2>
-          <p className="t-sub">
-            Others in the session can't see where you are. Allow location for this site in your browser settings.
-          </p>
-        </section>
+      {!myIncident && !(trackingActive && (motionPerm === 'prompt' || (motionPerm === 'denied' && !snoozed.motion))) && live.geo === 'denied' && !snoozed.location && (
+        <AccessPrompt
+          icon="mapPin"
+          title="Location is off"
+          primary={{ label: 'Reload after allowing', onClick: () => window.location.reload() }}
+          secondary={{ label: 'Not now', onClick: () => snooze('location') }}
+        >
+          {isHost ? 'Your group' : 'Your host'} can't see where you are, and responders won't have a last-known location if an alert opens.
+          Allow location for this site in your browser settings, then reload.
+        </AccessPrompt>
       )}
 
       <div className="cols">
@@ -284,6 +314,11 @@ export function SessionHomeScreen() {
                 {points.length} of {people.length} on map{simulatedCount > 0 ? ` · ${simulatedCount} simulated` : ''}
               </span>
             </div>
+            {offMap.length > 0 && (
+              <p className="t-cap" style={{ padding: '10px 12px 0' }}>
+                Not on the map: {offMap.map((p) => `${p.id === viewer.id ? 'you' : p.displayName} (${offMapReason(p)})`).join(', ')}.
+              </p>
+            )}
             <div className="stack" style={{ gap: 12, padding: '16px 12px 8px' }}>
               <div className="spread">
                 <span className="stack">
@@ -309,12 +344,27 @@ export function SessionHomeScreen() {
                   </span>
                 )}
               </div>
-              <Scrubber
-                progress={elapsed / total}
-                left={fmtHM(elapsed)}
-                right={`−${fmtHM(session.expiresAt - now)}`}
-                ariaLabel={`Session progress: ${fmtHM(elapsed)} elapsed, ${fmtHM(session.expiresAt - now)} remaining`}
-              />
+              <div className="stack" style={{ gap: 6 }}>
+                <LiveScrubber start={session.createdAt} now={now} at={lookBack} onSeek={setLookBack} label={(t) => `${fmtTime(t)}, ${fmtHM(now - t)} ago`} />
+                <div className="spread t-cap num">
+                  <span>Started {fmtTime(session.createdAt).slice(0, 5)}</span>
+                  <span className="inline">
+                  <button type="button" className="btn chip fill live-back" onClick={() => setMoment(lookBack ?? now)}>
+                    What happened
+                  </button>
+                  {lookBack === null ? (
+                    <span className="live-tag">
+                      <span className="dot live" aria-hidden="true" />
+                      Live · {fmtHM(session.expiresAt - now)} left
+                    </span>
+                  ) : (
+                    <button type="button" className="btn chip fill live-back" onClick={() => setLookBack(null)}>
+                      −{fmtHM(now - lookBack)} · Back to live
+                    </button>
+                  )}
+                  </span>
+                </div>
+              </div>
               {session.status === 'suspended' && (
                 <p className="t-sub">Location updates and new check-ins are paused for everyone. Open alerts keep escalating.</p>
               )}
@@ -341,6 +391,8 @@ export function SessionHomeScreen() {
         </div>
       </div>
 
+      {moment !== null && <MomentSheet at={moment} live={lookBack === null} onClose={() => setMoment(null)} />}
+
       {sheet === 'end' && (
         <Sheet title="End the session for everyone?" onClose={() => setSheet(null)}>
           <p className="t-lead">Location sharing and check-ins stop for the whole group. Open alerts must be acknowledged first.</p>
@@ -363,5 +415,73 @@ export function SessionHomeScreen() {
         </Sheet>
       )}
     </div>
+  );
+}
+
+/**
+ * What had happened by a moment on the session's time bar (or so far, when
+ * live), in sentences, as this person may see it: joins, alerts and their
+ * escalation, and movements where a record of positions exists
+ * (src/server/data/story.ts). Live positions are never stored, so for most
+ * people there are no movements, and the sheet says so.
+ */
+function MomentSheet({ at, live, onClose }: { at: number; live: boolean; onClose(): void }) {
+  const { state } = useApp();
+  const session = state.session!;
+  const [story, setStory] = useState<ServerStory | null | 'loading'>(session.serverId ? 'loading' : null);
+  useEffect(() => {
+    if (!session.serverId) return;
+    let alive = true;
+    fetchStory(session.serverId).then((s) => alive && setStory(s));
+    return () => {
+      alive = false;
+    };
+  }, [session.serverId]);
+
+  // Without the server, this device's own record: the session, joins and alerts.
+  const local = (): { t: number; text: string }[] => {
+    const events: { t: number; text: string }[] = [{ t: session.createdAt, text: 'The session started.' }];
+    for (const p of Object.values(state.participants)) {
+      if (p.id !== session.hostId && p.consent.joinedAt) events.push({ t: p.consent.joinedAt, text: `${p.displayName} joined.` });
+      if (p.leftAt) events.push({ t: p.leftAt, text: `${p.displayName} left.` });
+    }
+    for (const i of state.incidents) {
+      const who = state.participants[i.participantId]?.displayName ?? 'Someone';
+      events.push({ t: i.openedAt, text: `An alert opened about ${who}.` });
+      if (i.acknowledged) events.push({ t: i.acknowledged.at, text: `${i.acknowledged.name} acknowledged the alert about ${who}.` });
+      if (i.resolution) events.push({ t: i.resolution.at, text: `The alert about ${who} was resolved.` });
+    }
+    return events;
+  };
+  const events =
+    story === 'loading' ? [] : story ? story.items.map((i) => ({ t: Date.parse(i.at), text: i.text })) : local();
+  const shown = events.filter((e) => e.t <= at).sort((a, b) => b.t - a.t);
+  const untold = story && story !== 'loading' ? story.noMovementRecord : [];
+
+  return (
+    <Sheet title={live ? 'What happened so far' : `What happened by ${fmtTime(at).slice(0, 5)}`} className="sheet-capped" onClose={onClose}>
+      <div className="sheet-scroll">
+        {story === 'loading' ? (
+          <p className="t-sub">Loading…</p>
+        ) : (
+          <ol className="moment-list">
+            {shown.map((e, i) => (
+              <li key={`${e.t}-${i}`} className="moment-row">
+                <span className="t-sub num moment-time">{fmtTime(e.t).slice(0, 5)}</span>
+                <span className="t-body">{e.text}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+        {untold.length > 0 && (
+          <p className="t-cap" style={{ marginTop: 12 }}>
+            No movements for {untold.join(', ')}: live positions are shown on the map but never stored.
+          </p>
+        )}
+      </div>
+      <button type="button" className="btn pbtn fill" onClick={onClose}>
+        Close
+      </button>
+    </Sheet>
   );
 }

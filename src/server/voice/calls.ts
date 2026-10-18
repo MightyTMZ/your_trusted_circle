@@ -11,7 +11,7 @@
  */
 import type { Clock } from "../../shared/clock.js";
 import { SequentialIds, type IdGenerator } from "../../shared/ids.js";
-import { OperatorCallAgent, type AgentReply, type CallAgentOptions } from "../../agent/agent.js";
+import { OperatorCallAgent, type AgentReply, type AgentStage, type CallAgentOptions } from "../../agent/agent.js";
 import type { Embedder } from "../../agent/retrieval.js";
 import type { ReasoningModel } from "../../agent/model.js";
 import type { Fact } from "../../agent/facts.js";
@@ -54,6 +54,8 @@ interface LiveCall {
   incidentId: string;
   /** Set for a call placed by escalation that nobody has answered yet. */
   ringing: { since: string; about: string } | null;
+  /** What the agent is doing while it prepares an answer (agent.ts onStage). */
+  activity: CallView["activity"];
   lastActive: number;
 }
 
@@ -101,7 +103,9 @@ export class CallService {
       ids: continuingIds(scenario.timeline.events.length),
     });
     const id = this.callIds.next("call");
+    const holder: { live?: LiveCall } = {};
     const agent = new OperatorCallAgent({
+      onStage: this.tracker(holder, clock),
       timeline,
       clock,
       incidentId: FIXTURE_INCIDENT_ID,
@@ -113,7 +117,8 @@ export class CallService {
       ...this.opts.models,
       ...this.opts.agent,
     });
-    const live: LiveCall = { id, agent, timeline, incidentId: FIXTURE_INCIDENT_ID, ringing: null, lastActive: this.wall() };
+    const live: LiveCall = { id, agent, timeline, incidentId: FIXTURE_INCIDENT_ID, ringing: null, activity: null, lastActive: this.wall() };
+    holder.live = live;
     this.calls.set(id, live);
     const started = this.wall();
     const reply = agent.start();
@@ -129,7 +134,9 @@ export class CallService {
   ring(req: RingRequest): string {
     this.evict();
     const id = this.callIds.next("call");
+    const holder: { live?: LiveCall } = {};
     const agent = new OperatorCallAgent({
+      onStage: this.tracker(holder, req.clock),
       timeline: req.timeline,
       clock: req.clock,
       incidentId: req.incidentId,
@@ -140,14 +147,17 @@ export class CallService {
       ...this.opts.models,
       ...this.opts.agent,
     });
-    this.calls.set(id, {
+    const live: LiveCall = {
       id,
       agent,
       timeline: req.timeline,
       incidentId: req.incidentId,
       ringing: { since: new Date(req.clock.now()).toISOString(), about: req.about },
+      activity: null,
       lastActive: this.wall(),
-    });
+    };
+    holder.live = live;
+    this.calls.set(id, live);
     return id;
   }
 
@@ -319,6 +329,15 @@ export class CallService {
       log: mine.map((e) => ({ event_id: e.event_id, type: e.type, at: e.occurred_at, summary: e.summary })),
       timeline_events: events.length,
       rejected_drafts: mine.filter((e) => e.type === "voice.draft_rejected").length,
+      activity: live.activity,
+    };
+  }
+
+  /** Records the agent's current step on its call, for the console's live view. */
+  private tracker(holder: { live?: LiveCall }, clock: Clock): (stage: AgentStage, attempt: number) => void {
+    return (stage, attempt) => {
+      if (!holder.live) return;
+      holder.live.activity = stage === "idle" ? null : { stage, attempt, since: new Date(clock.now()).toISOString() };
     };
   }
 

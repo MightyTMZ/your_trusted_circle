@@ -33,6 +33,15 @@
   --accent-ring: rgba(255, 255, 255, 0.55);
   --accent-soft: rgba(255, 255, 255, 0.14);
   --accent-glow: none;
+  /* Positive: the one colour, kept to two meanings people already know from phone calls and
+     confirmations: accepting a call, and "your message reached responders". It never describes
+     anyone's condition. */
+  --positive: #30d158;
+  --positive-fill: #248a3d;
+  --positive-ink: #ffffff;
+  /* Alert: the second and last colour, only for "an alert about you is open". */
+  --alert: #ff453a;
+  --alert-soft: rgba(255, 69, 58, 0.35);
   /* Switch. */
   --switch-off: #39393d;
   --switch-knob: #ffffff;
@@ -80,6 +89,9 @@
   --accent-icon: #ffffff;
   --accent-ring: rgba(0, 0, 0, 0.5);
   --accent-soft: rgba(0, 0, 0, 0.07);
+  --positive: #248a3d;
+  --alert: #d70015;
+  --alert-soft: rgba(215, 0, 21, 0.25);
   --switch-off: #e9e9ea;
   --switch-knob-on: #ffffff;
   --segment-thumb: #ffffff;
@@ -242,7 +254,9 @@ ul { padding: 0; list-style: none; }
   position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 10;
   display: flex; flex-direction: column; align-items: stretch; gap: 8px; width: max-content; max-width: calc(100vw - 32px);
 }
-.tabbar-row { display: flex; align-items: center; gap: 10px; }
+/* The tabs are centred on their own; help hangs off their left edge, so it never shifts them. */
+.tabbar-row { position: relative; display: flex; align-items: center; justify-content: center; }
+.tabbar-row > .help-fab, .tabbar-row > .help-fab-slot { position: absolute; right: calc(100% + 10px); top: 50%; transform: translateY(-50%); }
 .tabbar { display: flex; gap: 2px; padding: 4px; border-radius: var(--r-pill); }
 .tab {
   min-width: 72px; height: 54px; padding: 0 12px; border-radius: var(--r-pill); background: transparent; color: var(--text-primary);
@@ -387,6 +401,17 @@ textarea.field { height: 100px; padding: 13px 16px; resize: none; line-height: 1
 .dial-center { position: absolute; left: 0; right: 0; bottom: 10px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .dial-end { position: absolute; bottom: -8px; }
 .scrub { position: relative; height: 16px; }
+/* Live session time: always full to now; draggable, with a 44px hit area. */
+.live-scrub { height: 44px; margin: -14px 0; cursor: pointer; touch-action: none; }
+.live-scrub .scrub-track, .live-scrub .scrub-fill { top: 20px; }
+.live-scrub .scrub-knob { top: 15px; }
+.live-scrub:focus-visible { outline: 3px solid var(--accent-ring); outline-offset: 2px; border-radius: 6px; }
+.live-tag { display: inline-flex; align-items: center; gap: 6px; color: var(--text-primary); font-weight: 600; }
+.live-back { min-height: 32px; padding: 0 12px; font-size: 13px; }
+.moment-list { list-style: none; margin: 0; padding: 0; }
+.moment-row { display: flex; gap: 12px; padding: 10px 0; border-top: 0.5px solid var(--border-hairline); }
+.moment-row:first-child { border-top: 0; }
+.moment-time { width: 44px; flex: none; padding-top: 2px; }
 .scrub-track, .scrub-fill { position: absolute; left: 0; top: 6px; height: 4px; border-radius: 2px; }
 .scrub-track { right: 0; background: var(--track-inactive); }
 .scrub-fill { background: var(--accent); }
@@ -457,6 +482,81 @@ textarea.field { height: 100px; padding: 13px 16px; resize: none; line-height: 1
 .sheet { width: 100%; max-width: 440px; border-radius: 32px; padding: 24px 20px 20px; display: flex; flex-direction: column; gap: 14px; animation: ytc-rise 260ms var(--ease) both; }
 @media (min-width: 768px) { .sheet-backdrop { align-items: center; } .sheet { border-radius: var(--r-card); } }
 @media (prefers-reduced-transparency: reduce) { .sheet-backdrop { -webkit-backdrop-filter: none; backdrop-filter: none; } }
+/* Centred on every size: prompts the session can't work without (AccessPrompt). */
+.sheet-backdrop.is-center { align-items: center; padding: 16px; }
+/* A sheet with a long list: capped height; the title and buttons stay put, only the list scrolls. */
+.sheet.sheet-capped { max-height: min(680px, calc(100dvh - 32px)); }
+.sheet.sheet-capped > .sheet-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.sheet.access { align-items: stretch; text-align: center; border-radius: var(--r-card); }
+.access-ic {
+  width: 64px; height: 64px; align-self: center; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--fill); color: var(--icon);
+}
+
+/* ---------- Alert about you (functional layer) ---------- */
+/* Floats at the top centre, over the page (no layout space). The card is laid out once at full
+   size; collapsed, only a pill-shaped window onto its top centre shows. Opening grows the window
+   and the outlined shape together (like the Dynamic Island), so nothing inside moves or resizes.
+   --island-x: inset from each side to the pill; --island-h: the full card height (set in JS). */
+.alert-island {
+  position: fixed; z-index: 31; top: calc(10px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+  width: min(420px, calc(100vw - 24px)); pointer-events: none;
+  --island-edge: var(--alert);
+  --island-ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+.alert-island.is-open { pointer-events: auto; }
+/* "I'm OK" reached responders: green, the positive meaning. The alert is still open. */
+.alert-island.is-ok { --island-edge: var(--positive); }
+.alert-island-shape {
+  position: absolute; top: 0; left: var(--island-x); right: var(--island-x); height: 44px; border-radius: 22px;
+  box-shadow: inset 0 0 0 2px var(--island-edge), var(--material-shadow);
+  transition: left 420ms var(--island-ease), right 420ms var(--island-ease), height 420ms var(--island-ease), border-radius 420ms var(--island-ease);
+  animation: ytc-alert-pulse 2s ease-out infinite;
+}
+.alert-island.is-open .alert-island-shape { left: 0; right: 0; height: var(--island-h); border-radius: var(--r-card); animation: none; }
+.alert-island.is-ok .alert-island-shape { animation: none; }
+.alert-island-content {
+  position: relative; pointer-events: none;
+  clip-path: inset(0 var(--island-x) calc(var(--island-h) - 44px) var(--island-x) round 22px);
+  transition: clip-path 420ms var(--island-ease);
+}
+.alert-island.is-open .alert-island-content { clip-path: inset(0 0 0 0 round var(--r-card)); pointer-events: auto; }
+.alert-island-head { position: relative; height: 44px; display: flex; align-items: center; justify-content: center; }
+.alert-island-label {
+  display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px 0 14px;
+  font-size: 15px; font-weight: 600; color: var(--text-primary); white-space: nowrap;
+}
+.alert-island-label .ic { color: var(--island-edge); }
+/* A 44px tap area with a small 28px visible circle, clear of the outline (like the system close button). */
+.alert-island-close {
+  position: absolute; top: 0; right: 0; width: 44px; height: 44px; padding: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; background: transparent; color: var(--icon-muted);
+}
+.alert-island-close::before { content: ''; position: absolute; width: 28px; height: 28px; border-radius: 50%; background: var(--fill); }
+.alert-island-close .ic { position: relative; stroke-width: 2.5; }
+.alert-island-body { display: flex; flex-direction: column; gap: 12px; padding: 4px 16px 16px; opacity: 0; transition: opacity 200ms var(--ease); }
+.alert-island.is-open .alert-island-body { opacity: 1; transition-delay: 120ms; }
+.alert-island-hit {
+  position: absolute; top: 0; left: var(--island-x); right: var(--island-x); height: 44px; border-radius: 22px;
+  background: transparent; pointer-events: auto;
+}
+/* Centred over the main column, beside the 248px sidebar. */
+@media (min-width: 768px) { .alert-island { left: calc(50% + 124px); top: 16px; width: min(420px, calc(100vw - 296px)); } }
+@keyframes ytc-alert-pulse {
+  0% { box-shadow: inset 0 0 0 2px var(--island-edge), 0 0 0 0 var(--alert-soft), var(--material-shadow); }
+  70%, 100% { box-shadow: inset 0 0 0 2px var(--island-edge), 0 0 0 10px transparent, var(--material-shadow); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .alert-island-shape, .alert-island-content, .alert-island-body { transition: none; animation: none; }
+}
+/* Holds the help button's place while it is hidden, so the tabs never move. */
+.help-fab-slot { width: 62px; height: 62px; flex: none; }
+/* The record shows "I'm OK": a green-outlined confirmation in place of the button. */
+.confirm {
+  display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: var(--r-tile);
+  box-shadow: inset 0 0 0 1.5px var(--positive); color: var(--text-primary);
+}
+.confirm > .ic { flex: none; margin-top: 1px; color: var(--positive); }
 
 /* ---------- Theme picker ---------- */
 /* Dark and light side by side. */
@@ -504,17 +604,79 @@ textarea.field { height: 100px; padding: 13px 16px; resize: none; line-height: 1
 }
 
 /* ---------- Operator console (simulated call, #operator) ---------- */
-.op { max-width: 1200px; margin: 0 auto; }
-.op-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.op-head a.btn { text-decoration: none; color: var(--text-primary); }
-.op-start { max-width: 540px; }
-.op-transcript { margin: 0; padding: 0; list-style: none; max-height: 56dvh; overflow-y: auto; }
-.op-sources { margin-top: 4px; }
-.op-sources summary { cursor: pointer; }
-.op-sources p { margin-top: 6px; }
-.op-talk { touch-action: none; user-select: none; -webkit-user-select: none; }
-.op-facts { display: flex; flex-direction: column; gap: 14px; max-height: 50dvh; overflow-y: auto; }
+/* One fixed page that never scrolls: top bar, the conversation (scrolls inside), and a dock. */
+.opx {
+  position: fixed; inset: 0; display: flex; flex-direction: column; gap: 12px; overflow: hidden;
+  width: 100%; max-width: 760px; margin: 0 auto; height: 100dvh;
+  padding: max(12px, env(safe-area-inset-top)) 16px max(12px, env(safe-area-inset-bottom));
+  background: var(--bg-base);
+}
+.opx-bar { display: flex; align-items: center; gap: 12px; min-height: 52px; flex: none; }
+.opx-caller-mini {
+  width: 40px; height: 40px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--fill); font-size: 12px; font-weight: 700; letter-spacing: 0.02em; color: var(--text-primary);
+}
+.opx-chat {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0; padding: 4px 0;
+  list-style: none; display: flex; flex-direction: column; gap: 8px;
+}
+.opx-dock { flex: none; display: flex; flex-direction: column; gap: 10px; }
+.opx-compose { display: flex; align-items: center; gap: 12px; }
+.opx-tools { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.opx-mic {
+  width: 64px; height: 64px; flex: none; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--text-primary); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+.opx-mic.on-accent { color: var(--accent-icon); }
+.opx-mic.is-live { box-shadow: 0 0 0 6px var(--accent-soft); }
+/* What the agent is doing: its real steps, read from the server while it prepares an answer. */
+.opx-activity { min-height: 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 13px; color: var(--text-secondary); }
+.opx-activity kbd {
+  display: inline-block; min-width: 44px; padding: 1px 8px; border-radius: 6px; text-align: center;
+  font: inherit; font-weight: 600; color: var(--text-primary); background: var(--fill); box-shadow: inset 0 -1px 0 var(--border-hairline);
+}
+.opx-step { display: inline-flex; align-items: center; gap: 6px; color: var(--text-tertiary); }
+.opx-step.is-done { color: var(--text-secondary); }
+.opx-step.is-on { color: var(--text-primary); font-weight: 600; }
+.opx-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: ytc-pulse 1.1s ease-in-out infinite; }
+/* Touch screens hold the microphone; a keyboard holds Space. */
+.opx-hint-key { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  .opx-hint-touch { display: none; }
+  .opx-hint-key { display: inline; }
+}
+.opx-sources { margin-top: 2px; }
+.opx-sources summary { cursor: pointer; }
+.opx-sources p { margin-top: 6px; }
+.opx-record { display: flex; flex-direction: column; gap: 20px; }
+.opx-facts { display: flex; flex-direction: column; gap: 14px; }
 .op-fact { padding: 8px 10px; border-radius: var(--r-tile); border: 1px solid transparent; }
 .op-fact.cited { color: var(--text-primary); border-color: var(--accent-ring); }
-.op-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 30dvh; overflow-y: auto; }
-.op-log .warn { color: var(--text-primary); font-weight: 600; }
+.opx-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.opx-log .warn { color: var(--text-primary); font-weight: 600; }
+
+/* Standby and an incoming call: centred, like the phone's own call screen. */
+.opx-standby .opx-caller, .opx-ring .opx-caller { flex: 1; justify-content: center; }
+.opx-caller { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.opx-standby-ic {
+  width: 72px; height: 72px; margin-bottom: 8px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--fill); color: var(--icon-muted);
+}
+.opx-ring-top { display: flex; align-items: center; justify-content: flex-end; min-height: 44px; flex: none; }
+.opx-caller-av {
+  width: 96px; height: 96px; margin-bottom: 12px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--fill-strong); font-size: 26px; font-weight: 700; color: var(--text-primary);
+  animation: ytc-ring 1.6s ease-out infinite;
+}
+.opx-why { max-width: 320px; margin-top: 8px; }
+.opx-ring-actions { flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; padding-bottom: 24px; }
+.opx-accept {
+  width: 76px; height: 76px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center;
+  background: var(--positive-fill); color: var(--positive-ink);
+}
+.opx-accept .ic { stroke: none; fill: currentColor; }
+@keyframes ytc-ring { 0% { box-shadow: 0 0 0 0 var(--accent-soft); } 100% { box-shadow: 0 0 0 28px transparent; } }
+@keyframes ytc-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .opx-caller-av, .opx-pulse { animation: none; }
+}

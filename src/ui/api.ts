@@ -422,6 +422,16 @@ export function resolveOnServer(incidentId: string, outcome: 'false_alarm' | 'as
   return postResult(`/incidents/${encodeURIComponent(incidentId)}/resolve`, { outcome });
 }
 
+/** Mirrors src/server/data/story.ts: what happened, as this viewer may see it. */
+export interface ServerStory {
+  items: { at: string; kind: 'session' | 'movement' | 'alert'; text: string; participantId?: string }[];
+  noMovementRecord: string[];
+}
+
+export async function fetchStory(serverId: string): Promise<ServerStory | null> {
+  return getJson<ServerStory>(`/sessions/${encodeURIComponent(serverId)}/story`);
+}
+
 // ---------------------------------------------------------------------------
 // Live incident demo (presenter tool; the server mounts it only in demo mode)
 // ---------------------------------------------------------------------------

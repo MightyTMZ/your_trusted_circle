@@ -1,36 +1,50 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CallView, CapabilitiesResponse, FactView, IncomingCall, ReplyView, StartCallResponse, TurnResponse } from '../../server/voice/protocol';
 import { Icon } from '../components/Icon';
-import { SimulatedTag } from '../components/SimulatedTag';
+import { Sheet } from '../components/Sheet';
 import { callApi } from './api';
 import { PushToTalk } from './recorder';
 
 /**
- * Operator console: the person at the keyboard plays the simulated emergency
- * operator. The agent calls in with the incident breakdown and answers
- * follow-up questions, spoken with ElevenLabs and checked against the record.
- *
- * Two kinds of call: one placed by escalation in the live demo (it rings here
- * until answered, and the agent reads that incident's record), and a practice
- * call about the built-in synthetic incident.
+ * Operator console: the person at this screen plays the simulated emergency
+ * operator. One fixed page that never scrolls: standby, then an incoming call
+ * that rings like a phone call, then the call itself as a chat. The agent's
+ * real steps show live under the conversation; the incident record opens in
+ * a sheet.
  */
 
 type Phase = 'idle' | 'starting' | 'ready' | 'listening' | 'thinking' | 'speaking' | 'ended';
+type Activity = NonNullable<CallView['activity']>;
 
-/** Silence after the agent finishes before it asks if the operator is still there. */
-const SILENCE_MS = 25_000;
+/**
+ * Silence after the agent finishes before it asks if the operator is still there
+ * (and, the second time, ends the call). Long enough to talk to a room between questions.
+ */
+const SILENCE_MS = 60_000;
 /** Shorter holds are treated as accidental taps. */
 const MIN_HOLD_MS = 350;
 /** How often the console checks for a call placed by escalation. */
 const RING_POLL_MS = 1500;
+/** How often it reads the agent's current step while an answer is being prepared. */
+const ACTIVITY_POLL_MS = 400;
 /** Empty WAV played inside the click that starts the call, so later playback is allowed (Safari). */
 const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+const CALLER = 'YTC safety assistant';
+
+/** The agent's steps for one answer, in order, as the operator reads them. */
+const STEPS: { stage: Activity['stage']; label: string }[] = [
+  { stage: 'reading_record', label: 'Reading the record' },
+  { stage: 'finding_facts', label: 'Finding the facts' },
+  { stage: 'drafting', label: 'Drafting' },
+  { stage: 'checking', label: 'Checking each sentence' },
+  { stage: 'verifying', label: 'Verifying' },
+];
 
 const PATH_LABEL: Record<ReplyView['path'], string> = {
-  model: 'Model answer · guard and judge passed',
-  model_repaired: 'Model answer · passed on a second draft',
-  fallback: 'Read from the record verbatim',
-  scripted: 'Scripted from the record',
+  model: 'Checked against the record',
+  model_repaired: 'Checked against the record, second draft',
+  fallback: 'Read from the record word for word',
+  scripted: 'Read from the record',
 };
 
 const TOPIC_LABEL: Record<string, string> = {
@@ -63,12 +77,14 @@ export function OperatorConsole() {
   const [call, setCall] = useState<CallView | null>(null);
   const [replies, setReplies] = useState<Record<number, ReplyView>>({});
   const [phase, setPhase] = useState<Phase>('idle');
+  const [activity, setActivity] = useState<Activity | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [voiceOn, setVoiceOn] = useState(true);
   const [micReady, setMicReady] = useState(false);
   const [cited, setCited] = useState<string[]>([]);
-  const [busySince, setBusySince] = useState(0);
+  const [record, setRecord] = useState(false);
+  const [connectedAt, setConnectedAt] = useState<number | null>(null);
   const [, tick] = useState(0);
 
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -79,11 +95,13 @@ export function OperatorConsole() {
   const phaseRef = useRef<Phase>('idle');
   const voiceRef = useRef(true);
   const textRef = useRef('');
-  const transcriptEnd = useRef<HTMLLIElement | null>(null);
+  const recordRef = useRef(false);
+  const chatEnd = useRef<HTMLLIElement | null>(null);
   callRef.current = call;
   phaseRef.current = phase;
   voiceRef.current = voiceOn;
   textRef.current = text;
+  recordRef.current = record;
 
   useEffect(() => {
     callApi.capabilities().then(setCaps, (e: Error) => setError(e.message));
@@ -120,21 +138,39 @@ export function OperatorConsole() {
       (r) => {
         if (r.call.status !== 'active') return;
         setCall(r.call);
+        setConnectedAt(Date.parse(r.call.transcript[0]?.at ?? new Date().toISOString()));
         setPhase('ready');
       },
       () => {},
     );
   }, []);
 
+  // While the agent prepares an answer, follow its real steps on the server.
   useEffect(() => {
-    if (phase !== 'thinking' && phase !== 'starting') return;
-    const id = window.setInterval(() => tick((n) => n + 1), 250);
+    if (phase !== 'thinking' || !call) {
+      setActivity(null);
+      return;
+    }
+    let alive = true;
+    const id = window.setInterval(() => {
+      callApi.state(call.call_id).then((r) => alive && phaseRef.current === 'thinking' && setActivity(r.call.activity), () => {});
+    }, ACTIVITY_POLL_MS);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [phase, call?.call_id]);
+
+  // The call timer and the ringing time.
+  useEffect(() => {
+    if (!connectedAt && incoming.length === 0) return;
+    const id = window.setInterval(() => tick((n) => n + 1), 1000);
     return () => window.clearInterval(id);
-  }, [phase]);
+  }, [connectedAt, incoming.length]);
 
   // Braces matter: Chrome's scrollIntoView now returns a Promise, which React would treat as a cleanup function.
   useEffect(() => {
-    transcriptEnd.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    chatEnd.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
   }, [call?.transcript.length, phase]);
 
   const clearSilence = () => window.clearTimeout(silenceTimer.current);
@@ -150,8 +186,8 @@ export function OperatorConsole() {
     clearSilence();
     silenceTimer.current = window.setTimeout(async () => {
       const current = callRef.current;
-      // Not while the operator is mid-sentence in the text box.
-      if (!current || phaseRef.current !== 'ready' || textRef.current.trim()) return;
+      // Not while the operator is typing or reading the record.
+      if (!current || phaseRef.current !== 'ready' || textRef.current.trim() || recordRef.current) return;
       try {
         const res = await callApi.silence(current.call_id, SILENCE_MS);
         setCall(res.call);
@@ -181,12 +217,12 @@ export function OperatorConsole() {
       };
       el.onerror = () => {
         speaking.current = null;
-        setError('The voice could not play this turn; the text is shown instead.');
+        setError("The voice couldn't play this turn. The text is shown instead.");
         settle(callRef.current);
       };
       el.play().catch(() => {
         speaking.current = null;
-        setError('The browser blocked audio playback. Click anywhere, then use Replay.');
+        setError('The browser blocked audio. Tap anywhere, then try again.');
         settle(callRef.current);
       });
     },
@@ -218,11 +254,8 @@ export function OperatorConsole() {
     if (res.reply) play(res.reply, res.call);
   };
 
-  const startCall = () => connect(() => callApi.start());
-  const answerCall = (id: string) => connect(() => callApi.answer(id));
-
-  /** Unlocks audio and the microphone inside the click, then places or answers the call. */
-  const connect = async (open: () => Promise<StartCallResponse>) => {
+  /** Unlocks audio and the microphone inside the tap, then answers the call. */
+  const answer = async (id: string) => {
     const el = audio.current;
     if (el) {
       el.src = SILENT_WAV;
@@ -232,7 +265,6 @@ export function OperatorConsole() {
     setReplies({});
     setCited([]);
     setPhase('starting');
-    setBusySince(performance.now());
     const known = caps ?? (await callApi.capabilities().catch(() => null));
     setCaps(known);
     if (known?.speech_to_text && PushToTalk.supported) {
@@ -242,12 +274,13 @@ export function OperatorConsole() {
         setMicReady(true);
       } catch {
         setMicReady(false);
-        setError('Microphone unavailable, so type your questions instead.');
+        setError('The microphone is unavailable, so type your questions.');
       }
     }
     try {
-      const res = await open();
+      const res: StartCallResponse = await callApi.answer(id);
       setCall(res.call);
+      setConnectedAt(Date.now());
       play(res.reply, res.call);
     } catch (e) {
       setError((e as Error).message);
@@ -263,7 +296,6 @@ export function OperatorConsole() {
     setText('');
     setError(null);
     setPhase('thinking');
-    setBusySince(performance.now());
     setCall({ ...current, transcript: [...current.transcript, pendingTurn(line)] });
     try {
       handleTurn(await callApi.say(current.call_id, line));
@@ -289,12 +321,11 @@ export function OperatorConsole() {
     if (!mic.current?.recording || !current) return;
     const take = await mic.current.stop();
     if (!take || take.heldMs < MIN_HOLD_MS) {
-      setError('Hold the button (or the space bar) while you speak.');
+      setError('Keep holding while you speak, then let go.');
       settle(current);
       return;
     }
     setPhase('thinking');
-    setBusySince(performance.now());
     try {
       handleTurn(await callApi.speak(current.call_id, take.audio));
     } catch (e) {
@@ -318,6 +349,14 @@ export function OperatorConsole() {
     settle({ ...current, status: 'ended' });
   };
 
+  const backToStandby = () => {
+    setCall(null);
+    setPhase('idle');
+    setConnectedAt(null);
+    setRecord(false);
+    history.replaceState(null, '', '#operator');
+  };
+
   const toggleVoice = () => {
     if (voiceOn && speaking.current !== null) {
       audio.current?.pause();
@@ -327,20 +366,11 @@ export function OperatorConsole() {
     setVoiceOn(!voiceOn);
   };
 
-  const replay = () => {
-    const last = call?.transcript.filter((t) => t.speaker === 'voice_agent').at(-1);
-    const reply = last && replies[last.turn_index];
-    if (reply && call) {
-      clearSilence();
-      play(reply, call);
-    }
-  };
-
   // Space bar is push-to-talk, except while typing.
   useEffect(() => {
     const typing = (e: KeyboardEvent) => e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
     const down = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || typing(e) || e.repeat) return;
+      if (e.code !== 'Space' || typing(e) || e.repeat || recordRef.current) return;
       e.preventDefault();
       void talkStart();
     };
@@ -360,229 +390,245 @@ export function OperatorConsole() {
   // The call the app asked for, else the one ringing longest.
   const want = wantedCall();
   const ringing = incoming.find((c) => c.call_id === want) ?? incoming[0] ?? null;
-  const live = !!call && phase !== 'ended';
-  const busySeconds = Math.max(0, Math.floor((performance.now() - busySince) / 1000));
-  const status =
-    phase === 'starting'
-      ? 'Connecting the simulated call…'
-      : phase === 'listening'
-        ? 'Listening. Release to send.'
-        : phase === 'thinking'
-          ? `Agent is checking the record… ${busySeconds}s`
-          : phase === 'speaking'
-            ? 'Agent speaking. Hold to interrupt.'
-            : phase === 'ended'
-              ? `Call ended${call?.ended_reason ? ` (${call.ended_reason.replace('_', ' ')})` : ''}.`
-              : phase === 'ready'
-                ? micReady
-                  ? 'Your turn. Hold to talk, or type.'
-                  : 'Your turn. Type a question.'
-                : '';
 
-  const dot = !live ? 'hollow' : phase === 'speaking' || phase === 'listening' ? 'live' : '';
-
-  // Same shell as the app (.app-main is the container the two-column layout responds to).
-  return (
-    <div className="app">
-      <main className="app-main">
-        <div className="screen op">
-          <header className="op-head">
-            <div className="stack" style={{ gap: 6 }}>
-              <span className="header" style={{ gap: 10 }}>
-                <span className="lbl" style={{ padding: 0 }}>
-                  Operator console
-                </span>
-                <SimulatedTag />
-              </span>
-              <h1 className="t-title">Simulated emergency operator</h1>
-              <p className="t-lead">You play the operator. The YTC voice agent calls about an incident and answers only from its record.</p>
-            </div>
-            <a className="btn chip fill" href="#">
-              Back to the app
-            </a>
-          </header>
-
-          <section className="surface card stack" style={{ gap: 6 }}>
-            <span className="t-name">Simulated call</span>
-            <p className="t-sub">No real emergency services or phone line are involved (simulated emergency services only). People, places and sensor data are synthetic.</p>
-            <span className="t-cap num">
-              Reasoning: {caps?.reasoning ?? 'off, facts read verbatim'} · Voice: {caps?.text_to_speech ?? 'off'} · Speech in: {caps?.speech_to_text ?? 'off, type instead'}
+  // ── Standby and ringing ────────────────────────────────────────────────
+  if (!call) {
+    if (ringing) {
+      return (
+        <div className="opx opx-ring" role="dialog" aria-modal="true" aria-labelledby="ring-name">
+          <div className="opx-ring-top">
+            <span className="t-sub num">Ringing {fmtDuration(Date.now() - Date.parse(ringing.ringing_since))}</span>
+          </div>
+          <div className="opx-caller">
+            <span className="opx-caller-av" aria-hidden="true">
+              YTC
             </span>
-          </section>
-
-          {error && (
-            <p className="error" role="alert">
-              <Icon name="alert" />
-              {error}
-            </p>
-          )}
-
-          {!call ? (
-            <>
-              {ringing && (
-                <section className="surface card stack op-start" role="status" style={{ gap: 16 }}>
-                  <span className="header" style={{ gap: 10 }}>
-                    <span className="dot live" aria-hidden="true" />
-                    <span className="t-name grow">Incoming simulated call</span>
-                    <span className="t-cap num">{ringingFor(ringing)}</span>
-                  </span>
-                  <p className="t-body">
-                    The YTC automated assistant is calling about {ringing.about}. No one acknowledged the alert, so it escalated to
-                    simulated emergency services. When you answer, it reads the breakdown from this incident's record; then ask
-                    follow-ups out loud (hold the button or the space bar) or by typing.
-                  </p>
-                  <button type="button" className="btn pbtn on-accent" disabled={phase === 'starting'} onClick={() => answerCall(ringing.call_id)}>
-                    {phase === 'starting' ? 'Connecting…' : 'Answer'}
-                  </button>
-                </section>
-              )}
-              <section className="surface card stack op-start" style={{ gap: 16 }}>
-                <p className="t-body">
-                  {ringing
-                    ? 'Or practise with the built-in synthetic incident instead.'
-                    : 'No call from the live demo yet. Meanwhile you can practise: the agent opens with a breakdown of the built-in synthetic incident, then answers follow-ups out loud (hold the button or the space bar) or typed.'}
-                </p>
-                <button
-                  type="button"
-                  className={`btn pbtn ${ringing ? 'fill' : 'on-accent'}`}
-                  disabled={phase === 'starting'}
-                  onClick={startCall}
-                >
-                  {ringing ? 'Practice call (synthetic incident)' : phase === 'starting' ? 'Connecting…' : 'Answer the simulated call'}
-                </button>
-              </section>
-            </>
-          ) : (
-            <div className="cols">
-              <div className="col">
-                <section className="surface card" role="status">
-                  <span className="header" style={{ gap: 10 }}>
-                    <span className={`dot ${dot}`} aria-hidden="true" />
-                    <span className="t-name grow">{status}</span>
-                    <span className="t-cap num">{call.call_id}</span>
-                  </span>
-                </section>
-
-                <ol className="transcript op-transcript" aria-label="Transcript">
-                  {call.transcript.map((t) => (
-                    <Turn key={`${t.turn_index}-${t.speaker}`} turn={t} reply={replies[t.turn_index]} facts={call.facts} />
-                  ))}
-                  {phase === 'thinking' && (
-                    <li className="bubble fill agent">
-                      <span className="t-body">Checking the record…</span>
-                    </li>
-                  )}
-                  <li ref={transcriptEnd} aria-hidden="true" />
-                </ol>
-
-                <div className="stack" style={{ gap: 12 }}>
-                  {micReady && (
-                    <button
-                      type="button"
-                      className={`btn pbtn op-talk ${phase === 'listening' ? 'on-accent' : 'fill'}`}
-                      disabled={!live}
-                      onPointerDown={(e) => {
-                        e.currentTarget.setPointerCapture(e.pointerId);
-                        void talkStart();
-                      }}
-                      onPointerUp={() => void talkStop()}
-                      onPointerCancel={() => void talkStop()}
-                    >
-                      <Icon name="mic" />
-                      {phase === 'listening' ? 'Listening… release to send' : 'Hold to talk (or hold space)'}
-                    </button>
-                  )}
-                  <form
-                    className="fill inputbar"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void sendText(text);
-                    }}
-                  >
-                    <label htmlFor="op-question" className="sr-only">
-                      Operator question
-                    </label>
-                    <input
-                      id="op-question"
-                      className="field field-bare"
-                      placeholder="Type an operator question"
-                      autoComplete="off"
-                      value={text}
-                      disabled={!live}
-                      maxLength={1000}
-                      onChange={(e) => {
-                        setText(e.target.value);
-                        clearSilence();
-                      }}
-                    />
-                    <button type="submit" className="btn ibtn on-accent" aria-label="Send" disabled={!live || !text.trim()}>
-                      <Icon name="send" />
-                    </button>
-                  </form>
-                  <div className="hscroll">
-                    <button type="button" className="btn chip fill" onClick={toggleVoice} disabled={!caps?.text_to_speech}>
-                      {voiceOn ? 'Mute voice' : 'Unmute voice'}
-                    </button>
-                    <button type="button" className="btn chip fill" onClick={replay} disabled={!live || phase === 'thinking' || !voiceOn}>
-                      Replay last answer
-                    </button>
-                    {live ? (
-                      <button type="button" className="btn chip fill" onClick={endCall}>
-                        End call
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="btn chip fill"
-                        onClick={() => {
-                          setCall(null);
-                          setPhase('idle');
-                          history.replaceState(null, '', '#operator');
-                        }}
-                      >
-                        Back to calls
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="col">
-                <section className="surface card stack" style={{ gap: 12 }}>
-                  <span className="header">
-                    <h2 className="t-card grow">Incident record</h2>
-                    <span className="t-cap num">{call.facts.length} facts</span>
-                  </span>
-                  <p className="t-sub">Everything the agent may say. Highlighted: what its last answer cited.</p>
-                  <FactList facts={call.facts} cited={cited} />
-                </section>
-                <section className="surface card stack" style={{ gap: 12 }}>
-                  <span className="header">
-                    <h2 className="t-card grow">Call log</h2>
-                    <span className="t-cap num">
-                      {call.timeline_events} events · {call.rejected_drafts} drafts rejected
-                    </span>
-                  </span>
-                  <ol className="op-log">
-                    {call.log.map((l) => (
-                      <li key={l.event_id} className={`t-cap ${l.type === 'voice.draft_rejected' || l.type === 'voice.agent_error' ? 'warn' : ''}`}>
-                        <span className="num">{l.at.slice(11, 19)}</span> {l.summary}
-                      </li>
-                    ))}
-                  </ol>
-                </section>
-              </div>
-            </div>
-          )}
+            <h1 className="t-title" id="ring-name">
+              {CALLER}
+            </h1>
+            <p className="t-lead">About {ringing.about}</p>
+            <p className="t-cap opx-why">Nobody acknowledged the alert, so it escalated to simulated emergency services.</p>
+          </div>
+          {error && <ErrorLine text={error} />}
+          <div className="opx-ring-actions">
+            <button type="button" className="btn opx-accept" disabled={phase === 'starting'} onClick={() => answer(ringing.call_id)} aria-label="Accept call">
+              <Icon name="phone" size={30} />
+            </button>
+            <span className="t-sub">{phase === 'starting' ? 'Connecting…' : 'Accept'}</span>
+          </div>
         </div>
-      </main>
+      );
+    }
+    return (
+      <div className="opx opx-standby">
+        <div className="opx-bar">
+          <span className="t-name">Operator line</span>
+        </div>
+        <div className="opx-caller">
+          <span className="opx-standby-ic" aria-hidden="true">
+            <Icon name="phone" size={28} />
+          </span>
+          <h1 className="t-title">Standing by</h1>
+          <p className="t-sub">Calls ring here. No real phone line or emergency service is connected.</p>
+        </div>
+        {error && <ErrorLine text={error} />}
+      </div>
+    );
+  }
+
+  // ── On the call ────────────────────────────────────────────────────────
+  const live = phase !== 'ended';
+  const elapsed = connectedAt ? Date.now() - connectedAt : 0;
+  const status = !live
+    ? `Call ended${call.ended_reason ? `, ${call.ended_reason.replace('_', ' ')}` : ''}`
+    : phase === 'starting'
+      ? 'Connecting…'
+      : fmtDuration(elapsed);
+  const voiceIn = !!caps?.speech_to_text && PushToTalk.supported;
+
+  return (
+    <div className="opx">
+      <header className="opx-bar">
+        <span className="opx-caller-mini" aria-hidden="true">
+          YTC
+        </span>
+        <span className="stack grow" style={{ minWidth: 0 }}>
+          <span className="t-name">{CALLER}</span>
+          <span className="t-cap num" role="status">
+            {status}
+          </span>
+        </span>
+        <button type="button" className="btn chip fill" onClick={() => setRecord(true)}>
+          <Icon name="file" size={16} />
+          Record
+        </button>
+      </header>
+
+      <ol className="opx-chat" aria-label="Conversation">
+        {call.transcript.map((t) => (
+          <Turn key={`${t.turn_index}-${t.speaker}-${t.at}`} turn={t} reply={replies[t.turn_index]} facts={call.facts} />
+        ))}
+        <li ref={chatEnd} aria-hidden="true" />
+      </ol>
+
+      <div className="opx-dock">
+        <ActivityStrip phase={phase} activity={activity} voiceIn={voiceIn && micReady} />
+        {error && <ErrorLine text={error} />}
+        {live ? (
+          <div className="opx-compose">
+            <form
+              className="fill inputbar grow"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void sendText(text);
+              }}
+            >
+              <label htmlFor="op-question" className="sr-only">
+                Ask the agent
+              </label>
+              <input
+                id="op-question"
+                className="field field-bare"
+                placeholder="Ask the agent"
+                autoComplete="off"
+                value={text}
+                maxLength={1000}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  clearSilence();
+                }}
+              />
+              <button type="submit" className="btn ibtn on-accent" aria-label="Send" disabled={!text.trim()}>
+                <Icon name="send" />
+              </button>
+            </form>
+            <button
+              type="button"
+              className={`btn opx-mic ${phase === 'listening' ? 'on-accent is-live' : 'fill'}`}
+              aria-label={voiceIn ? 'Hold to talk' : 'Voice input is off on this server'}
+              disabled={!voiceIn || !micReady}
+              onPointerDown={(e) => {
+                e.currentTarget.setPointerCapture(e.pointerId);
+                void talkStart();
+              }}
+              onPointerUp={() => void talkStop()}
+              onPointerCancel={() => void talkStop()}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              <Icon name={voiceIn ? 'mic' : 'micOff'} size={26} />
+            </button>
+          </div>
+        ) : (
+          <button type="button" className="btn pbtn fill" onClick={backToStandby}>
+            Done
+          </button>
+        )}
+        {live && (
+          <div className="opx-tools">
+            {caps?.text_to_speech && (
+              <button type="button" className="btn chip fill" onClick={toggleVoice}>
+                {voiceOn ? 'Mute the agent' : 'Unmute the agent'}
+              </button>
+            )}
+            <button type="button" className="btn chip fill" onClick={endCall}>
+              <Icon name="x" size={16} />
+              End call
+            </button>
+          </div>
+        )}
+      </div>
+
+      {record && (
+        <Sheet title="Incident record" centered className="sheet-capped" onClose={() => setRecord(false)}>
+          <p className="t-sub">Everything the agent may say, and nothing else. Highlighted: what its last answer cited.</p>
+          <div className="opx-record sheet-scroll">
+            <FactList facts={call.facts} cited={cited} />
+            <div className="stack" style={{ gap: 8 }}>
+              <span className="lbl" style={{ padding: 0 }}>
+                Call log · {call.timeline_events} events in the record · {call.rejected_drafts} drafts rejected
+              </span>
+              <ol className="opx-log">
+                {call.log.map((l) => (
+                  <li key={l.event_id} className={`t-cap ${l.type === 'voice.draft_rejected' || l.type === 'voice.agent_error' ? 'warn' : ''}`}>
+                    <span className="num">{l.at.slice(11, 19)}</span> {l.summary}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+          <button type="button" className="btn pbtn fill" onClick={() => setRecord(false)}>
+            Close
+          </button>
+        </Sheet>
+      )}
     </div>
   );
 }
 
-function ringingFor(c: IncomingCall): string {
-  const s = Math.max(0, Math.round((Date.now() - Date.parse(c.ringing_since)) / 1000));
-  return s < 60 ? `Ringing ${s} s` : `Ringing ${Math.floor(s / 60)} min`;
+/** What is happening right now: the agent's real steps while it prepares an answer, or whose turn it is. */
+function ActivityStrip({ phase, activity, voiceIn }: { phase: Phase; activity: Activity | null; voiceIn: boolean }) {
+  if (phase === 'thinking') {
+    const current = activity?.stage ?? 'reading_record';
+    const at = STEPS.findIndex((s) => s.stage === current);
+    return (
+      <div className="opx-activity" role="status" aria-live="polite">
+        {current === 'fallback' ? (
+          <span className="opx-step is-on">No draft passed the checks. Reading the facts word for word.</span>
+        ) : (
+          STEPS.map((s, i) => (
+            <span key={s.stage} className={`opx-step ${i === at ? 'is-on' : i < at ? 'is-done' : ''}`}>
+              {i === at && <span className="opx-pulse" aria-hidden="true" />}
+              {s.label}
+              {s.stage === current && activity && activity.attempt > 1 ? ` (try ${activity.attempt})` : ''}
+            </span>
+          ))
+        )}
+      </div>
+    );
+  }
+  const line =
+    phase === 'starting'
+      ? 'Connecting the simulated call…'
+      : phase === 'listening'
+        ? 'Listening. Let go to send.'
+        : phase === 'speaking'
+          ? 'The agent is speaking. Talk to interrupt.'
+          : phase === 'ended'
+            ? ''
+            : null;
+  if (line === '') return null;
+  return (
+    <div className="opx-activity" role="status" aria-live="polite">
+      {line ?? (
+        <>
+          <span className="opx-hint-touch">{voiceIn ? 'Your turn. Hold the microphone to talk, or type.' : 'Your turn. Type a question.'}</span>
+          <span className="opx-hint-key">
+            {voiceIn ? (
+              <>
+                Your turn. Hold <kbd>Space</kbd> to talk, or type.
+              </>
+            ) : (
+              'Your turn. Type a question.'
+            )}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ErrorLine({ text }: { text: string }) {
+  return (
+    <p className="error" role="alert">
+      <Icon name="alert" />
+      {text}
+    </p>
+  );
+}
+
+function fmtDuration(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 function pendingTurn(text: string): CallView['transcript'][number] {
@@ -594,32 +640,26 @@ function Turn({ turn, reply, facts }: { turn: CallView['transcript'][number]; re
   const sources = reply?.facts.length ? reply.facts : facts.filter((f) => reply?.fact_ids.includes(f.id));
   return (
     <li className={`bubble ${agent ? 'fill agent' : 'fill-2 operator'}`}>
-      <span className="t-cap num">
-        {agent ? 'YTC automated assistant' : 'You (operator)'} · {turn.at.slice(11, 16)} UTC
-      </span>
       <span className="t-body">{turn.text}</span>
-      {turn.interrupted_after_ms !== undefined && (
-        <span className="t-cap num">You interrupted after {(turn.interrupted_after_ms / 1000).toFixed(1)} s.</span>
-      )}
+      {turn.interrupted_after_ms !== undefined && <span className="t-cap num">Interrupted after {(turn.interrupted_after_ms / 1000).toFixed(1)} s</span>}
       {agent && reply && (
-        <details className="op-sources">
+        <details className="opx-sources">
           <summary className="t-cap num">
             {PATH_LABEL[reply.path]}
             {reply.path !== 'scripted' ? ` · ${(reply.latency_ms / 1000).toFixed(1)} s` : ''}
             {reply.rejected.length ? ` · ${reply.rejected.length} draft${reply.rejected.length > 1 ? 's' : ''} rejected` : ''}
-            {sources.length ? ` · cites ${sources.map((f) => f.id).join(', ')}` : ''}
+            {sources.length ? ` · ${sources.map((f) => f.id).join(', ')}` : ''}
           </summary>
           {sources.map((f) => (
             <p key={f.id} className="t-cap">
-              <span className="num">{f.id}</span> {f.text} <span className="num">[{f.source_event_ids.join(', ')}]</span>
+              <span className="num">{f.id}</span> {f.text}
             </p>
           ))}
           {reply.rejected.map((r) => (
             <p key={r.attempt} className="t-cap">
-              Draft {r.attempt} rejected at the {r.stage} check, never spoken: {r.reasons.join('; ')}
+              Draft {r.attempt} failed the {r.stage} check and was never spoken: {r.reasons.join('; ')}
             </p>
           ))}
-          {reply.model_id && <p className="t-cap">Model: {reply.model_id}</p>}
         </details>
       )}
     </li>
@@ -629,7 +669,7 @@ function Turn({ turn, reply, facts }: { turn: CallView['transcript'][number]; re
 function FactList({ facts, cited }: { facts: FactView[]; cited: string[] }) {
   const topics = [...new Set(facts.map((f) => f.topic))];
   return (
-    <div className="op-facts">
+    <div className="opx-facts">
       {topics.map((topic) => (
         <div key={topic} className="stack" style={{ gap: 6 }}>
           <span className="lbl" style={{ padding: 0 }}>

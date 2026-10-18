@@ -272,6 +272,16 @@ export function buildFactSheet(
     }
   }
 
+  for (const e of evidence) {
+    if (e.type !== "incident.participant_update") continue;
+    add(
+      "checkin",
+      "observed",
+      `At ${time(e.occurred_at)} the participant reported from their own phone that they are OK. That is their own report: the app cannot confirm their condition, and the alert stays open until a responder resolves it.`,
+      [e.event_id],
+    );
+  }
+
   // ── Movement ────────────────────────────────────────────────────────
   // The opening breakdown leads with the latest impact, else the baseline observation.
   let impactFact: Omit<Fact, "id"> | undefined;

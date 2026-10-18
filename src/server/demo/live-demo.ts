@@ -123,7 +123,8 @@ export class DemoRegistry {
     if (await deps.store.findPendingCheckIn(session._id, subject.participantId)) {
       throw new DemoError("checkin_pending", `${subject.displayName} already has a check-in waiting. Let it finish first.`);
     }
-    const rules: SessionRules = { ...session.rules, ...DEMO_RULES };
+    // Everyone who shares location appears on the map: phones report a simulated position at the venue.
+    const rules: SessionRules = { ...session.rules, ...DEMO_RULES, demoVenue: session.rules.demoVenue ?? FALLBACK_VENUE };
     await deps.store.setSessionRules(session._id, rules);
     const run = new LiveDemo({ ...session, rules }, subject, deps.now().getTime(), this.calls);
     this.runs.set(session._id, run);
@@ -190,6 +191,8 @@ export class LiveDemo {
   private readonly mirroredJobs = new Map<string, "sent" | "delivered" | "failed">();
   private firstAlertEventId: string | null = null;
   private acknowledged = false;
+  /** How many of the incident's "I'm OK" log lines are already in the record. */
+  private updatesMirrored = 0;
   private resolved = false;
   private call: { id: string; status: "ringing" | "active" | "ended" } | null = null;
 
@@ -652,6 +655,20 @@ export class LiveDemo {
         this.mirroredJobs.set(job._id, "failed");
       }
     }
+
+    // "Tell responders I'm OK" from their phone: their own report, in the record the agent reads.
+    const updates = doc.log.filter((l) => l.kind === "participant_update");
+    for (const u of updates.slice(this.updatesMirrored)) {
+      this.timeline.append({
+        ...scope,
+        type: "incident.participant_update",
+        actor: { kind: "participant", id: sub },
+        provenance: prov("ui"),
+        occurred_at: Math.min(u.at.getTime(), deps.now().getTime()),
+        data: { update: "reported_ok", method: "tap" },
+      });
+    }
+    this.updatesMirrored = updates.length;
 
     if (doc.acknowledged && !this.acknowledged) {
       this.acknowledged = true;

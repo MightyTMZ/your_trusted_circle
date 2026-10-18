@@ -129,6 +129,13 @@ test("demo: impact, unanswered check-in, escalation, then a ringing call grounde
     assert.ok(types.includes(t as never), `${t} in the record`);
   }
 
+  // "I'm OK" from their phone reaches the call as their own report, never as a confirmation.
+  assert.equal((await sam.raw("POST", `/api/sessions/${session.id}/update`)).status, 204);
+  await until(() => run.timeline.events.some((e) => e.type === "incident.participant_update"), 3);
+  const said = calls.state(demo.call.id).call.facts.find((f) => /reported from their own phone/.test(f.text));
+  assert.ok(said, "the agent's facts include the self-report");
+  assert.match(said!.text, /cannot confirm their condition/);
+
   // Acknowledging mid-call reaches the agent's record at once.
   const alertId = (await maya.call("GET", "/api/alerts")).body.alerts[0].id as string;
   assert.equal((await maya.call("POST", `/api/alerts/${alertId}/acknowledge`)).status, 200);
@@ -164,3 +171,31 @@ test("demo: without their consent the call does not name them or read their note
   assert.doesNotMatch(answered.reply.text, /Sam|inhaler/);
 });
 
+
+test("story: the demo person's movements as sentences, shown only to those they share location with", async () => {
+  const { app, maya, sam, session, samId, until } = await demoGroup({ ...CONSENT, locationSharing: "host", shareNoteWithResponders: true });
+  const code = (await maya.call("GET", `/api/sessions/${session.id}`)).body.session.code as string;
+  const alex = await signIn(app, "alex");
+  assert.equal((await alex.call("POST", "/api/sessions/join", { code, consent: CONSENT })).status, 201);
+  assert.equal((await maya.call("POST", `/api/sessions/${session.id}/demo`, { participantId: samId })).status, 201);
+
+  const story = async (c: Client) => (await c.call("GET", `/api/sessions/${session.id}/story`)).body as { items: { kind: string; text: string }[]; noMovementRecord: string[] };
+  const moves = (s: Awaited<ReturnType<typeof story>>) => s.items.filter((i) => i.kind === "movement").map((i) => i.text);
+
+  // Sam shares location with the host only: the host and Sam see the moves, Alex does not.
+  const hostMoves = moves(await story(maya));
+  assert.ok(hostMoves.some((t) => /^Sam arrived at Toronto City Hall, entrance \(simulated\)\.$/.test(t)), hostMoves.join(" | "));
+  assert.ok(hostMoves.some((t) => /^Sam moved from the entrance to the main room, about \d+ m \(simulated\)\.$/.test(t)), hostMoves.join(" | "));
+  assert.ok(hostMoves.some((t) => /walking at about 1\.\d m\/s heading east/.test(t)), hostMoves.join(" | "));
+  assert.ok(moves(await story(sam)).length > 0);
+  const alexStory = await story(alex);
+  assert.equal(moves(alexStory).length, 0);
+  assert.ok(alexStory.noMovementRecord.includes("Sam"));
+
+  // The alert's own log joins the story for the host and Sam, never for Alex.
+  await until(async () => (await demoOf(maya, session.id)).phase === "calling", 200);
+  const alerts = (s: Awaited<ReturnType<typeof story>>) => s.items.filter((i) => i.kind === "alert").map((i) => i.text);
+  assert.ok(alerts(await story(maya)).some((t) => /simulated emergency operator/.test(t)));
+  assert.ok(alerts(await story(sam)).length > 0);
+  assert.equal(alerts(await story(alex)).length, 0);
+});

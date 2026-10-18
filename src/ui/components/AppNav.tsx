@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { activeIncidentFor } from '../../domain/incident';
 import { COPY } from '../copy';
 import { useApp } from '../context';
+import { AlertAboutYou } from './AlertAboutYou';
 import { HelpSheet } from './HelpSheet';
 import { Icon, type IconName } from './Icon';
 import { SessionStatus } from './SessionStatus';
@@ -109,10 +110,13 @@ export function AppNav({ variant }: { variant: 'rail' | 'bottom' }) {
         <div className="tabbar-dock">
           <SessionStatus variant="accessory" />
           <div className="tabbar-row">
-            {canAskForHelp && (
+            {canAskForHelp ? (
               <button type="button" className="btn material help-fab" aria-label={COPY.checkInHelp} title={COPY.checkInHelp} onClick={open}>
                 <Icon name="lifeBuoy" />
               </button>
+            ) : (
+              // An alert about you is open (shown at the top); the slot stays so the tabs never move.
+              <span className="help-fab-slot" aria-hidden="true" />
             )}
             <nav aria-label="Main" className="material tabbar">
               {/* Settings is a gear in the screen header on phones (SettingsButton). */}
@@ -124,6 +128,7 @@ export function AppNav({ variant }: { variant: 'rail' | 'bottom' }) {
             </nav>
           </div>
         </div>
+        {!canAskForHelp && <AlertAboutYou />}
         {sheet}
       </>
     );

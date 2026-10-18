@@ -22,6 +22,7 @@ import { authRoutes } from "./auth/routes.js";
 import { fail, type AppEnv, type Deps } from "./context.js";
 import { accountRoutes } from "./data/account.js";
 import { demoRoutes } from "./demo/routes.js";
+import { storyRoutes } from "./data/story.js";
 import { dataRoutes } from "./data/timeline.js";
 import { ingestRoutes } from "./lifecycle/events.js";
 import { relayRoutes } from "./lifecycle/relay.js";
@@ -69,6 +70,7 @@ export function createApp(deps: Deps) {
   app.route("/api", alertRoutes(deps));
   // 5. Data access and retention
   app.route("/api", dataRoutes(deps));
+  app.route("/api", storyRoutes(deps));
   app.route("/api/me", accountRoutes(deps));
   // 6. Simulated voice-agent escalation
   if (deps.calls) app.route("/api/calls", voiceRoutes(deps.calls));

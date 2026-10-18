@@ -65,7 +65,12 @@ export interface CallAgentOptions {
   judgeTimeoutMs?: number;
   /** Silence prompts before the agent ends the call. Default 1. */
   maxSilencePrompts?: number;
+  /** Told as each step of an answer starts, so a console can show what the agent is doing. */
+  onStage?: (stage: AgentStage, attempt: number) => void;
 }
+
+/** The steps of one answer, in order. "fallback": reading facts verbatim because no draft passed. */
+export type AgentStage = "reading_record" | "finding_facts" | "drafting" | "checking" | "verifying" | "fallback" | "idle";
 
 export type ReplyPath = "model" | "model_repaired" | "fallback" | "scripted";
 
@@ -224,7 +229,20 @@ export class OperatorCallAgent {
   private async answer(operatorText: string, operatorTurn: number): Promise<AgentReply | null> {
     this.silenceStreak = 0;
     const ticket = ++this.generation;
+    try {
+      return await this.answerSteps(operatorText, operatorTurn, ticket);
+    } finally {
+      if (ticket === this.generation) this.opts.onStage?.("idle", 0);
+    }
+  }
+
+  private async answerSteps(operatorText: string, operatorTurn: number, ticket: number): Promise<AgentReply | null> {
+    const stage = (name: AgentStage, attempt = 0) => {
+      if (ticket === this.generation) this.opts.onStage?.(name, attempt);
+    };
+    stage("reading_record");
     const sheet = this.sheet();
+    stage("finding_facts");
     const retrieval = await this.retriever.retrieve(sheet.facts, operatorText, this.opts.retrievalK ?? 6);
     const focus = retrieval.ranked.filter((r) => r.score > 0).map((r) => r.fact);
     const rejected: Rejection[] = [];
@@ -248,6 +266,7 @@ export class OperatorCallAgent {
       const maxAttempts = this.opts.maxAttempts ?? 2;
       for (let attempt = 1; attempt <= maxAttempts && !accepted; attempt++) {
         let response;
+        stage("drafting", attempt);
         try {
           response = await this.opts.model.generateJson({
             system: ANSWER_SYSTEM_INSTRUCTION,
@@ -268,6 +287,7 @@ export class OperatorCallAgent {
           continue;
         }
         const spokenText = draftText(parsed.draft);
+        stage("checking", attempt);
         const guard = checkDraft(parsed.draft, sheet);
         if (!guard.ok) {
           reject(attempt, "guard", guard.violations, spokenText, response.model_id);
@@ -277,6 +297,7 @@ export class OperatorCallAgent {
         if (this.opts.judge) {
           const byId = new Map(sheet.facts.map((f) => [f.id, f]));
           let verdict;
+          stage("verifying", attempt);
           try {
             verdict = await judgeSentences(
               this.opts.judge,
@@ -318,6 +339,7 @@ export class OperatorCallAgent {
         rejected,
       );
     }
+    stage("fallback");
     const relevant = OUT_OF_SCOPE.test(operatorText) ? [] : relevantFacts(retrieval);
     return this.speak(this.fallback(sheet, relevant), "fallback", null, retrieval.mode, rejected);
   }

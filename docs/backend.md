@@ -58,6 +58,7 @@ All bodies are JSON. Every request except sign-in needs the `ytc_session` cookie
 | `GET /api/incidents/:id` | subject, host, recipients | Incident, deliveries and log |
 | `POST /api/incidents/:id/resolve` | responder | After acknowledging: `false_alarm`, `assistance_reached` or `other` |
 | `GET /api/sessions/:id/timeline` | member | What you are permitted to see |
+| `GET /api/sessions/:id/story` | member | What happened, in sentences, as you may see it: joins and leaves; alerts and their log (host and the person only); movements where a record of positions exists (the live incident demo's person, to whoever they share location with) |
 | `GET /api/me` / `PATCH /api/me` | signed in | Profile: `displayName`, and `avatar` (PNG, JPEG or WebP data URL up to 100 KB, or `null` to remove) |
 | `GET /api/me/export` | signed in | Everything about you, as JSON |
 | `DELETE /api/me` | signed in | `{ "confirm": "DELETE" }` deletes your account and all your data |
@@ -130,15 +131,23 @@ movement check-ins themself; the demo refuses otherwise.
   server's check-in, alerts, acknowledgment and resolution. When escalation
   reaches simulated emergency services, the voice agent places a call that
   rings on the operator console (`#operator`) until someone answers. The
-  agent reads only that timeline; an acknowledgment during the call reaches
-  it within a second. The incident's log records that the call rang, was
+  agent reads only that timeline; an acknowledgment, or the person's own
+  "I'm OK" (`incident.participant_update`, stated as self-reported), reaches
+  it within a second. The call's `activity` shows the agent's current step
+  (reading the record, finding facts, drafting, checking, verifying) while
+  it prepares an answer. The incident's log records that the call rang, was
   answered and ended.
 - **Consent.** The call names the person and reads their note only if they
   turned on "Share my name and note" (`consent.shareNoteWithResponders`).
   Location is shared with the operator only under `shareLocationWithResponders`.
+- **"What happened."** The person's synthetic movements in the demo record
+  are told as sentences by `GET /api/sessions/:id/story`, to whoever they
+  share location with. No other positions are stored, so nobody else's
+  movements can be told.
 - **Memory only**, like the location relay. Positions in the demo are
-  synthetic, around the session's demo venue (Toronto City Hall if none is
-  set).
+  synthetic, around the session's demo venue. Starting the demo sets the
+  venue to Toronto City Hall if none is set, so every phone that shares
+  location appears on the map, labelled simulated.
 
 ## Not built yet
 

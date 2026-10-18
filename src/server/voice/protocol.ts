@@ -58,6 +58,8 @@ export interface CallView {
   log: LogLine[];
   timeline_events: number;
   rejected_drafts: number;
+  /** What the agent is doing right now, while it prepares an answer; null when it is not. */
+  activity: { stage: "reading_record" | "finding_facts" | "drafting" | "checking" | "verifying" | "fallback"; attempt: number; since: string } | null;
 }
 
 /** A call placed by escalation, waiting for someone at the operator console. */

@@ -228,6 +228,7 @@ All need `monitoring`.
 | `incident.opened` | Starts escalation; names the triggering event. | `trigger`, `trigger_event_id` |
 | `incident.acknowledged` | A responder has the alert. Does **not** mean the person is safe. | `acknowledged_by_role`, `acknowledged_by_id`, `notification_id` |
 | `incident.resolved` | Closed; separate from acknowledgment. | `resolution`, `resolved_by_role`, `resolved_by_id` |
+| `incident.participant_update` | The person added "I'm OK" from their own phone. Self-reported; never acknowledges or resolves. | `update`, `method` |
 
 ### Notifications (simulated transport)
 
@@ -344,7 +345,7 @@ and the UI; open `http://localhost:5173/#operator` and play the operator.
   never its Agents platform, which can connect to phone networks.
 - Holding the talk button while the agent speaks stops playback and logs
   `voice.agent_interrupted` with how much was heard; the next prompt marks
-  that turn as cut off. 25 s of silence gets one prompt, then the agent
+  that turn as cut off. 60 s of silence gets one prompt, then the agent
   ends the call (the alert stays unresolved). Keys stay in the server
   process; the browser only sees `/api`.
 
