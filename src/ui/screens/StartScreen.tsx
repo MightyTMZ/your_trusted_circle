@@ -9,12 +9,12 @@ import { CuttingMat, type MatItem } from '../components/CuttingMat';
 // Pictures on the hero mat. Swap `src` for your own photos (drop them in public/mat/); positions are fractions of the mat.
 // e.g. { id: 'patch', src: '/mat/patch.png', alt: 'Toronto patch', x: 0.15, y: 0.25, width: 0.16, rotate: -6 }
 const MAT_ITEMS: MatItem[] = [
-  { id: 'logo1', src: '/logo-light.png', alt: 'YCT Light', x: 0.15, y: 0.25, width: 0.10, rotate: -6 },
-  { id: 'htv', src: '/starting-page/htv.jpeg', alt: 'HTV', x: 0.85, y: 0.25, width: 0.02, rotate: -6 },
+  { id: 'logolight', src: '/logo-light.png', alt: 'YCT Light', x: 0.45, y: 0.20, width: 0.10, rotate: 0 },
+  { id: 'htv', src: '/starting-page/htv.jpeg', alt: 'HTV', x: 0.85, y: 0.20, width: 0.02, rotate: -6 },
   { id: 'mlh', src: '/starting-page/mlh.avif', alt: 'MLH', x: 0.15, y: 0.75, width: 0.10, rotate: 6 },
   { id: 'valley', src: '/starting-page/valley.png', alt: 'Valley', x: 0.85, y: 0.75, width: 0.25, rotate: 0 },
-  { id: 'tickets', src: '/starting-page/tickets.png', alt: 'Tickets', x: 0.45, y: 0.25, width: 0.10, rotate: 0 },
-  { id: 'toronto', src: '/starting-page/toronto.webp', alt: 'Toronto', x: 0.45, y: 0.75, width: 0.15, rotate: 0 },
+  { id: 'tickets', src: '/starting-page/tickets.png', alt: 'Tickets', x: 0.15, y: 0.20, width: 0.10, rotate: 0 },
+  { id: 'toronto', src: '/starting-page/toronto.webp', alt: 'Toronto', x: 0.45, y: 0.775, width: 0.15, rotate: 0 },
 ];
 
 
