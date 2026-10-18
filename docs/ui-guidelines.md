@@ -108,9 +108,10 @@ override tokens on the same element.
 | Data | `--track-inactive`, `--tick-inactive`, `--knob` |
 | Map | `--map-bg`, `--map-street`, `--map-block` |
 | Misc | `--qr-bg`, `--scrim` |
+| Cutting mat | `--mat-bg` (navy), `--mat-frame` (cream), `--mat-line`, `--mat-line-soft`, `--mat-ink`, `--mat-title`, `--mat-shadow`, `--mat-shadow-lift`, `--r-mat` 28px. An illustration, not UI colour: the same in both themes and used only by `CuttingMat`. |
 | Shape | `--r-card` 22px, `--r-tile` 14px, `--r-field` 12px, `--r-pill` 999px; circles are 50% |
 | Motion | `--ease` = `cubic-bezier(.25,.1,.25,1)` |
-| Type | `--font` = the system font stack (`-apple-system`, `BlinkMacSystemFont`, `system-ui`, then Segoe UI, Roboto, Helvetica Neue) |
+| Type | `--font` = the system font stack (`-apple-system`, `BlinkMacSystemFont`, `system-ui`, then Segoe UI, Roboto, Helvetica Neue) , `--font-mono` (cutting mat rulers and title only) |
 
 No gradients and no accent glows: fills are flat (`--accent-glow` stays
 `none` and exists only for older call sites). The one exception is
@@ -199,6 +200,7 @@ pointer events. Minimum hit area 44×44 (`accessibility.md › Mobility`).
 | Help button | `button.btn.material.help-fab` (phone), `button.btn.side-help` (sidebar) | "I need help". Never a tab: tabs navigate, help acts (`tab-bars.md › Best practices`). 62px material circle with an accent ring directly beside the tab bar and kept inside the phone viewport; a labelled ringed row at the top of the sidebar. |
 | Error | `p.error[role=alert]` + `alert` icon | Grey-fill box, primary text. No red. |
 | Access prompt | `<AccessPrompt icon title primary secondary>` | Access the session can't work without (motion for check-ins, location for the map): a centred material card over a blurred, locked app, shown before the browser's own request (`privacy.md › Pre-alert screens`). One at a time. Always a way out (`modality.md › Best practices`): "Turn off check-ins" (their consent choice) or "Not now" (this visit only). Waits while an alert about the person is open. |
+| Cutting mat | `<CuttingMat items label>{title}</CuttingMat>` → `.mat-frame` > `.mat` > `.mat-rules` + `.mat-center` + `button.mat-item` | Landing hero only, after the YC @ U of T visit page: a navy self-healing cutting mat (rulers, half/whole-unit grid, 30°/45°/60° guides) drawn as SVG at the mat's pixel size, with pictures (`MatItem`: `src`, `alt`, centre `x`/`y` and `width` as fractions of the mat, `rotate`) that can be dragged with mouse, touch or pen, or moved with arrow keys (Shift for bigger steps). A picked-up picture comes to the top and lifts. Centre the screen's `h1` inside it with `.mat-title` / `.mat-sub`; that text never blocks a drag. Pictures live in `public/mat/`; use synthetic or licensed images only. 4:5 on phone, 16:11 on tablet, 16:10 on desktop. Reduce Motion: no lift animation. |
 | Alert about you | `<AlertOverlay>` → `.alert-overlay` | While an alert about you is open, show the blocking alert and its cancel action. The confirmation explains that escalation stops and keeps the safety caveat; it has only "Confirm cancel" and "Keep the alert open". Do not add a redundant "I'm OK" action to this overlay. Reduce Motion: no pulse, no animation. |
 
 React wrappers in `src/ui/components/Controls.tsx`: `Toggle`, `ToggleRow`,
