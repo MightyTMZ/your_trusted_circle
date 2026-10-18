@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { COPY } from '../copy';
 import { useApp } from '../context';
 import { Avatar } from '../components/Controls';
+import { CuttingMat, type MatItem } from '../components/CuttingMat';
 import { Icon } from '../components/Icon';
 
 // One short line each: the verb first, no mechanism. Setup explains the rest when it matters.
@@ -10,6 +11,9 @@ const STEPS = [
   { title: 'Friends join', body: 'They scan a QR code and choose what to share.' },
   { title: 'Check-ins keep watch', body: 'A missed check-in alerts the host first.' },
 ];
+
+// Pictures on the hero mat. Swap `src` for your own photos (drop them in public/mat/); positions are fractions of the mat.
+const MAT_ITEMS: MatItem[] = [{ id: 'white-card', src: '/mat/white-card.svg', alt: 'White card', x: 0.15, y: 0.25, width: 0.16, minWidth: 96, rotate: -6 }];
 
 /** First screen for a visitor: what YTC is, how it works in three lines, and one big way to start. Account and settings sit where they do everywhere else. */
 export function LandingScreen() {
@@ -28,7 +32,7 @@ export function LandingScreen() {
 
   return (
     <div className="screen">
-      <div className="narrow" style={{ maxWidth: 960 }}>
+      <div className="narrow" style={{ maxWidth: 1200 }}>
         <div className="spread">
           <div className="logo" role="img" aria-label="YTC" style={{ width: 56, height: 56 }} />
           <span className="inline">
@@ -48,15 +52,13 @@ export function LandingScreen() {
           </span>
         </div>
 
+        <CuttingMat items={MAT_ITEMS} label={COPY.appTagline}>
+          <h1 className="mat-title">{COPY.appTagline}</h1>
+          <p className="mat-sub">A buddy system for nights out</p>
+        </CuttingMat>
+
         <div className="cols" style={{ gap: 32 }}>
           <div className="col" style={{ gap: 24 }}>
-            <div className="stack" style={{ gap: 12 }}>
-              <span className="t-sub">{COPY.appTagline}</span>
-              <h1 className="t-display" style={{ textWrap: 'balance' }}>
-                A buddy system for nights out.
-              </h1>
-            </div>
-
             <div className="stack" style={{ gap: 12 }}>
               <button type="button" className="btn pbtn on-accent" style={{ minHeight: 68, fontSize: 20 }} onClick={() => go({ name: 'host-setup' })}>
                 Create a session
