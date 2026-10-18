@@ -12,9 +12,11 @@
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { createDeps } from "./deps.js";
+import { DemoRegistry } from "./demo/live-demo.js";
 import { MemoryStore } from "./store/memory.js";
 import { MongoStore } from "./store/mongo.js";
 import type { Store } from "./store/store.js";
+import { createCallService } from "./voice/calls.js";
 
 let appPromise: Promise<ReturnType<typeof createApp>> | null = null;
 
@@ -28,7 +30,10 @@ export function getApp() {
       console.warn("[api] MONGODB_URI is not set: using an in-memory store. Data is lost between invocations.");
       store = new MemoryStore();
     }
-    return createApp(createDeps(config, store));
+    const calls = createCallService(process.env);
+    const deps = createDeps(config, store, { calls });
+    if (config.demoIncidents) deps.demos = new DemoRegistry(calls);
+    return createApp(deps);
   })();
   return appPromise;
 }

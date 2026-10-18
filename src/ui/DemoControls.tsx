@@ -161,6 +161,7 @@ function DemoPanel({ style }: { style: CSSProperties }) {
 
     setOperatorBusy(true);
     setOperatorError(null);
+    const operatorTab = window.open('about:blank', '_blank');
     if (session?.serverId) {
       await stopDemo(session.serverId);
       await endSessionOnServer(session.serverId);
@@ -192,12 +193,14 @@ function DemoPanel({ style }: { style: CSSProperties }) {
     });
 
     if (typeof serverResult === 'string') {
+      operatorTab?.close();
       setOperatorBusy(false);
       setOperatorError(serverResult);
       return;
     }
     const serverParticipantId = serverResult.session.me?.participantId;
     if (!serverParticipantId) {
+      operatorTab?.close();
       setOperatorBusy(false);
       setOperatorError('The operator demo session did not return a host participant.');
       return;
@@ -205,6 +208,7 @@ function DemoPanel({ style }: { style: CSSProperties }) {
 
     const started = await startDemo(serverResult.session.id, serverParticipantId);
     if (!started.ok) {
+      operatorTab?.close();
       setOperatorBusy(false);
       setOperatorError(started.message);
       return;
@@ -228,13 +232,18 @@ function DemoPanel({ style }: { style: CSSProperties }) {
       d.participants[hostId].serverId = serverParticipantId;
     });
     if (localError) {
+      operatorTab?.close();
       setOperatorBusy(false);
       setOperatorError(localError);
       return;
     }
 
     setViewer({ kind: 'participant', id: hostId });
-    window.location.hash = 'operator';
+    if (operatorTab) {
+      operatorTab.location.href = `${window.location.origin}${window.location.pathname}#operator`;
+    } else {
+      setOperatorError('Allow pop-ups to open the operator console in another tab.');
+    }
     setOperatorBusy(false);
   };
 
