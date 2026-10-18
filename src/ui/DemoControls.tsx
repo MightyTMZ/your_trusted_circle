@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { suddenChange, typicalMovement } from '../domain/scenarios';
-import { emptyState, ingestMotion, setDeviceOnline } from '../domain/session';
+import { createSession, emptyState, ingestMotion, setDeviceOnline, type ParticipantInput } from '../domain/session';
 import { useApp, useNow } from './context';
 import { fmtTime } from './format';
 import { Icon } from './components/Icon';
 import { joinUrl } from './screens/SessionInviteScreen';
-import { fetchDemo, setSessionVenueOnServer, startDemo, stopDemo, type DemoView } from './api';
+import { createSessionOnServer, endSessionOnServer, fetchDemo, setSessionVenueOnServer, startDemo, stopDemo, type DemoView } from './api';
 import { applySessionVenue, resolveVenue, setLocalVenue, useDemoVenue, type Venue } from './venue';
 
 const POS_KEY = 'ytc.demoFab';
@@ -138,7 +138,7 @@ function panelPlacement(pos: Pos, fab: { w: number; h: number }): CSSProperties 
  * synthetic sensor input; they never set detector or escalation outcomes.
  */
 function DemoPanel({ style }: { style: CSSProperties }) {
-  const { state, store, viewer, setViewer, go } = useApp();
+  const { state, store, viewer, setViewer, go, account } = useApp();
   const now = useNow();
   // People who joined from other devices are driven by their own phones, not from here.
   const participants = Object.values(state.participants).filter((p) => p.status === 'active' && !p.remote);
@@ -149,12 +149,115 @@ function DemoPanel({ style }: { style: CSSProperties }) {
 
   const viewerValue = viewer ? `${viewer.kind}:${viewer.id}` : '';
   const advance = (ms: number) => store.dispatch((d) => void (d.clockOffsetMs += ms));
+  const [operatorBusy, setOperatorBusy] = useState(false);
+  const [operatorError, setOperatorError] = useState<string | null>(null);
+
+  const startOperatorDemo = async () => {
+    if (operatorBusy) return;
+    if (!account) {
+      setOperatorError('Sign in first to start the synthetic operator demo.');
+      return;
+    }
+
+    setOperatorBusy(true);
+    setOperatorError(null);
+    if (session?.serverId) {
+      await stopDemo(session.serverId);
+      await endSessionOnServer(session.serverId);
+    }
+
+    const hostName = account.displayName.trim() || 'Demo host';
+    const host: ParticipantInput = {
+      displayName: hostName,
+      locationSharing: 'group',
+      motionMonitoring: true,
+      shareLocationWithResponders: true,
+      shareNoteWithResponders: true,
+      emergencyNote: 'Synthetic operator demonstration.',
+      backupContacts: [{ name: 'Demo backup', relation: 'Friend' }],
+    };
+    const serverResult = await createSessionOnServer({
+      name: 'Operator demo',
+      durationMin: 120,
+      consent: {
+        monitoring: host.motionMonitoring,
+        locationSharing: host.locationSharing,
+        shareLocationWithResponders: host.shareLocationWithResponders,
+        shareNoteWithResponders: host.shareNoteWithResponders,
+      },
+      consentTextVersion: 'consent-v1',
+      responderNote: host.emergencyNote,
+      backupContacts: host.backupContacts,
+      rules: { checkInWindowSec: 20, hostAckWindowSec: 30, backupAckWindowSec: 30 },
+    });
+
+    if (typeof serverResult === 'string') {
+      setOperatorBusy(false);
+      setOperatorError(serverResult);
+      return;
+    }
+    const serverParticipantId = serverResult.session.me?.participantId;
+    if (!serverParticipantId) {
+      setOperatorBusy(false);
+      setOperatorError('The operator demo session did not return a host participant.');
+      return;
+    }
+
+    const started = await startDemo(serverResult.session.id, serverParticipantId);
+    if (!started.ok) {
+      setOperatorBusy(false);
+      setOperatorError(started.message);
+      return;
+    }
+
+    let hostId = '';
+    const localError = store.dispatch((d, currentNow) => {
+      hostId = createSession(
+        d,
+        {
+          sessionName: 'Operator demo',
+          durationMin: 120,
+          hostCommitment: true,
+          host,
+          config: { checkInWindowSec: 20, hostAckWindowSec: 30, backupAckWindowSec: 30 },
+        },
+        currentNow,
+      ).host.id;
+      d.session!.code = serverResult.session.code!;
+      d.session!.serverId = serverResult.session.id;
+      d.participants[hostId].serverId = serverParticipantId;
+    });
+    if (localError) {
+      setOperatorBusy(false);
+      setOperatorError(localError);
+      return;
+    }
+
+    setViewer({ kind: 'participant', id: hostId });
+    window.location.hash = 'operator';
+    setOperatorBusy(false);
+  };
 
   return (
     <aside id="demo-panel" className="material demo" aria-label="Demo controls" style={style}>
       <div>
         <h3>Demo controls · simulation only</h3>
         <p className="t-cap">Presenter tools outside the app. Synthetic people, places, and sensor data.</p>
+      </div>
+
+      <div>
+        <h3>Operator demo</h3>
+        <button type="button" className="btn chip fill" disabled={operatorBusy} onClick={() => void startOperatorDemo()}>
+          {operatorBusy ? 'Preparing operator demo…' : 'Start synthetic operator demo'}
+        </button>
+        {operatorError && (
+          <p className="t-cap" role="alert" style={{ marginTop: 6 }}>
+            {operatorError}
+          </p>
+        )}
+        <p className="t-cap" style={{ marginTop: 6 }}>
+          Starts a fresh synthetic session and opens the simulated operator line.
+        </p>
       </div>
 
       <div>

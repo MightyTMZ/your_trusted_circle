@@ -43,12 +43,13 @@ export function ParticipantConsentFields({
     return (
       <>
         <div className="fgroup">
-          <label className="lbl" htmlFor="displayName">
-            Your name
+          <label className="lbl consent-label" htmlFor="displayName">
+            Your name <span className="required-mark" aria-hidden="true">*</span><span className="sr-only"> required</span>
           </label>
           <input
             id="displayName"
             className="field"
+            required
             value={value.displayName}
             placeholder="Use a synthetic name for the demo"
             onChange={(e) => set('displayName', e.target.value)}
@@ -63,7 +64,7 @@ export function ParticipantConsentFields({
         <div className="surface card card-list">
           <ToggleRow
             label="Movement check-ins"
-            sub={`You get a private check-in first. No answer within ${checkInWindowSec}s alerts ${forHost ? 'the group and your backup contacts' : 'the host'}.`}
+            sub={`You get a private check-in first. No answer within ${checkInWindowSec}s alerts ${forHost ? 'the group' : 'the host'}.`}
             checked={value.motionMonitoring}
             onChange={(v) => set('motionMonitoring', v)}
           />
@@ -75,12 +76,15 @@ export function ParticipantConsentFields({
   return (
     <>
       <div className="fgroup">
-        <span className="lbl">Backup contacts if an alert isn't acknowledged · required</span>
+        <span className="lbl consent-label">
+          Backup contacts <span className="required-mark" aria-hidden="true">*</span><span className="sr-only"> required</span>
+        </span>
         <p className="t-sub">Add at least one contact with a name and relation.</p>
         {value.backupContacts.map((c, i) => (
           <div key={i} className="field-row">
             <input
               className="field"
+              required
               aria-label={`Backup contact ${i + 1} name`}
               aria-required="true"
               placeholder="Name (synthetic)"
@@ -91,6 +95,7 @@ export function ParticipantConsentFields({
             />
             <input
               className="field"
+              required
               aria-label={`Backup contact ${i + 1} relation`}
               aria-required="true"
               placeholder="Relation"
@@ -114,7 +119,7 @@ export function ParticipantConsentFields({
         )}
       </div>
       <div className="fgroup">
-        <label className="lbl" htmlFor="note">
+        <label className="lbl consent-label" htmlFor="note">
           Note for responders (optional)
         </label>
         <textarea

@@ -362,6 +362,8 @@ ul { padding: 0; list-style: none; }
 .fgroup { display: flex; flex-direction: column; gap: 8px; }
 /* Section header above a group, aligned with the row text inset. */
 .lbl { font-size: 13px; font-weight: 400; color: var(--text-secondary); padding: 0 16px; }
+.consent-label { padding: 0; }
+.required-mark { color: var(--text-primary); font-weight: 600; }
 .field {
   width: 100%; height: 50px; padding: 0 16px; border-radius: var(--r-field); font-size: 17px;
   color: var(--text-primary); background: var(--surface); border: 0;
