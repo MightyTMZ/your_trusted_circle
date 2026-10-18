@@ -197,7 +197,6 @@ export interface ServerConsent {
   shareLocationWithResponders: boolean;
   /** Their name and note go to responders (simulated emergency services) during an alert. */
   shareNoteWithResponders?: boolean;
-  consentTextVersion: string;
 }
 
 export interface ServerParticipant {
@@ -232,6 +231,7 @@ export async function createSessionOnServer(input: {
   name: string;
   durationMin: number;
   consent: ServerConsent;
+  consentTextVersion: string;
   backupContacts?: { name: string; relation: string }[];
   /** Self-reported note for responders; disclosed only under consent.shareNoteWithResponders. */
   responderNote?: string;
@@ -244,6 +244,7 @@ export async function createSessionOnServer(input: {
 export async function joinSessionOnServer(input: {
   code: string;
   consent: ServerConsent;
+  consentTextVersion: string;
   backupContacts?: { name: string; relation: string }[];
   /** Self-reported note for responders; disclosed only under consent.shareNoteWithResponders. */
   responderNote?: string;
@@ -278,7 +279,7 @@ export async function fetchServerSession(serverId: string): Promise<ServerSessio
 
 export function updateConsentOnServer(
   serverId: string,
-  consent: ServerConsent,
+  consent: ServerConsent & { consentTextVersion: string },
 ): Promise<boolean> {
   return sendJson('PATCH', `/sessions/${encodeURIComponent(serverId)}/me/consent`, consent);
 }
