@@ -305,7 +305,9 @@ export function sessionRoutes(deps: Deps) {
   r.get("/:id", async (c) => {
     const s = await loadMember(c.req.param("id"), c.var.user._id);
     if (!s) return fail(c, 404, "no_session", "Session not found.");
-    return c.json({ session: sessionView(s, c.var.user, deps.now()) });
+    const view = sessionView(s, c.var.user, deps.now());
+    const demo = deps.demos?.get(s._id);
+    return c.json({ session: demo && !demo.finished ? { ...view, demoStartedAt: demo.view().startedAt } : view });
   });
 
   r.get("/:id/invite", async (c) => {

@@ -42,6 +42,7 @@ export interface ServerHydrateInput {
       backupAckWindowSec: number;
       locationStaleAfterSec: number;
     };
+    demoStartedAt?: string;
     me: { participantId: string } | null;
     participants: { participantId: string; displayName: string; role: string; isYou: boolean; deviceOnline: boolean }[];
     code?: string;
@@ -79,6 +80,7 @@ export function hydrateServerSession(state: AppState, input: ServerHydrateInput,
       backupAckWindowSec: serverSession.rules.backupAckWindowSec,
       locationStaleAfterSec: serverSession.rules.locationStaleAfterSec,
     },
+    demoStartedAt: serverSession.demoStartedAt ? new Date(serverSession.demoStartedAt).getTime() : undefined,
   };
 
   for (const sp of serverSession.participants) {
@@ -141,11 +143,12 @@ export interface ServerParticipantView {
  */
 export function syncServerParticipants(
   state: AppState,
-  view: { status: string; participants: ServerParticipantView[] },
+  view: { status: string; participants: ServerParticipantView[]; demoStartedAt?: string },
   now: Millis,
 ): void {
   const s = state.session;
   if (!s?.serverId) return;
+  s.demoStartedAt = view.demoStartedAt ? new Date(view.demoStartedAt).getTime() : undefined;
   if (view.status !== 'active' && s.status !== 'ended') {
     s.status = 'ended';
     s.endedAt = now;

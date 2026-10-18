@@ -210,7 +210,7 @@ export function SessionHomeScreen() {
   }, [latestCancelled?.id]);
   const myIncident = state.incidents.find((i) => i.participantId === viewer.id && i.status !== 'resolved');
   const live = useLive();
-  const { points, anchor } = useGroupPoints(viewer, now);
+  const { points, anchor } = useGroupPoints(viewer, now, lookBack ?? now);
   const run = (fn: Parameters<typeof store.dispatch>[0]) => {
     const err = store.dispatch(fn);
     setError(err);

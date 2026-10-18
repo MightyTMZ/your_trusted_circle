@@ -214,6 +214,8 @@ export interface ServerSessionView {
   createdAt: string;
   expiresAt: string;
   rules: SessionPreview['rules'];
+  /** present while the server's synthetic incident demo is running */
+  demoStartedAt?: string;
   isHost: boolean;
   me: {
     participantId: string;

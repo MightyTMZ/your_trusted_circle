@@ -88,6 +88,8 @@ export function OperatorConsole() {
   const [, tick] = useState(0);
 
   const audio = useRef<HTMLAudioElement | null>(null);
+  const ringtoneContext = useRef<AudioContext | null>(null);
+  const ringtoneTimer = useRef<number | null>(null);
   const speaking = useRef<number | null>(null);
   const mic = useRef<PushToTalk | null>(null);
   const silenceTimer = useRef<number | undefined>(undefined);
@@ -104,6 +106,41 @@ export function OperatorConsole() {
   phaseRef.current = phase;
   voiceRef.current = voiceOn;
   recordRef.current = record;
+
+  const stopRingtone = useCallback(() => {
+    if (ringtoneTimer.current !== null) {
+      window.clearInterval(ringtoneTimer.current);
+      ringtoneTimer.current = null;
+    }
+  }, []);
+
+  const playRingtoneBurst = useCallback((context: AudioContext) => {
+    const start = context.currentTime;
+    for (const [offset, frequency] of [
+      [0, 880],
+      [0.38, 660],
+    ] as const) {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const at = start + offset;
+      oscillator.frequency.setValueAtTime(frequency, at);
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(0.12, at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.24);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(at);
+      oscillator.stop(at + 0.25);
+    }
+  }, []);
+
+  const startRingtone = useCallback(() => {
+    if (ringtoneTimer.current !== null || typeof window.AudioContext === 'undefined') return;
+    const context = (ringtoneContext.current ??= new window.AudioContext());
+    void context.resume().catch(() => {});
+    playRingtoneBurst(context);
+    ringtoneTimer.current = window.setInterval(() => playRingtoneBurst(context), 3_000);
+  }, [playRingtoneBurst]);
 
   const ensureMic = useCallback(
     async (enabled = !!caps?.speech_to_text): Promise<boolean> => {
@@ -127,10 +164,12 @@ export function OperatorConsole() {
     audio.current = new Audio();
     return () => {
       audio.current?.pause();
+      stopRingtone();
+      void ringtoneContext.current?.close();
       mic.current?.close();
       window.clearTimeout(silenceTimer.current);
     };
-  }, []);
+  }, [stopRingtone]);
 
   // Calls placed by escalation ring here until someone answers.
   useEffect(() => {
@@ -152,6 +191,12 @@ export function OperatorConsole() {
       window.clearInterval(id);
     };
   }, [call]);
+
+  const ringingCallId = call ? null : incoming[0]?.call_id ?? null;
+  useEffect(() => {
+    if (ringingCallId) startRingtone();
+    else stopRingtone();
+  }, [ringingCallId, startRingtone, stopRingtone]);
 
   // Opened for a call someone already answered: show it so the operator can carry on.
   useEffect(() => {
@@ -308,6 +353,7 @@ export function OperatorConsole() {
 
   /** Unlocks audio and the microphone inside the tap, then answers the call. */
   const answer = async (id: string) => {
+    stopRingtone();
     const el = audio.current;
     if (el) {
       el.src = SILENT_WAV;

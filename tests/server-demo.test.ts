@@ -35,8 +35,9 @@ describe("live incident demo", () => {
   it("adds three synthetic group members and locks the operator scenario to no response", async () => {
     const config = loadConfig({ APP_ORIGIN: "http://localhost:5173", TEST_SIGN_IN: "true" });
     const store = new MemoryStore();
-    const calls = new CallService({ wallClock: () => now.getTime() });
-    const deps = createDeps(config, store, { calls, now: () => now });
+    let current = now;
+    const calls = new CallService({ wallClock: () => current.getTime() });
+    const deps = createDeps(config, store, { calls, now: () => current });
     const session: SessionDoc = {
       _id: "ses_demo",
       code: "DEMO01",
@@ -60,6 +61,19 @@ describe("live incident demo", () => {
     expect(prepared.participants.filter((p) => p.displayName.includes("(synthetic)"))).toHaveLength(3);
     expect(run.view()).toMatchObject({ unskippable: true });
     expect(run.view().participantId).not.toBe("par_host");
-    expect(deps.relay.list(session._id, now)).toHaveLength(3);
+    const before = deps.relay.list(session._id, now);
+    expect(before).toHaveLength(3);
+
+    current = new Date(now.getTime() + 30_000);
+    await run.step(deps);
+    const after = deps.relay.list(session._id, current);
+    expect(after).toHaveLength(3);
+    const beforeById = new Map(before.map((fix) => [fix.participantId, fix]));
+    expect(
+      after.every((fix) => {
+        const previous = beforeById.get(fix.participantId);
+        return previous && (fix.latitude !== previous.latitude || fix.longitude !== previous.longitude);
+      }),
+    ).toBe(true);
   });
 });

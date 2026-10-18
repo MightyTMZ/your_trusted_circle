@@ -33,6 +33,7 @@ import { SensorPipeline } from "../../sensors/pipeline.js";
 import { ORIENTATION, addImpact, seeded, synthesize, type Motion, type Vec3 } from "../../sensors/synthetic.js";
 import type { Sample } from "../../sensors/stream.js";
 import { toIso, type Clock } from "../../shared/clock.js";
+import { syntheticPosition } from "../../shared/synthetic-location.js";
 import type { Deps } from "../context.js";
 import { newId } from "../ids.js";
 import type { CheckInDoc, IncidentDoc, NotificationJobDoc, ParticipantDoc, SessionDoc, SessionRules } from "../types.js";
@@ -149,7 +150,7 @@ export class DemoRegistry {
       rules,
       syntheticCount > 0,
     );
-    if (syntheticCount > 0) this.seedSyntheticLocations(deps, { ...prepared, rules }, syntheticCount);
+    if (syntheticCount > 0) run.updateLocations(deps, { ...prepared, rules });
     this.runs.set(prepared._id, run);
     return run;
   }
@@ -219,25 +220,6 @@ export class DemoRegistry {
     return prepared;
   }
 
-  private seedSyntheticLocations(deps: Deps, session: SessionDoc, count: number): void {
-    const venue = session.rules.demoVenue ?? FALLBACK_VENUE;
-    const now = deps.now();
-    const synthetic = session.participants.filter((p) => p.userId.startsWith(`${SYNTHETIC_USER_PREFIX}${session._id}:`)).slice(0, count);
-    const keepMs = 2 * session.rules.locationStaleAfterSec * 1000;
-    for (const [index, participant] of synthetic.entries()) {
-      const metres = (index - (synthetic.length - 1) / 2) * 18;
-      deps.relay.put(session._id, {
-        participantId: participant.participantId,
-        latitude: venue.lat + metres / 111_320,
-        longitude: venue.lng + metres / (111_320 * Math.cos((venue.lat * Math.PI) / 180)),
-        accuracyM: 12,
-        simulated: true,
-        fixAt: now,
-        receivedAt: now,
-        expiresAt: new Date(now.getTime() + keepMs),
-      });
-    }
-  }
 }
 
 interface Segment {
@@ -255,6 +237,7 @@ export class LiveDemo {
   /** Two seconds before a window boundary, so the impact's window closes right after it. */
   readonly impactAt: number;
   private readonly venue: { label: string; lat: number; lng: number };
+  private readonly syntheticParticipants: readonly ParticipantDoc[];
   readonly previousRules: SessionRules;
   readonly appliedRules: SessionRules;
   readonly unskippable: boolean;
@@ -304,6 +287,7 @@ export class LiveDemo {
     this.impactAt = Math.ceil((startedAt + LEAD_MS + 2_000) / WINDOW_MS) * WINDOW_MS - 2_000;
     this.historyStart = Math.floor((startedAt - HISTORY_MS) / WINDOW_MS) * WINDOW_MS;
     this.venue = session.rules.demoVenue ?? FALLBACK_VENUE;
+    this.syntheticParticipants = session.participants.filter((p) => p.userId.startsWith(`${SYNTHETIC_USER_PREFIX}${session._id}:`));
     this.manual = this.historyStart;
     this.clock = { now: () => this.manual ?? this.now() };
     this.cursor = this.historyStart;
@@ -333,6 +317,34 @@ export class LiveDemo {
   /** Raw sample batches, kept apart from the derived timeline (CLAUDE.md). */
   get rawRecording(): readonly string[] {
     return this.rawLines;
+  }
+
+  /** updates synthetic group positions without persisting them */
+  updateLocations(deps: Deps, session: SessionDoc): void {
+    const now = deps.now();
+    const venue = session.rules.demoVenue ?? this.venue;
+    const elapsedSec = Math.max(0, (now.getTime() - this.startedAt) / 1000);
+    const keepMs = 2 * session.rules.locationStaleAfterSec * 1000;
+    const cos = Math.cos((venue.lat * Math.PI) / 180);
+
+    for (const [index, original] of this.syntheticParticipants.entries()) {
+      const participant = session.participants.find((p) => p.participantId === original.participantId);
+      if (!participant || participant.leftAt !== null || participant.consent.locationSharing === "off") {
+        deps.relay.clearParticipant(session._id, original.participantId);
+        continue;
+      }
+      const position = syntheticPosition(elapsedSec, index);
+      deps.relay.put(session._id, {
+        participantId: participant.participantId,
+        latitude: venue.lat + position.y / 111_320,
+        longitude: venue.lng + position.x / (111_320 * cos),
+        accuracyM: 12,
+        simulated: true,
+        fixAt: now,
+        receivedAt: now,
+        expiresAt: new Date(now.getTime() + keepMs),
+      });
+    }
   }
 
   view(): DemoView {
@@ -378,6 +390,7 @@ export class LiveDemo {
       this.cursor = Math.max(this.cursor, now);
       return;
     }
+    this.updateLocations(deps, session);
     if (!this.resolved) this.feed(now);
     if (!this.checkIn) {
       if (now >= this.impactAt && this.phaseValue === "before_impact") this.phaseValue = "watching";

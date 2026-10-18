@@ -16,6 +16,7 @@ import {
 } from '../api';
 import { useApp } from '../context';
 import { applySessionVenue, useDemoVenue } from '../venue';
+import { syntheticPosition } from '../../shared/synthetic-location';
 
 /** `demo`: a demo venue is set, so this phone reports a simulated position there instead of GPS. */
 export type GeoState = 'idle' | 'waiting' | 'on' | 'denied' | 'unavailable' | 'demo';
@@ -125,15 +126,20 @@ export function LiveLocationProvider({ children }: { children: ReactNode }) {
   // Demo venue set for the session: every phone that shares location reports a
   // simulated position near it instead of its GPS, labelled simulated for everyone.
   const { venue, shared: demoOn } = useDemoVenue();
+  const demoStartedAt = session?.demoStartedAt;
   const offset = useRef<{ x: number; y: number } | null>(null);
   useEffect(() => {
     if (!sharing || !demoOn) return;
     setGeo('demo');
     const M_PER_DEG = 111_320;
     const send = () => {
-      const prev = offset.current ?? { x: (Math.random() - 0.5) * 30, y: (Math.random() - 0.5) * 30 };
-      const clamp = (m: number) => Math.max(-25, Math.min(25, m));
-      const next = { x: clamp(prev.x + (Math.random() - 0.5) * 6), y: clamp(prev.y + (Math.random() - 0.5) * 6) };
+      const next = demoStartedAt
+        ? syntheticPosition(Math.max(0, (Date.now() - demoStartedAt) / 1000), -1)
+        : (() => {
+            const prev = offset.current ?? { x: (Math.random() - 0.5) * 30, y: (Math.random() - 0.5) * 30 };
+            const clamp = (m: number) => Math.max(-25, Math.min(25, m));
+            return { x: clamp(prev.x + (Math.random() - 0.5) * 6), y: clamp(prev.y + (Math.random() - 0.5) * 6) };
+          })();
       offset.current = next;
       sendLiveLocation(serverId!, {
         latitude: venue.lat + next.y / M_PER_DEG,
@@ -146,7 +152,7 @@ export function LiveLocationProvider({ children }: { children: ReactNode }) {
     send();
     const id = setInterval(send, SEND_EVERY_MS);
     return () => clearInterval(id);
-  }, [sharing, demoOn, venue.lat, venue.lng, serverId]);
+  }, [sharing, demoOn, venue.lat, venue.lng, serverId, demoStartedAt]);
 
   // This device's position. Stops as soon as sharing stops, and pauses while a demo venue is set.
   const lastSent = useRef(0);

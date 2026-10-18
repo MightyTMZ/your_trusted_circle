@@ -9,6 +9,7 @@ import { fitPlot, spreadOverlaps, toPlotPx, type PlotView } from '../mapFit';
 import { useDemoVenue } from '../venue';
 import { initials } from './Controls';
 import { GoogleMap, googleMapsConfigured, type MapPin } from './GoogleMap';
+import { syntheticPosition } from '../../shared/synthetic-location';
 
 const M_PER_DEG = 111_320;
 /** Room kept clear at the top of the plot for the map chip. */
@@ -49,7 +50,7 @@ export function liveFixFor(p: Participant, fixes: LiveFix[]): LiveFix | undefine
  * Everyone this viewer may see, following each person's own permissions.
  * A real device fix wins over a simulated reading for the same person.
  */
-export function useGroupPoints(viewer: Participant, now: number): { points: GroupPoint[]; anchor: { lat: number; lng: number } } {
+export function useGroupPoints(viewer: Participant, now: number, at = now): { points: GroupPoint[]; anchor: { lat: number; lng: number } } {
   const { state } = useApp();
   const { fixes } = useLive();
   const session = state.session!;
@@ -58,22 +59,30 @@ export function useGroupPoints(viewer: Participant, now: number): { points: Grou
     // Simulated people are drawn around the demo venue; real fixes show where they really are.
     const anchor = { lat: venue.lat, lng: venue.lng };
     const cos = Math.cos((anchor.lat * Math.PI) / 180);
+    const demoStart = session.demoStartedAt ?? null;
     const points: GroupPoint[] = [];
     for (const p of Object.values(state.participants)) {
       if (p.status !== 'active') continue;
       const fix = liveFixFor(p, fixes);
       if (fix) {
+        const simulationIndex = demoStart === null || !fix.simulated ? null : simulatedParticipantIndex(p);
+        if (simulationIndex !== null && demoStart !== null && at < demoStart) continue;
+        const simulatedAt = simulationIndex !== null && demoStart !== null ? syntheticPosition((at - demoStart) / 1000, simulationIndex) : null;
+        const position =
+          simulatedAt
+            ? simulatedAt
+            : { x: (fix.longitude - anchor.lng) * M_PER_DEG * cos, y: (fix.latitude - anchor.lat) * M_PER_DEG };
         points.push({
           participantId: p.id,
           name: p.displayName,
           isYou: p.id === viewer.id,
-          x: (fix.longitude - anchor.lng) * M_PER_DEG * cos,
-          y: (fix.latitude - anchor.lat) * M_PER_DEG,
-          lat: fix.latitude,
-          lng: fix.longitude,
-          live: fix.status === 'live',
+          x: position.x,
+          y: position.y,
+          lat: simulatedAt === null ? fix.latitude : anchor.lat + position.y / M_PER_DEG,
+          lng: simulatedAt === null ? fix.longitude : anchor.lng + position.x / (M_PER_DEG * cos),
+          live: simulatedAt === null ? fix.status === 'live' : at >= now - 1000,
           source: fix.simulated ? 'simulated' : 'device',
-          at: new Date(fix.fixAt).getTime(),
+          at: simulatedAt === null ? new Date(fix.fixAt).getTime() : at,
         });
         continue;
       }
@@ -95,7 +104,13 @@ export function useGroupPoints(viewer: Participant, now: number): { points: Grou
       });
     }
     return { points, anchor };
-  }, [state.participants, session, viewer, fixes, now, venue]);
+  }, [state.participants, session, viewer, fixes, now, at, venue]);
+}
+
+function simulatedParticipantIndex(p: Participant): number | null {
+  if (p.role === 'host') return -1;
+  const match = p.displayName.match(/^Demo guest ([1-3]) \(synthetic\)$/);
+  return match ? Number(match[1]) - 1 : null;
 }
 
 function describe(points: GroupPoint[]): string {

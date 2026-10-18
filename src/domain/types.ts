@@ -110,6 +110,8 @@ export interface Session {
   config: SessionConfig;
   /** The server's id for this session, when it was created or joined through the API. */
   serverId?: string;
+  /** the shared clock anchor for the running synthetic demo */
+  demoStartedAt?: Millis;
 }
 
 export interface Observation {
