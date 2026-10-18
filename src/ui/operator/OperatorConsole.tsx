@@ -81,6 +81,7 @@ export function OperatorConsole() {
   const [error, setError] = useState<string | null>(null);
   const [voiceOn, setVoiceOn] = useState(true);
   const [typedText, setTypedText] = useState('');
+  const [pendingOperatorText, setPendingOperatorText] = useState<string | null>(null);
   const [micReady, setMicReady] = useState(false);
   const [cited, setCited] = useState<string[]>([]);
   const [record, setRecord] = useState(false);
@@ -314,6 +315,7 @@ export function OperatorConsole() {
     setError(null);
     setReplies({});
     setCited([]);
+    setPendingOperatorText(null);
     setPhase('starting');
     try {
       const res = await callApi.start();
@@ -346,6 +348,7 @@ export function OperatorConsole() {
   };
 
   const handleTurn = (res: TurnResponse) => {
+    setPendingOperatorText(null);
     setCall(res.call);
     // null: a newer operator turn superseded this one, and its answer will play instead.
     if (res.reply) play(res.reply, res.call);
@@ -362,6 +365,7 @@ export function OperatorConsole() {
     setError(null);
     setReplies({});
     setCited([]);
+    setPendingOperatorText(null);
     setPhase('starting');
     const known = caps ?? (await callApi.capabilities().catch(() => null));
     setCaps(known);
@@ -426,10 +430,12 @@ export function OperatorConsole() {
     clearSilence();
     if (phaseRef.current === 'speaking') await bargeIn();
     setError(null);
+    setPendingOperatorText(value);
     setPhase('thinking');
     try {
       handleTurn(await callApi.say(current.call_id, value));
     } catch (e) {
+      setPendingOperatorText(null);
       setError((e as Error).message);
       settle(callRef.current);
     }
@@ -455,6 +461,7 @@ export function OperatorConsole() {
     setPhase('idle');
     setConnectedAt(null);
     setTypedText('');
+    setPendingOperatorText(null);
     setRecord(false);
     history.replaceState(null, '', '#operator');
   };
@@ -588,6 +595,7 @@ export function OperatorConsole() {
         {call.transcript.map((t) => (
           <Turn key={`${t.turn_index}-${t.speaker}-${t.at}`} turn={t} reply={replies[t.turn_index]} facts={call.facts} />
         ))}
+        {pendingOperatorText && <PendingTurn text={pendingOperatorText} />}
         <li ref={chatEnd} aria-hidden="true" />
       </ol>
 
@@ -776,6 +784,14 @@ function Turn({ turn, reply, facts }: { turn: CallView['transcript'][number]; re
           ))}
         </details>
       )}
+    </li>
+  );
+}
+
+function PendingTurn({ text }: { text: string }) {
+  return (
+    <li className="bubble fill-2 operator" aria-live="polite">
+      <span className="t-body">{text}</span>
     </li>
   );
 }
